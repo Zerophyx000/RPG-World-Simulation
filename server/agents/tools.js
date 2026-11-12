@@ -19,6 +19,8 @@ const HIDDEN_MAX = {
   say: { text: LIMITS.sayMax },
   leave_conversation: { farewell: LIMITS.sayMax },
   tell_about_place: { comment: 120 },
+  decline_invitation: { reason: LIMITS.sayMax },
+  leave_group: { farewell: LIMITS.sayMax },
 };
 
 export function buildTools(world, c) {
@@ -190,6 +192,37 @@ export function buildTools(world, c) {
     }, ['who']));
   }
 
+  // Parties (step 5.5): the only groups citizens can form themselves.
+  const invitable = world.groups.invitable(c, awake);
+  if (invitable.length) {
+    const labels = [...world.memory.labelsFor(c, awake).entries()].filter(([, o]) => invitable.includes(o)).map(([l]) => l);
+    tools.push(fn('propose_party', 'Ask people here to join you as a party for some purpose: to go somewhere together, to get something done. They can accept or decline.', {
+      people: { type: 'array', items: { type: 'string', enum: labels }, description: 'Who you ask.' },
+      purpose: { type: 'string', maxLength: LIMITS.actionMax, description: "What the party is for, in a few words, e.g. 'explore the old mine'." },
+      inner_thought: INNER_THOUGHT,
+    }, ['people', 'purpose']));
+  }
+  const invites = world.groups.invitations(c);
+  if (invites.length) {
+    const from = [...world.memory.labelsFor(c, invites.map((i) => world.citizens.get(i.from)).filter(Boolean)).keys()];
+    tools.push(fn('accept_invitation', 'Accept an invitation to join someone as a party.', {
+      from: { type: 'string', enum: from, description: 'Whose invitation.' }, inner_thought: INNER_THOUGHT,
+    }, ['from']));
+    tools.push(fn('decline_invitation', 'Turn down an invitation.', {
+      from: { type: 'string', enum: from, description: 'Whose invitation.' },
+      reason: { type: 'string', description: 'Optional. What you say to them, in your own words (one short sentence).' },
+      inner_thought: INNER_THOUGHT,
+    }, ['from']));
+  }
+  const parties = world.groups.of(c.id).filter((m) => m.group.kind === 'party');
+  if (parties.length) {
+    tools.push(fn('leave_group', `Leave your party: ${parties.map((m) => `"${m.group.id}" = ${m.group.name}`).join('; ')}.`, {
+      group: { type: 'string', enum: parties.map((m) => m.group.id), description: 'Which one.' },
+      farewell: { type: 'string', description: 'Optional. A few words to the others.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['group']));
+  }
+
   // plan tools: only while a plan is running
   if (planActive(c)) {
     tools.push(fn('continue_plan', 'Carry on with your plan for the day where you left off.', { inner_thought: INNER_THOUGHT }, []));
@@ -201,7 +234,7 @@ export function buildTools(world, c) {
           properties: {
             kind: { type: 'string', enum: STEP_KINDS },
             place: { type: 'string', enum: Object.keys(c.knownPlaces ?? {}) },
-            person: { type: 'string', description: 'For visit: the person, as you know them.' },
+            person: { type: 'string', description: 'For visit / follow: the person, as you know them.' },
             description: { type: 'string' }, minutes: { type: 'integer', minimum: 1, maximum: 240 }, time: { type: 'string', description: 'HH:MM' }, note: { type: 'string' },
             thing: { type: 'string', description: 'For do, optional: the thing you will work on there.' },
           },

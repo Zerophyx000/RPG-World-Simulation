@@ -8,6 +8,9 @@ import { buildTools, validateCall } from './tools.js';
 import { chooseTier } from './tiers.js';
 import { makePlanTool } from './plan.js';
 import { ranOut, RETRY_MAX } from '../llm.js';
+import { findLeaks } from '../social/leak.js';
+
+const LEAK_CHECK = process.env.DEBUG_LEAK_CHECK === 'true';
 
 // A `say` decided while 3+ new lines were spoken in the same conversation answers a stale
 // question: think again once with the fresh transcript (cheaper than interrupting).
@@ -57,6 +60,10 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
   const collect = { recalled: [] };
   const messages = buildMessages(world, c, { tier, mode, collect });
   const tools = mode === 'plan' ? [makePlanTool(world, c)] : buildTools(world, c);
+  if (LEAK_CHECK) {
+    const leaks = findLeaks(world, `${messages.map((m) => m.content).join('\n')}\n${JSON.stringify(tools)}`, c.id);
+    if (leaks.length) world.logEvent('error', { actorId: c.id, location: c.location, message: `PROMPT LEAK: ${leaks.map((l) => `${l.kind} "${l.text}"`).join('; ')}`, leak: true });
+  }
 
   const first = await call(messages, tools, tier, maxTokens);
   if (!world.isCurrentThink(c, t)) return null;

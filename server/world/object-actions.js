@@ -186,6 +186,10 @@ export function finishConceal(world, c, token, p = null) {
   if (anchor && p.clue) {
     O.change(anchor.id, { data: { clue: { text: p.clue, for: o.id } } }, { actorId: 'keeper', action: 'edit', notify: false, roomId: c.location });
   }
+  // Step 5.5: hiding things in somebody else's home is a warning sign for whoever saw it.
+  const seenBy = O.history(o.id, 1)[0]?.witnesses ?? [];
+  if (seenBy.length) world.signals.onConceal(c, c.location, seenBy, o);
+  world.emotions?.onOwnActSeen?.(c, o, seenBy, 'conceal');
   remember(world, c, `You hid ${O.textFor(c, o)} ${where}.`);
   settle(world, c);
   return view;

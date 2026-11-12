@@ -17,7 +17,7 @@ import { config } from '../config.js';
 const HOURLY_MINUTES = 60;
 const HOURLY_MIN_EVENTS = 10;
 const INPUT_CHAR_BUDGET = 48000; // ~12k tokens of event text
-const COUNTED_TYPES = ['action', 'arrive', 'conversation_end', 'director', 'damage', 'collapse', 'forced_sleep', 'learn_place', 'object', 'search', 'notice'];
+const COUNTED_TYPES = ['action', 'arrive', 'conversation_end', 'director', 'damage', 'collapse', 'forced_sleep', 'learn_place', 'object', 'search', 'notice', 'relationship', 'signal', 'group'];
 
 export class Observer {
   constructor(world) {
@@ -131,7 +131,8 @@ export class Observer {
     const lines = renderEvents(this.world, rows);
     if (!lines.length && reason !== 'manual') return { skipped: 'no new events' };
 
-    const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen');
+    const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen')
+      .map((c) => ({ ...c, hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name) }));
     const ids = citizens.map((c) => c.id);
     const tools = [reportTool(ids)];
     const messages = buildMessages(prev, citizens, lines);
@@ -156,7 +157,12 @@ function buildMessages(prev, citizens, lines) {
   const people = citizens.map((c) => {
     const p = c.persona;
     const first = String(p.personality ?? '').split(/(?<=\.)\s/)[0];
-    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}`;
+    // Out-of-world knowledge the villagers don't have: secret goals and hidden memberships.
+    const secret = [
+      ...(p.secretGoals ?? []).map((g) => `secret aim: ${g}`),
+      ...(c.hiddenGroups ?? []).map((g) => `secretly of ${g}`),
+    ];
+    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}${secret.length ? ` [hidden from the villagers: ${secret.join('; ')}]` : ''}`;
   }).join('\n');
   const previous = prev
     ? JSON.stringify({ headline: prev.headline, relationships: prev.relationships, threads: prev.threads })
@@ -286,6 +292,14 @@ function renderEvents(world, rows) {
       line = objectLine(world, r, d, name, room);
     } else if (r.type === 'search') {
       line = `${name(r.actor_id)} searches ${room(r.location)}${d.targetId ? ` around the ${world.objects.get(d.targetId)?.typeId ?? d.targetId}` : ''}: ${d.found?.length ? `finds ${d.found.map((id) => objLabel(world, id)).join(', ')}` : 'finds nothing'}`;
+    } else if (r.type === 'relationship') {
+      const ch = [d.dTrust ? `trust ${d.dTrust > 0 ? '+' : ''}${d.dTrust}` : null, d.dAffinity ? `liking ${d.dAffinity > 0 ? '+' : ''}${d.dAffinity}` : null].filter(Boolean).join(', ');
+      line = `${name(r.actor_id)} now sees ${name(d.otherId)} differently (${ch}): "${String(d.reason).replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => name(id))}"`;
+    } else if (r.type === 'signal') {
+      line = `${name(r.actor_id)} notices a warning sign about ${name(d.otherId)}: ${d.sign}`;
+    } else if (r.type === 'group' && ['join', 'leave', 'dissolve', 'propose'].includes(d.action)) {
+      line = d.action === 'propose' ? `${name(r.actor_id)} asks ${(d.invited ?? []).map(name).join(', ')} to form a party: ${d.purpose}`
+        : `${r.actor_id ? name(r.actor_id) : 'A group'} ${d.action === 'join' ? 'joins' : d.action === 'leave' ? 'leaves' : 'dissolves:'} ${d.name}${d.secret ? ' (secretly)' : ''}`;
     } else if (r.type === 'notice') {
       line = `${name(r.actor_id)} notices at ${room(r.location)}: ${d.text}`;
     }

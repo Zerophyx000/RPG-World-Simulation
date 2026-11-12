@@ -47,6 +47,10 @@ const PHRASES = {
   gist: ['They talked about bread and the weather.'],
   person: ['nobody'],
   far: ['Something faint happens far away.'],
+  // step 5.5: parties; step 6: feelings
+  purpose: ['look around the old mine', 'fetch water together', 'keep an eye on the square'],
+  why: ['It stung more than I expected.', 'That was kind of them.', 'I do not like how this is going.'],
+  cause: ['It stung more than I expected.'],
   default: ['hmm'],
 };
 

@@ -54,9 +54,16 @@ export class Memory {
     return out;
   }
 
-  /** Create or patch a directed relationship row (write-through). */
-  upsertRel(a, b, patch = {}) {
+  /**
+   * Create or patch a directed relationship row (write-through).
+   * Step 5.5: affinity / trust / familiarity only change through world.relationships.change(), which
+   * records the reason. Called directly, this only touches names, last-seen and the summary.
+   */
+  upsertRel(a, b, patch = {}, { values = false } = {}) {
     if (a === b) return null;
+    if (!values && ('affinity' in patch || 'trust' in patch || 'familiarity' in patch)) {
+      throw new Error('relationship values change only through world.relationships.change() (a reason is required)');
+    }
     const now = this.world.now;
     const cur = this.rel(a, b) ?? {
       citizenId: a, otherId: b, affinity: 0, trust: 0, familiarity: 0, nameKnown: false, nameConfidence: 0,
@@ -82,13 +89,17 @@ export class Memory {
     const gained = g?.day === day ? g.gained : 0;
     const add = Math.max(0, Math.min(amount, FAMILIARITY_PER_DAY_CAP - gained));
     this.famGain.set(key, { day, gained: gained + add });
-    const r = this.rel(a, b);
-    return this.upsertRel(a, b, { familiarity: (r?.familiarity ?? 0) + add });
+    if (add <= 0) return this.rel(a, b);
+    return this.world.relationships.change(a, b, { familiarity: add }, {
+      reason: 'We crossed paths a few times today.', source: 'witness', aggregate: true,
+    })?.row;
   }
 
   /** a sees b (same room): last seen, a little familiarity, a forgotten-ish name comes back a bit. */
   seen(a, b, placeId) {
     if (a === b) return;
+    // Step 5.5: the very first time, how they look to you decides where trust starts.
+    if (!this.rel(a, b)) this.world.strangers?.firstImpression(this.world.citizens.get(a), this.world.citizens.get(b), this.world.rooms.get(placeId));
     const r = this.rel(a, b);
     const patch = { lastSeenAt: this.world.now, lastSeenPlace: placeId ?? null };
     if (r?.nameKnown && r.nameConfidence < 1) patch.nameConfidence = Math.min(1, r.nameConfidence + 0.2);
@@ -107,7 +118,15 @@ export class Memory {
     for (const [room, list] of byRoom) {
       if (list.length < 2) continue;
       for (const a of list) for (const b of list) if (a !== b && a.activity.type !== 'sleeping' && a.activity.type !== 'collapsed') this.seen(a.id, b.id, room);
+      this.world.signals?.checkProperty(room);
     }
+  }
+
+  /** Everyone awake in one room sees each other now (on arrivals; the periodic pass covers the rest). */
+  seeRoom(roomId) {
+    const list = [...this.world.citizens.values()].filter((c) => c.alive && c.location === roomId);
+    if (list.length < 2) return;
+    for (const a of list) for (const b of list) if (a !== b && a.activity.type !== 'sleeping' && a.activity.type !== 'collapsed') this.seen(a.id, b.id, roomId);
   }
 
   // ---------- names ----------

@@ -20,6 +20,7 @@ import { relationSentence } from '../memory/words.js';
 import { planBlock, yesterdayText } from './plan.js';
 import { carryingPhrase } from '../world/object-actions.js';
 import { SLOTS } from '../world/objects.js';
+import { relationLine } from '../social/describe.js';
 
 export { clockTime, timeOfDay, relativeTime };
 
@@ -73,6 +74,8 @@ function whoYouAre(world, c) {
   if (p.speechStyle) lines.push(`How you tend to talk (use sparingly): ${p.speechStyle}`);
   if (p.backstory) lines.push(`Your story: ${p.backstory}`);
   if (p.goals.length) lines.push(`What you want:\n${p.goals.map((g) => `- ${g}`).join('\n')}`);
+  // Step 5.5: secret goals appear here and NOWHERE else (never in anyone else's prompt, never to the keeper).
+  if (p.secretGoals?.length) lines.push(`Your private aims (nobody knows these):\n${p.secretGoals.map((g) => `- ${g}`).join('\n')}`);
   const home = world.rooms.get(c.home);
   lines.push(home ? `Your home: ${home.name}.` : 'You have no home here yet.');
   return lines.join('\n');
@@ -135,6 +138,14 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   } else {
     const pb = planBlock(world, c);
     if (pb) blocks.push(`# YOUR PLAN\n${pb}`);
+  }
+
+  // YOUR GROUPS (step 5.5)
+  const groups = world.groups.block(c);
+  if (groups) blocks.push(`# YOUR GROUPS\n${groups}`);
+  const invites = world.groups.invitations(c);
+  if (invites.length) {
+    blocks.push(`# INVITATIONS\n${invites.map((i) => `- ${mem.nameFor(c, i.from, { start: true })} has asked you to join ${pronouns(world.citizens.get(i.from)).obj}: to ${i.purpose.replace(/^to /i, '')}. You can accept or decline.`).join('\n')}`);
   }
 
   // ON YOUR MIND + YOU REMEMBER share a budget
@@ -287,7 +298,9 @@ function visibleLine(world, o, viewer) {
   const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : ''].join(' ');
   const carrying = carryingPhrase(world, viewer, o);
   const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
-  return `${who}. ${rel ? relationSentence(rel, o) : 'A stranger to you.'} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+  // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.
+  const line = relationLine(world, viewer, o);
+  return `${who}${line.tags}. ${line.text} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
 }
 
 function conversationBlock(world, conv, c) {

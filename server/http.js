@@ -36,6 +36,7 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('memory', (m) => broadcast('memory', m));
   world.bus.on('relationship', (r) => broadcast('relationship', r));
   world.bus.on('object', (o) => broadcast('object', o));
+  world.bus.on('group', (g) => broadcast('group', g));
   const qs = (req) => new URL(req.url, 'http://x').searchParams;
   const num = (v) => (v == null || v === '' ? null : Number(v));
   const found = (v) => {
@@ -106,6 +107,23 @@ export function createServer(world, { observer = null } = {}) {
     ['POST', /^\/api\/governor$/, (_req, body) => world.governor.setBudget(body.budgetPerHour)],
 
     ['GET', /^\/api\/director\/presets$/, () => loadDirectorPresets()],
+
+    // ---- Trust with reasons, groups, strangers (step 5.5) ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/relationships\/([\w-]+)\/events$/, (_req, _body, [id, other]) => world.relationshipEvents(id, other)],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/wariness$/, (req, _body, [id]) => world.warinessOf(id, qs(req).get('other'))],
+    ['GET', /^\/api\/relationships\/signals$/, () => world.db.prepare(`SELECT citizen_id AS "from", other_id AS "to", SUM(d_trust) AS dTrust, COUNT(*) AS n
+      FROM relationship_events WHERE source = 'signal' GROUP BY citizen_id, other_id`).all()],
+    ['GET', /^\/api\/groups$/, () => world.groups.list()],
+    ['GET', /^\/api\/groups\/([\w-]+)$/, (_req, _body, [id]) => found(world.groups.list().find((g) => g.id === id))],
+    ['POST', /^\/api\/groups$/, (_req, body) => world.groups.create(body, { origin: 'director' })],
+    ['PATCH', /^\/api\/groups\/([\w-]+)$/, (_req, body, [id]) => world.groups.edit(id, body)],
+    ['GET', /^\/api\/director\/inactive$/, () => world.inactiveCitizens()],
+    ['POST', /^\/api\/director\/activate$/, (_req, body) => world.activateCitizen({ id: body.id, location: body.location })],
+    ['POST', /^\/api\/director\/signal$/, (_req, body) => world.signals.simulate(body)],
+    ['POST', /^\/api\/director\/stranger-trust$/, (_req, body) => world.setStrangerTrust(body)],
+    ['POST', /^\/api\/director\/persona-list$/, (_req, body) => world.setPersonaList(body)],
+    ['POST', /^\/api\/director\/room-danger$/, (_req, body) => world.setRoomDanger(body)],
+    ['GET', /^\/api\/cues$/, () => world.strangers.cues],
 
     // ---- Objects (step 5) ----
     ['GET', /^\/api\/rooms\/([\w-]+)\/objects$/, (req, _body, [id]) => world.roomObjects(id, { view: qs(req).get('view') ?? 'true', citizen: qs(req).get('citizen') })],

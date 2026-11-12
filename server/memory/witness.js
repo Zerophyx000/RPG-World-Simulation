@@ -13,7 +13,8 @@ const ON_MIND_AT = 7;
 const REPEAT_WINDOW_MINUTES = 180;
 
 export function witness(mem, c, s) {
-  if (!['director', 'action', 'arrive', 'depart', 'speech', 'body', 'object', 'notice'].includes(s.kind)) return;
+  if (!['director', 'action', 'arrive', 'depart', 'speech', 'body', 'object', 'notice', 'signal'].includes(s.kind)) return;
+  if (s.data?.invitation) return;                            // invitations live in the conversation / reflection
   if (s.sourceId && s.sourceId === c.id) return;           // own routine actions
   // Conversation lines: participants get the reflection afterwards. Bystanders remember overhearing it,
   // once per conversation, weighted by how they feel about BOTH people talking.

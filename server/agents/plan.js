@@ -10,7 +10,8 @@ import { activeServices } from '../world/rooms.js';
 import { clockTime } from '../world/time.js';
 
 export const PLAN_MAX_STEPS = 12;
-export const STEP_KINDS = ['travel', 'do', 'eat', 'visit', 'wait_until', 'sleep'];
+export const STEP_KINDS = ['travel', 'do', 'eat', 'visit', 'wait_until', 'sleep', 'follow'];
+const FOLLOW_WAIT = 3; // game minutes between looks while staying close to someone
 const MAX_WAIT = 240;
 
 export function planActive(c) {
@@ -38,12 +39,12 @@ export function makePlanTool(world, c) {
             items: {
               type: 'object',
               properties: {
-                kind: { type: 'string', enum: STEP_KINDS, description: 'travel: go somewhere · do: spend time on something · eat · visit: go and find someone · wait_until: stay until a time · sleep' },
+                kind: { type: 'string', enum: STEP_KINDS, description: 'travel: go somewhere · do: spend time on something · eat · visit: go and find someone · wait_until: stay until a time · sleep · follow: stay with someone (e.g. a member of your party) wherever they go, for some minutes' },
                 place: { type: 'string', enum: places, description: 'For travel, eat, sleep (and optionally do).' },
-                person: { type: 'string', enum: labels.length ? labels : ['nobody'], description: 'For visit.' },
+                person: { type: 'string', enum: labels.length ? labels : ['nobody'], description: 'For visit and follow.' },
                 description: { type: 'string', description: 'For do / wait_until: what you are doing, an -ing phrase.' },
                 thing: { type: 'string', description: 'For do, optional: the thing you will work on there, e.g. "the flour sacks" or "the hearth".' },
-                minutes: { type: 'integer', minimum: 1, maximum: MAX_WAIT, description: 'For do: roughly how long.' },
+                minutes: { type: 'integer', minimum: 1, maximum: MAX_WAIT, description: 'For do and follow: roughly how long.' },
                 time: { type: 'string', description: 'For wait_until: "HH:MM".' },
                 note: { type: 'string', description: 'Why, in a few words (e.g. "ask about the debt").' },
               },
@@ -94,6 +95,10 @@ function normalizeStep(world, c, s, known, people) {
     case 'visit': {
       const o = people.get(s.person) ?? [...people.values()].find((p) => p.id === s.person || p.name.toLowerCase() === String(s.person ?? '').toLowerCase());
       return o ? { kind: 'visit', person: o.id, note, status: 'pending' } : null;
+    }
+    case 'follow': {
+      const o = people.get(s.person) ?? [...people.values()].find((p) => p.id === s.person || p.name.toLowerCase() === String(s.person ?? '').toLowerCase());
+      return o ? { kind: 'follow', person: o.id, minutes: clampInt(s.minutes, 5, MAX_WAIT, 120), note, status: 'pending' } : null;
     }
     case 'wait_until': {
       const m = /^(\d{1,2}):(\d{2})$/.exec(String(s.time ?? '').trim());
@@ -206,6 +211,23 @@ function runStep(world, c, step) {
       act('wait', { reason: step.description || `until ${step.time}`, minutes });
       return minutes >= left ? 'started-done' : 'started';
     }
+    case 'follow': {
+      // Stay with someone: code moves the citizen after them (about a minute behind) until the time is up.
+      step.startedAt ??= world.now;
+      const name = world.memory.nameFor(c, step.person);
+      if (world.now - step.startedAt >= step.minutes) return 'skip';
+      const t = world.citizens.get(step.person);
+      if (!t || !t.alive) return { kind: 'failed', text: `Your plan hit a snag: ${name} is nowhere to be found.` };
+      if (t.location === here) {
+        world.setActivity(c, { type: 'waiting', until: world.now + FOLLOW_WAIT, detail: { reason: `staying close to ${name}`, minutes: FOLLOW_WAIT, silent: true, following: t.id } });
+        return 'started';
+      }
+      const dest = t.location ?? t.activity?.detail?.to ?? null;
+      if (!dest || !world.rooms.has(dest)) return { kind: 'failed', text: `Your plan hit a snag: you lost sight of ${name}.` };
+      const adjacent = world.rooms.get(here)?.exits.some((e) => e.to === dest);
+      const r = adjacent ? act('move_to', { destination: dest }) : act('travel_to', { destination: dest });
+      return r?.ok ? 'started' : { kind: 'failed', text: `Your plan hit a snag: you lost sight of ${name}.` };
+    }
     case 'visit': {
       const rel = world.memory.rel(c.id, step.person);
       const name = world.memory.nameFor(c, step.person);
@@ -233,6 +255,7 @@ export function stepText(world, c, s) {
     case 'eat': return `eat at ${place(s.place)}${note}`;
     case 'sleep': return `sleep at ${place(s.place)}${note}`;
     case 'visit': return `find ${world.memory.nameFor(c, s.person)}${note}`;
+    case 'follow': return `stay with ${world.memory.nameFor(c, s.person)} wherever they go (about ${s.minutes} min)${note}`;
     case 'wait_until': return `${s.description} until ${s.time}${note}`;
     default: return s.kind;
   }

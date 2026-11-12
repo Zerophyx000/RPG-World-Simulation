@@ -759,6 +759,7 @@ export class Objects {
       state: o.state, visibility: o.visibility, effectiveVisibility: this.surfaceTier(o), searchDifficulty: o.searchDifficulty,
       ownerId: o.ownerId, surfaceText: o.surfaceText, surface: this.surfaceText(o), trueText: o.trueText, origin: o.origin,
       data: o.data, updatedAt: o.updatedAt, portable: Boolean(type?.portable), size: type?.size ?? 1, container: Boolean(type?.container),
+      tags: [...(type?.tags ?? []), ...(o.data?.tags ?? [])],
     };
   }
 
@@ -800,6 +801,7 @@ export function loadTypes() {
       portable: Boolean(raw.portable), size: raw.size === 2 ? 2 : 1, states, transitions,
       affordances: (raw.affordances ?? []).map(String), surface: raw.surface ?? {}, rules,
       concealable: Boolean(raw.concealable), container: Boolean(raw.container),
+      tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [], // step 5.5: weapon | tool | valuable | holy … (perception only)
     });
   }
   return map;

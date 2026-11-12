@@ -10,6 +10,7 @@ import { showCall } from './llm.js';
 import { actPanelHtml, bindActPanels } from './act.js';
 import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml, planHtml } from './memories.js';
 import { showEvent } from '../util.js';
+import { openReasons, warinessHtml, groupChip } from './social-ui.js';
 
 let root = null;
 let data = null;
@@ -47,6 +48,8 @@ export function mount(el) {
     }
     const conv = e.target.closest('[data-open-conv]');
     if (conv) navigate('conversations', { conversationId: conv.dataset.openConv });
+    const why = e.target.closest('[data-reasons]');
+    if (why && data) openReasons(data.id, why.dataset.reasons);
     const ev = e.target.closest('[data-show-event]');
     if (ev) showEvent(ev.dataset.showEvent);
     const dot = e.target.closest('[data-mem]');
@@ -179,6 +182,8 @@ function render() {
       <div class="activity-line">${ICONS[a.type] ?? ''} <b>${esc(a.type)}</b> · <span id="insp-activity">${esc(activityLabel({ ...c, activity: a }))}</span></div>
     </div>
 
+    ${(c.groupsView ?? []).length ? `<div class="gchips">${c.groupsView.map(groupChip).join('')}</div>` : ''}
+    ${(p.secretGoals ?? []).length ? `<div class="secret-goals" title="Only in their own prompt">🔒 ${p.secretGoals.map(esc).join(' · ')}</div>` : ''}
     ${needBars(c)}
     ${(c.marks ?? []).length ? `<div class="marks">${c.marks.map((m) => `<span class="mark">${esc(m.text)}</span>`).join('')}</div>` : ''}
 
@@ -202,6 +207,8 @@ function render() {
     ${details('memories', `Memories (${c.memoryCount ?? 0} active)`, `${coreMemoryHtml(mems, nights)}${constellationHtml(mems)}`)}
 
     ${details('rels', `Relationships (${(c.relationshipsView ?? []).length})`, relationshipsHtml(c, store.clock?.gameMinutes ?? 0))}
+
+    ${details('strangers', `Strangers · trust in strangers ${Number(c.strangerTrust ?? 0.5).toFixed(2)}`, strangersHtml(c))}
 
     ${details('nights', `Nights (${(nights ?? []).length})`, nightsHtml(nights))}
 
@@ -236,6 +243,16 @@ function render() {
         <span class="${k.status === 'ok' ? '' : 'bad'}">${esc(k.status)} · ${k.duration_ms ?? '–'} ms · ${esc(gameTime(k.game_time))}</span></li>`).join('')}</ul>`
       : '<p class="muted">None yet.</p>'}`;
   root.scrollTop = scroll;
+}
+
+// ---------- strangers (step 5.5) ----------
+function strangersHtml(c) {
+  const log = (c.strangerLog ?? []).slice().reverse().map((l) => `<div class="dim">${esc(gameTime(l.at))}: ${Number(l.value).toFixed(2)} — ${esc(l.why)}</div>`).join('');
+  const here = (c.strangersView ?? []).map(warinessHtml).join('');
+  const tags = (c.persona?.appearanceTags ?? []).length ? `<div class="dim">How they look to others: ${esc(c.persona.appearanceTags.join(', '))}</div>` : '';
+  return `<div class="dim">Learned attitude towards strangers (0 = expects the worst, 1 = trusting; starts at 0.5).</div>${tags}
+    ${log || '<div class="dim">No experiences with strangers yet.</div>'}
+    ${here ? `<h4>Strangers here right now</h4>${here}` : '<p class="muted">No strangers present.</p>'}`;
 }
 
 // ---------- objects (step 5) ----------

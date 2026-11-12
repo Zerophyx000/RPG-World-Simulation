@@ -118,6 +118,38 @@ export function mount(el) {
         <div id="fx-list"></div>
       </div>
 
+      <div class="card" id="social-card">
+        <h3>People, groups and strangers</h3>
+        <div class="soc-row" id="soc-inactive"></div>
+
+        <label class="lbl">Relationship change <span class="dim">(always with a reason they could name)</span></label>
+        <div class="row"><select id="soc-a"></select><span class="dim">→</span><select id="soc-b"></select>
+          <label>trust <input id="soc-dt" type="number" min="-5" max="5" step="1" value="-2" class="short"></label>
+          <label>liking <input id="soc-da" type="number" min="-5" max="5" step="1" value="0" class="short"></label></div>
+        <div class="row"><input id="soc-reason" placeholder="He told me the east passage was safe, and it wasn't." style="flex:1"><button type="button" id="soc-rel">Apply</button></div>
+
+        <label class="lbl">Simulate a warning sign <span class="dim">(the first person notices it about the second)</span></label>
+        <div class="row"><select id="soc-sign"><option>followed</option><option>property</option><option>intruder</option><option>hiding</option></select><button type="button" id="soc-signal">Fire</button></div>
+
+        <label class="lbl">How the first person looks / what they hide</label>
+        <div class="row"><select id="soc-field"><option value="appearanceTags">appearance tags</option><option value="secretGoals">secret goals</option><option value="covets">covets</option></select>
+          <input id="soc-values" placeholder="hooded, foreign" style="flex:1"><button type="button" id="soc-set">Set</button></div>
+        <div class="row"><label>Trust in strangers <input id="soc-st" type="number" min="0.05" max="0.95" step="0.05" value="0.5" class="short"></label><button type="button" id="soc-st-set">Set</button>
+          <span class="dim" id="soc-cues"></span></div>
+
+        <label class="lbl">Room danger <span class="dim">(0–10; adds to wariness of strangers)</span></label>
+        <div class="row"><select id="soc-room"></select><input id="soc-danger" type="number" min="0" max="10" value="0" class="short"><button type="button" id="soc-danger-set">Set</button></div>
+
+        <label class="lbl">Groups</label>
+        <div class="row"><input id="grp-name" placeholder="name, e.g. the night watch" style="flex:1">
+          <select id="grp-kind">${['family', 'household', 'village', 'guild', 'faction', 'party', 'gang'].map((k) => `<option>${k}</option>`).join('')}</select>
+          <label class="check"><input type="checkbox" id="grp-secret"> secret</label><button type="button" id="grp-create">Create</button></div>
+        <div class="row"><select id="grp-id"></select><select id="grp-member"></select><input id="grp-role" placeholder="role" class="short">
+          <label class="check"><input type="checkbox" id="grp-msecret"> secret</label>
+          <button type="button" id="grp-add">Add</button><button type="button" id="grp-remove">Remove</button></div>
+        <div class="result" id="soc-result"></div>
+      </div>
+
       <form id="f-object" class="card">
         <h3>Objects</h3>
         <p class="muted">Create an object from a type (origin <code>director</code>). To change one, click it anywhere (world view, events, inspector) and use <i>Edit</i>.</p>
@@ -182,6 +214,7 @@ export function mount(el) {
   el.querySelector('#f-whisper').addEventListener('submit', sendWhisper);
   el.querySelector('#f-create').addEventListener('submit', createCitizen);
   el.querySelector('#f-object').addEventListener('submit', createObject);
+  bindSocial(el);
   for (const id of ['#ob-type', '#ob-where']) el.querySelector(id).addEventListener('change', fillObjectForm);
   objectTypes().then((t) => {
     types = t;
@@ -212,12 +245,14 @@ export function mount(el) {
 
   const off = subscribeMany(['rooms', 'citizens', 'objects'], () => {
     fillSelects();
+    fillSocial();
     fillObjectForm();
     renderRoomChanges();
     renderReach();
     renderNeeds();
   });
   fillSelects();
+  fillSocial();
   renderEffects();
   renderRoomChanges();
   renderReach();
@@ -230,6 +265,96 @@ export function mount(el) {
 
 const val = (id) => root.querySelector(id).value;
 const setVal = (id, v) => { root.querySelector(id).value = v ?? ''; };
+
+// ---------- people, groups, strangers (step 5.5) ----------
+let groupList = [];
+function bindSocial(el) {
+  const run = (fn) => async () => {
+    try {
+      result('#soc-result', true, await fn());
+    } catch (err) {
+      result('#soc-result', false, err.message);
+    }
+  };
+  const on = (id, fn) => el.querySelector(id).addEventListener('click', run(fn));
+  on('#soc-rel', async () => {
+    const r = await api.post('/api/director/relationship', { citizenId: val('#soc-a'), otherId: val('#soc-b'), dTrust: Number(val('#soc-dt')) || 0, dAffinity: Number(val('#soc-da')) || 0, reason: val('#soc-reason') });
+    return `${citizenName(val('#soc-a'))} → ${citizenName(val('#soc-b'))}: trust ${r.trust.toFixed(1)}, liking ${r.affinity.toFixed(1)}`;
+  });
+  on('#soc-signal', async () => {
+    const r = await api.post('/api/director/signal', { citizenId: val('#soc-a'), otherId: val('#soc-b'), sign: val('#soc-sign') });
+    return r.fired ? `${citizenName(val('#soc-a'))} noticed: ${val('#soc-sign')}` : 'Not fired.';
+  });
+  on('#soc-set', async () => JSON.stringify(await api.post('/api/director/persona-list', { citizenId: val('#soc-a'), field: val('#soc-field'), values: val('#soc-values') })));
+  on('#soc-st-set', async () => JSON.stringify(await api.post('/api/director/stranger-trust', { citizenId: val('#soc-a'), value: Number(val('#soc-st')) })));
+  on('#soc-danger-set', async () => {
+    const r = await api.post('/api/director/room-danger', { roomId: val('#soc-room'), danger: Number(val('#soc-danger')) });
+    return `${r.name}: danger ${r.danger}`;
+  });
+  on('#grp-create', async () => {
+    const g = await api.post('/api/groups', { name: val('#grp-name'), kind: val('#grp-kind'), public: !el.querySelector('#grp-secret').checked });
+    await loadGroups();
+    return `Created ${g.name} (${g.id})`;
+  });
+  on('#grp-add', async () => {
+    const g = await api.patch(`/api/groups/${encodeURIComponent(val('#grp-id'))}`, { add: [{ id: val('#grp-member'), role: val('#grp-role') || 'member', secret: el.querySelector('#grp-msecret').checked }] });
+    return `${g.name}: ${g.members.filter((m) => m.leftAt == null).map((m) => m.name).join(', ')}`;
+  });
+  on('#grp-remove', async () => {
+    const g = await api.patch(`/api/groups/${encodeURIComponent(val('#grp-id'))}`, { remove: [val('#grp-member')] });
+    return `${g.name}: ${g.members.filter((m) => m.leftAt == null).map((m) => m.name).join(', ') || 'nobody'}`;
+  });
+  el.querySelector('#soc-inactive').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-activate]');
+    if (!b) return;
+    try {
+      const c = await api.post('/api/director/activate', { id: b.dataset.activate });
+      result('#soc-result', true, `${c.name} has arrived.`);
+      loadInactive();
+    } catch (err) {
+      result('#soc-result', false, err.message);
+    }
+  });
+  el.querySelector('#soc-room').addEventListener('change', () => setVal('#soc-danger', store.rooms.get(val('#soc-room'))?.danger ?? 0));
+  api.get('/api/cues').then((c) => { el.querySelector('#soc-cues').textContent = `tags: ${Object.keys(c.appearance ?? {}).join(', ')}`; }).catch(() => {});
+  loadInactive();
+  loadGroups();
+}
+
+async function loadInactive() {
+  if (!root) return;
+  const list = await api.get('/api/director/inactive').catch(() => []);
+  root.querySelector('#soc-inactive').innerHTML = list.length ? list.map((k) => `<div class="row"><span><b>${esc(k.name)}</b> <span class="dim">${esc(k.occupation ?? '')} · ${esc((k.appearanceTags ?? []).join(', '))}</span>
+      <div class="secret-goals">🔒 ${(k.secretGoals ?? []).map(esc).join(' · ')}</div></span>
+      ${k.inWorld ? '<span class="dim">in the world</span>' : `<button type="button" data-activate="${esc(k.id)}">Bring into the world</button>`}</div>`).join('')
+    : '<span class="dim">No dormant test characters in this scenario.</span>';
+}
+
+async function loadGroups() {
+  if (!root) return;
+  groupList = await api.get('/api/groups').catch(() => []);
+  const sel = root.querySelector('#grp-id');
+  const cur = sel.value;
+  sel.innerHTML = groupList.filter((g) => !g.dissolvedAt).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}${g.public ? '' : ' 🔒'}</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+function fillSocial() {
+  if (!root) return;
+  const people = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  for (const id of ['#soc-a', '#soc-b', '#grp-member']) {
+    const sel = root.querySelector(id);
+    const cur = sel.value;
+    if (sel.dataset.opts !== people) { sel.innerHTML = people; sel.dataset.opts = people; }
+    if (cur) sel.value = cur;
+    else if (id === '#soc-b' && sel.options.length > 1) sel.selectedIndex = 1;
+  }
+  const rooms = [...store.rooms.values()].map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.danger ?? 0})</option>`).join('');
+  const rs = root.querySelector('#soc-room');
+  const cur = rs.value;
+  if (rs.dataset.opts !== rooms) { rs.innerHTML = rooms; rs.dataset.opts = rooms; }
+  if (cur) rs.value = cur;
+}
 
 // ---------- objects (step 5) ----------
 let types = [];

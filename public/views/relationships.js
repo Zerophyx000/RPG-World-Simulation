@@ -7,6 +7,7 @@
 // "What X believes" next to the observer view without touching the drawing code.
 import { store, subscribe, subscribeMany, select } from '../store.js';
 import { api, esc, gameTime, citizenName, who, debounce } from '../util.js';
+import { SOURCE_ICON, openReasons } from './social-ui.js';
 import { colorOf } from '../colors.js';
 
 const VW = 820;
@@ -38,6 +39,7 @@ export function mount(el) {
         <option value="1440">last 24 h</option>
       </select>
       <label class="check"><input type="checkbox" id="rel-spring"> spring layout</label>
+      <label class="check" title="Highlight pairs where warning signs (followed, carrying your property, intruder…) cost trust"><input type="checkbox" id="rel-signals"> signal-driven distrust</label>
       <button id="rel-refresh">Refresh observer</button>
       <span class="dim" id="rel-status"></span>
     </div>
@@ -69,6 +71,11 @@ export function mount(el) {
     render();
   });
   el.querySelector('#rel-refresh').addEventListener('click', refreshObserver);
+  el.querySelector('#rel-signals').addEventListener('change', async (e) => {
+    signalFilter = e.target.checked;
+    if (signalFilter) signalPairs = await api.get('/api/relationships/signals').catch(() => []);
+    render();
+  });
   el.querySelector('#rel-range').addEventListener('input', debounce((e) => selectReport(Number(e.target.value)), 120));
   el.querySelector('#rel-svg').addEventListener('click', onClick);
 
@@ -261,11 +268,15 @@ function diffColor(d) {
 const dashFor = (t) => (!t ? '' : `${Math.max(2, 11 - t * 1.8)} ${1 + t}`);
 const widthFor = (n) => Math.min(12, 1.2 + 1.6 * Math.sqrt(n || 0));
 
+let signalFilter = false;
+let signalPairs = [];
+let pairReasons = null; // { ab: [...], ba: [...] } for the selected edge
+
 function edgeData() {
   const rels = relsFor();
   const n = new Map(counts.map((c) => [`${c.from}>${c.to}`, c.n]));
   const pairs = new Map();
-  for (const key of new Set([...rels.keys(), ...n.keys()])) {
+  for (const key of new Set([...rels.keys(), ...n.keys(), ...(signalFilter ? signalPairs.map((s) => `${s.from}>${s.to}`) : [])])) {
     const [a, b] = key.split('>');
     const pk = [a, b].sort().join('|');
     if (!pairs.has(pk)) pairs.set(pk, { a: [a, b].sort()[0], b: [a, b].sort()[1] });
@@ -287,7 +298,8 @@ function render() {
   }));
   const pos = layout === 'spring' ? springPositions(list, weights) : circlePositions(list);
   const out = [];
-  const dim = (ids) => (store.filterCitizen && !ids.includes(store.filterCitizen) ? ' opacity="0.15"' : '');
+  const sig = new Set(signalPairs.map((s) => [s.from, s.to].sort().join('|')));
+  const dim = (ids) => ((store.filterCitizen && !ids.includes(store.filterCitizen)) || (signalFilter && ids.length === 2 && !sig.has([...ids].sort().join('|'))) ? ' opacity="0.12"' : '');
 
   for (const [pk, { a, b }] of pairs) {
     const pa = pos.get(a);
@@ -370,8 +382,10 @@ function onClick(e) {
   if (edge) {
     const [a, b] = edge.dataset.edge.split('|');
     selectedEdge = { a, b };
+    pairReasons = null;
     render();
     loadPairLines();
+    loadPairReasons();
   }
 }
 
@@ -385,6 +399,19 @@ async function loadPairLines() {
   }
   renderSide();
 }
+
+async function loadPairReasons() {
+  if (!selectedEdge) return;
+  const { a, b } = selectedEdge;
+  const get = (x, y) => api.get(`/api/citizens/${encodeURIComponent(x)}/relationships/${encodeURIComponent(y)}/events`).then((d) => d.events).catch(() => []);
+  const [ab, ba] = await Promise.all([get(a, b), get(b, a)]);
+  if (selectedEdge?.a !== a || selectedEdge?.b !== b) return;
+  pairReasons = { ab, ba };
+  renderSide();
+}
+
+const topReasons = (list) => (list ?? []).filter((e) => (Math.abs(e.dTrust) + Math.abs(e.dAffinity) > 0 || e.evidence?.weight) && e.source !== 'group')
+  .sort((x, y) => (Math.abs(y.dTrust) + Math.abs(y.dAffinity)) * y.strength - (Math.abs(x.dTrust) + Math.abs(x.dAffinity)) * x.strength).slice(0, 3);
 
 function renderSide() {
   const side = root?.querySelector('#rel-side');
@@ -404,11 +431,19 @@ function renderSide() {
     const r = rels.get(`${x}>${y}`);
     return `<div class="rel-dir">${who(x)} → ${who(y)} <span class="dim">· ${n.get(`${x}>${y}`) ?? 0} lines</span>
       ${r ? `<div><b style="color:${warmthColor(r.warmth)}">${esc(r.label)}</b> <span class="dim">warmth ${r.warmth}, tension ${r.tension}</span></div>
-        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}` : '<div class="dim">no observer note</div>'}</div>`;
+        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}` : '<div class="dim">no observer note</div>'}
+      ${pairReasons ? `<div class="edge-reasons"><span class="dim">${esc(citizenName(x))}'s own reasons:</span>${
+        topReasons(x === a ? pairReasons.ab : pairReasons.ba).map((e) => `<div class="rel-reason" style="opacity:${Math.max(0.45, Math.min(1, 0.3 + e.strength))}">${SOURCE_ICON[e.source] ?? '·'} ${esc(e.reason)}
+          <span class="dim">${e.dTrust ? `trust ${e.dTrust > 0 ? '+' : ''}${e.dTrust}` : ''} ${e.dAffinity ? `liking ${e.dAffinity > 0 ? '+' : ''}${e.dAffinity}` : ''}</span></div>`).join('') || ' <span class="dim">none on record</span>'}
+        <button class="link" data-edge-reasons="${esc(x)}|${esc(y)}">all reasons…</button></div>` : ''}</div>`;
   };
   side.innerHTML = `<button class="close" data-close-edge>✕</button>${dir(a, b)}${dir(b, a)}
     <h3>Last lines between them</h3>
     ${pairLines.length ? pairLines.map((l) => `<div class="tline">${who(l.from)}: “${esc(l.text)}”${l.thought ? `<div class="tthought">${esc(l.thought)}</div>` : ''}</div>`).join('') : '<p class="muted">None yet.</p>'}`;
+  side.querySelectorAll('[data-edge-reasons]').forEach((btn) => btn.addEventListener('click', () => {
+    const [x, y] = btn.dataset.edgeReasons.split('|');
+    openReasons(x, y);
+  }));
   side.querySelector('[data-close-edge]').addEventListener('click', () => {
     selectedEdge = null;
     render();

@@ -11,6 +11,7 @@ import { memFromDb } from './index.js';
 import { timeLabel } from './retrieve.js';
 import { systemPrompt } from '../agents/prompt.js';
 import { chatForTool } from '../llm.js';
+import { relationLine } from '../social/describe.js';
 
 const MIN_HOURS = 12;
 const MIN_NEW = 8;
@@ -60,7 +61,7 @@ export async function consolidate(world, c) {
     `# YOUR CORE MEMORY (who you are, as you see it)\n${c.coreMemory || '(nothing written yet)'}`,
     `# WHAT HAPPENED SINCE YOU LAST SLEPT\n${recent.map(line).join('\n') || '(nothing new)'}`,
     (c.onMyMind ?? []).length ? `# WHAT WAS ON YOUR MIND\n${c.onMyMind.map((m) => `- ${m.text}`).join('\n')}` : '',
-    changedRels.length ? `# PEOPLE WHOSE PLACE IN YOUR LIFE CHANGED TODAY\n${changedRels.map((r) => `- ${labelOf.get(r.otherId) ?? r.otherId}: "${r.summary ?? ''}"`).join('\n')}` : '',
+    changedRels.length ? `# PEOPLE WHOSE PLACE IN YOUR LIFE CHANGED TODAY\n${changedRels.filter((r) => world.citizens.has(r.otherId)).map((r) => `- ${labelOf.get(r.otherId) ?? r.otherId}: ${relationLine(world, c, world.citizens.get(r.otherId)).text}`).join('\n')}` : '',
     gistCands.length ? `# OLD, MINOR MEMORIES (already fading)\n${gistCands.map(line).join('\n')}` : '',
     `# WHAT NOW\nYou are asleep. Your mind sorts the day. Rewrite your core memory (first person, at most 250 words: who you are now, what matters, your people, what you are working towards). Merge related memories from today into a few lasting ones (list the ids they merge). Let trivial ones fade. Turn the old, minor memories into vague gists. Update what you think of people whose place in your life changed. Use only what is listed here. Call consolidate exactly once.`,
   ].filter(Boolean).join('\n\n');
@@ -176,6 +177,7 @@ export function decayAndFade(world, c) {
   c.lastDecayAt = now;
   world.saveCitizen(c);
   if (days <= 0) return;
+  world.relationships.decay(c.id, days); // step 5.5: reasons fade too (the values stay)
 
   const rows = world.memory.active(c.id);
   const upd = world.db.prepare('UPDATE memories SET strength = ?, status = ? WHERE id = ?');

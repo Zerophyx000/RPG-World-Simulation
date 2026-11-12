@@ -133,6 +133,9 @@ export const EVENT_CATEGORY = {
   examine: () => 'object',
   keeper: () => 'object',
   notice: () => 'object',
+  relationship: () => 'social',
+  signal: () => 'social',
+  group: () => 'social',
   arrive: () => 'movement',
   conversation_end: () => 'speech',
   director: (e) => (String(e.data?.action ?? '').startsWith('clock.') ? 'system' : 'director'),
@@ -225,12 +228,19 @@ export function eventHtml(e) {
         case 'feed': return `${who(actor)} feeds ${who(d.targetId)}${thought}`;
         case 'take': case 'put': case 'give': case 'examine': case 'search': case 'use':
           return `${who(actor)} <span class="dim">${esc(d.tool)}${d.conceal || args.conceal ? ' (hide)' : ''}</span> ${objName(d.objectId ?? d.targetId)}${args.intent ? `: “${esc(args.intent)}”` : ''}${d.toId ? ` → ${who(d.toId)}` : ''}${d.anchorId ? ` <span class="dim">${esc(args.relation ?? 'on')}</span> ${objName(d.anchorId)}` : ''}${thought}`;
+        case 'propose_party': return `${who(actor)} <span class="dim">proposes a party to</span> ${(d.invited ?? []).map((x) => who(x)).join(', ')}: ${esc(args.purpose)}${thought}`;
+        case 'accept_invitation': return `${who(actor)} <span class="good">accepts</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
+        case 'decline_invitation': return `${who(actor)} <span class="bad">declines</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
+        case 'leave_group': return `${who(actor)} <span class="dim">leaves the party</span>${args.farewell ? `: <span class="speech">“${esc(args.farewell)}”</span>` : ''}${thought}`;
         case 'leave_conversation':
           return `${who(actor)} leaves the conversation${args.farewell ? `: <span class="speech">“${esc(args.farewell)}”</span>` : ''}${thought}`;
         default: return `${who(actor)} ${esc(d.tool)} ${esc(JSON.stringify(args))}`;
       }
     }
     case 'arrive': return `${who(actor)} arrives at ${esc(roomName(e.location))}`;
+    case 'relationship': return `${who(actor)} <span class="dim">now sees</span> ${who(d.otherId)} <span class="dim">differently</span> ${d.dTrust ? `<span class="${d.dTrust > 0 ? 'good' : 'bad'}">trust ${d.dTrust > 0 ? '+' : ''}${esc(d.dTrust)}</span>` : ''} ${d.dAffinity ? `<span class="${d.dAffinity > 0 ? 'good' : 'bad'}">liking ${d.dAffinity > 0 ? '+' : ''}${esc(d.dAffinity)}</span>` : ''} <span class="dim">(${esc(d.source)})</span>: “${esc(detok(d.reason))}”`;
+    case 'signal': return `${who(actor)} <span class="bad">⚠ warning sign</span> about ${who(d.otherId)}: <b>${esc(d.sign)}</b>${d.text ? ` <span class="dim">“${esc(detok(d.text))}”</span>` : ''}${d.dTrust ? ` <span class="bad">trust ${esc(d.dTrust)}</span>` : ''}`;
+    case 'group': return groupEventHtml(d, actor);
     case 'object': return objectEventHtml(e, d, actor);
     case 'notice': return `${who(actor)} <span class="${d.importance >= 7 ? 'bad' : 'dim'}">notices:</span> ${esc(d.text)}`;
     case 'search': return `${who(actor)} searches ${d.targetId ? `around ${objName(d.targetId)}` : esc(roomName(e.location))}: ${d.found?.length ? `<span class="good">finds ${d.found.map(objName).join(', ')}</span>` : '<span class="dim">nothing</span>'}${(d.rolls ?? []).length ? ` <span class="dim">[${d.rolls.map((r) => `${esc(r.id)} d${esc(r.difficulty)} ${Math.round(r.chance * 100)}% ${r.hit ? '✓' : '✗'}`).join(', ')}]</span>` : ''}`;
@@ -269,6 +279,20 @@ export function eventHtml(e) {
     case 'consolidation': return `${who(actor)} <span class="dim">sleeps on the day: ${esc(d.lasting)} lasting, ${esc(d.merged)} merged, ${esc(d.faded)} faded, ${esc(d.gists)} gists</span>`;
     case 'error': return `<span class="bad">${actor ? `${esc(citizenName(actor))}: ` : ''}${esc(d.message)}</span>`;
     default: return `<span class="dim">${esc(JSON.stringify(d))}</span>`;
+  }
+}
+
+// ---------- groups (step 5.5) ----------
+function groupEventHtml(d, actor) {
+  const lock = d.secret || d.public === false ? ' 🔒' : '';
+  switch (d.action) {
+    case 'create': return `<span class="dim">👥 group formed:</span> <b>${esc(d.name)}</b> <span class="dim">(${esc(d.kind)}, ${esc(d.origin)})${lock}</span>`;
+    case 'join': return `${who(actor)} <span class="dim">joins</span> <b>${esc(d.name)}</b>${d.role && d.role !== 'member' ? ` <span class="dim">as ${esc(d.role)}</span>` : ''}${lock}`;
+    case 'leave': return `${who(actor)} <span class="dim">leaves</span> <b>${esc(d.name)}</b>`;
+    case 'dissolve': return `<span class="dim">👥</span> <b>${esc(d.name)}</b> <span class="dim">is dissolved</span>`;
+    case 'propose': return `${who(actor)} <span class="dim">asks</span> ${(d.invited ?? []).map((x) => who(x)).join(', ')} <span class="dim">to form a party:</span> ${esc(d.purpose)}`;
+    case 'decline': return `${who(actor)} <span class="dim">turns down</span> ${who(d.from)}<span class="dim">'s invitation</span>`;
+    default: return `<span class="dim">[group] ${esc(d.action)} ${esc(d.name ?? '')}</span>`;
   }
 }
 

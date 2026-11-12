@@ -42,6 +42,11 @@ export function applyAction(world, c, call) {
     case 'examine': return examine(world, c, call);
     case 'search': return search(world, c, call);
     case 'use': return use(world, c, call);
+    // step 5.5: parties
+    case 'propose_party': return proposeParty(world, c, call);
+    case 'accept_invitation': return acceptInvitation(world, c, call);
+    case 'decline_invitation': return declineInvitation(world, c, call);
+    case 'leave_group': return leaveGroup(world, c, call);
     default:
       return stale(world, c, { name: call.name, arguments: args }, 'You hesitate, unsure what you meant to do.');
   }
@@ -88,6 +93,9 @@ function startLeg(world, c, toId, trip) {
   const dest = world.rooms.get(toId);
   if (c.conversationId) world.conversations.leave(c, { reason: 'moved' });
   world.objects.snapshotRoom(c, room.id); // the baseline for noticing changes next time
+  for (const f of citizensIn(world.citizens, room.id, { exceptId: c.id })) {
+    if (f.activity.type === 'waiting' && f.activity.detail?.following === c.id) f.activity.until = Math.min(f.activity.until ?? Infinity, world.now + 1);
+  }
   const others = citizensIn(world.citizens, room.id, { exceptId: c.id });
   world.perceive(others.map((o) => o.id), (o) => ({
     kind: 'depart', text: `${ref(c)} leaves for ${placeLabel(o, dest)}${carryingPhrase(world, o, c)}.`, importance: IMPORTANCE.arriveDepart,
@@ -112,6 +120,9 @@ export function arrive(world, c) {
   // Objects: diff what they see against the last time they were here ("fewer flour sacks than this morning").
   const notice = world.objects.arrive(c, dest.id);
   if (notice) world.perceive([c.id], notice);
+  // Step 5.5: first impressions of whoever is here, and warning signs (followed, intruder, your property).
+  world.memory.seeRoom(dest.id);
+  world.signals.onArrive(c, dest.id);
 
   const others = citizensIn(world.citizens, dest.id, { exceptId: c.id });
   world.perceive(others.map((o) => o.id), (o) => ({
@@ -174,6 +185,8 @@ export function relocate(world, c, toId, { text = null } = {}) {
   c.location = dest.id;
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now);
   const notice = world.objects.arrive(c, dest.id);
+  world.memory.seeRoom(dest.id);
+  world.signals.onArrive(c, dest.id, { walked: false });
   const keep = c.activity.type === 'sleeping' || c.activity.type === 'collapsed';
   if (!keep) world.setActivity(c, { type: 'idle' });
   else world.saveCitizen(c);
@@ -522,6 +535,68 @@ function abandonPlan(world, c, call) {
   return { ok: true };
 }
 
+// ---------- parties (step 5.5) ----------
+function proposeParty(world, c, call) {
+  const present = citizensIn(world.citizens, c.location, { exceptId: c.id }).filter(canHear);
+  const wanted = Array.isArray(call.arguments.people) ? call.arguments.people : [call.arguments.people];
+  const invitees = [...new Set(wanted.map((l) => findPerson(world, c, present, l)).filter(Boolean))];
+  if (!invitees.length) return stale(world, c, call, 'You look around for them, but the people you meant to ask are not here.');
+  const ev = logAction(world, c, call, { invited: invitees.map((o) => o.id) });
+  const purpose = world.groups.propose(c, invitees, call.arguments.purpose);
+  remember(world, c, `You asked ${invitees.map((o) => ref(o)).join(' and ')} to join you: to ${purpose.replace(/^to /i, '')}.`);
+  // Others in the room hear the asking.
+  world.perceive(present.filter((o) => !invitees.includes(o)).map((o) => o.id), {
+    kind: 'speech', text: `${ref(c)} asks ${invitees.map((o) => ref(o)).join(' and ')} to join ${pronouns(c).obj}: to ${purpose.replace(/^to /i, '')}.`,
+    importance: IMPORTANCE.speechInRoom, sourceId: c.id, roomId: c.location, data: { eventId: ev.id },
+  });
+  if (c.conversationId) world.setActivity(c, { type: 'talking', detail: { conversationId: c.conversationId } });
+  else world.setActivity(c, { type: 'waiting', until: world.now + 5, detail: { reason: 'waiting for an answer', minutes: 5 } });
+  return { ok: true };
+}
+
+function acceptInvitation(world, c, call) {
+  const from = findPerson(world, c, [...world.citizens.values()].filter((o) => o.alive), call.arguments.from);
+  const r = from ? world.groups.accept(c, from.id) : { ok: false, reason: 'That invitation no longer stands.' };
+  if (!r.ok) return stale(world, c, call, r.reason);
+  logAction(world, c, call, { fromId: from.id, groupId: r.group.id });
+  world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((o) => o.id !== from.id).map((o) => o.id), {
+    kind: 'action', text: `${ref(c)} agrees to join ${ref(from)}.`, importance: IMPORTANCE.arriveDepart, sourceId: c.id, roomId: c.location,
+  });
+  remember(world, c, `You agreed to join ${ref(from)}${r.group.data?.purpose ? `: to ${String(r.group.data.purpose).replace(/^to /i, '')}` : ''}.`);
+  world.setActivity(c, c.conversationId ? { type: 'talking', detail: { conversationId: c.conversationId } } : { type: 'idle' });
+  return { ok: true };
+}
+
+function declineInvitation(world, c, call) {
+  const from = findPerson(world, c, [...world.citizens.values()].filter((o) => o.alive), call.arguments.from);
+  if (!from || !world.groups.decline(c, from.id)) return stale(world, c, call, 'There is no invitation to turn down any more.');
+  const reason = String(call.arguments.reason ?? '').trim();
+  remember(world, c, `You turned down ${ref(from)}'s invitation.`);
+  // The refusal is spoken to the proposer if they are here.
+  if (from.location === c.location && canHear(from)) {
+    return say(world, c, { ...call, name: 'say', arguments: { to: from.name, text: reason || 'No. Not this time.' } });
+  }
+  logAction(world, c, call, { fromId: from.id });
+  world.setActivity(c, { type: 'idle' });
+  return { ok: true };
+}
+
+function leaveGroup(world, c, call) {
+  const g = world.groups.get(call.arguments.group);
+  if (!g || !world.groups.of(c.id).some((m) => m.group.id === g.id)) return stale(world, c, call, "You aren't part of that any more.");
+  const fellows = world.groups.membersOf(g.id).filter((m) => m.citizenId !== c.id).map((m) => m.citizenId);
+  logAction(world, c, call, { groupId: g.id });
+  world.groups.leave(g.id, c.id);
+  const farewell = String(call.arguments.farewell ?? '').trim();
+  world.perceive(fellows, (o) => ({
+    kind: 'action', importance: 6, sourceId: c.id, roomId: c.location, data: { wake: true },
+    text: o.location === c.location && farewell ? `${ref(c)} leaves ${g.name}, saying: "${farewell}"` : `${ref(c)} has left ${g.name}.`,
+  }));
+  remember(world, c, `You left ${g.name}.`);
+  world.setActivity(c, c.conversationId ? { type: 'talking', detail: { conversationId: c.conversationId } } : { type: 'idle' });
+  return { ok: true };
+}
+
 // ---------- leave_conversation ----------
 function leaveConversation(world, c, call) {
   const farewell = String(call.arguments.farewell ?? '').trim();
@@ -567,6 +642,7 @@ export function resolveTimers(world, now) {
     } else if (a.type === 'waiting') {
       const reason = a.detail?.reason;
       world.setActivity(c, { type: 'idle' });
+      if (a.detail?.silent) { world.scheduler.poke(); continue; } // a plan's own short wait (following someone): no stimulus
       world.perceive([c.id], {
         kind: 'timer', text: reason ? `You've waited long enough (${reason}).` : "You've waited long enough.",
         importance: IMPORTANCE.timer, roomId: c.location,

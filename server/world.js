@@ -25,6 +25,11 @@ import { Governor } from './agents/governor.js';
 import { validatePlan, startPlan, planActive, stepText } from './agents/plan.js';
 import { Memory } from './memory/index.js';
 import { Objects, placementSig } from './world/objects.js';
+import { Relationships } from './social/relationships.js';
+import { Groups } from './social/groups.js';
+import { Strangers } from './social/strangers.js';
+import { Signals } from './social/signals.js';
+import { relationLine } from './social/describe.js';
 import { onConversationEnd as reflectOnConversationEnd } from './memory/reflect.js';
 import { onSleepStart as consolidateOnSleep, consolidate as consolidateNow, decayAndFade } from './memory/consolidate.js';
 import { seedFromScenario, ensureVillageAcquaintance, bootstrap as bootstrapMemories } from './memory/bootstrap.js';
@@ -49,7 +54,11 @@ export class World {
     this.llm = new LLM(db, this.bus, () => this.clock.gameMinutes);
     this.stopped = false;
     this.memory = new Memory(this);
+    this.relationships = new Relationships(this); // step 5.5: the single write path for trust / affinity / familiarity
+    this.groups = new Groups(this);
     this.objects = new Objects(this);
+    this.strangers = new Strangers(this);
+    this.signals = new Signals(this);
 
     this.insertEvent = db.prepare(`INSERT INTO events (game_time, real_time, type, actor_id, location, data)
                                    VALUES (?, ?, ?, ?, ?, ?)`);
@@ -123,6 +132,8 @@ export class World {
     // A village from before step 4: the locals have lived alongside each other (bootstrap adds the rest).
     // Runs after knownPlaces are filled in, since that is how locals are recognised.
     if (this.scenario === 'village') ensureVillageAcquaintance(this);
+    this.relationships.consistencyCheck(); // step 5.5: every relationship has at least one reason on record
+    this.groups.load(this.scenario);        // content groups seeded once, in-group reasons written (after acquaintance)
     this.conversations.load();
     this.conversations.reconcile();
   }
@@ -530,6 +541,7 @@ export class World {
     const now = this.now;
     return {
       id: r.id, name: r.name, description: r.description, appearance: r.appearance, exits: r.exits, tags: r.tags, x: r.x, y: r.y,
+      danger: r.danger ?? 0, owner: r.owner ?? null,
       effects: activeEffects(r, now),
       services: activeServices(r, now),
       allServices: r.services,
@@ -588,12 +600,85 @@ export class World {
     this.store.insert(c);
     this.citizens.set(c.id, c);
     this.saveCitizen(c);
+    this.groups.seed(this.scenario); // content memberships for someone who appears later
     this.perceive(this.citizensIn(c.location, { exceptId: c.id }).map((o) => o.id), {
       kind: 'arrive', text: `${c.name} is here.`, importance: IMPORTANCE.arriveDepart, sourceId: c.id, roomId: c.location,
     });
     this.logEvent('director', { action: 'create_citizen', location: c.location, citizenId: c.id, name: c.name });
     this.bus.emit('world', { reason: 'citizen_created', id: c.id });
     return citizenSummary(c);
+  }
+
+  /** Scenario characters with "active": false (e.g. Kael) and whether they are in the world yet. */
+  inactiveCitizens() {
+    let list = [];
+    try {
+      list = loadScenario(this.scenario).citizens;
+    } catch { /* unknown scenario */ }
+    return list.filter((x) => x.active === false).map((x) => ({
+      id: x.id, name: x.name, occupation: x.persona?.occupation ?? null, inWorld: this.citizens.has(x.id),
+      secretGoals: x.persona?.secretGoals ?? [], appearanceTags: x.persona?.appearanceTags ?? [],
+    }));
+  }
+
+  /** Director: bring a dormant scenario character into the world (with their seed memories and groups). */
+  activateCitizen({ id, location }) {
+    let input;
+    try {
+      input = loadScenario(this.scenario).citizens.find((x) => x.id === id && x.active === false);
+    } catch { /* fall through */ }
+    if (!input) throw httpError(404, `no inactive scenario character "${id}"`);
+    if (this.citizens.has(id)) throw httpError(400, `${input.name} is already in the world`);
+    const summary = this.createCitizen({ ...input, location: location || input.location });
+    seedFromScenario(this, [input]);
+    this.logEvent('director', { action: 'activate_citizen', citizenId: id, name: input.name });
+    return summary;
+  }
+
+  // ---------- step 5.5: reasons, groups, strangers ----------
+  relationshipEvents(citizenId, otherId) {
+    if (!this.citizens.has(citizenId)) throw httpError(404, `unknown citizen "${citizenId}"`);
+    const c = this.citizens.get(citizenId);
+    return {
+      row: this.memory.rel(citizenId, otherId),
+      events: this.relationships.events(citizenId, otherId, 200).map((e) => ({ ...e, reason: detokName(this, e.reason) })),
+      inPrompt: this.citizens.has(otherId) ? relationLine(this, c, this.citizens.get(otherId)) : null,
+    };
+  }
+
+  warinessOf(citizenId, otherId) {
+    const a = this.citizens.get(citizenId);
+    const b = this.citizens.get(otherId);
+    if (!a || !b) throw httpError(404, 'unknown citizen');
+    return { ...this.strangers.wariness(a, b), stranger: this.strangers.isStranger(a, b), line: this.strangers.line(a, b), strangerTrust: a.strangerTrust };
+  }
+
+  setStrangerTrust({ citizenId, value }) {
+    const c = this.citizens.get(citizenId);
+    if (!c) throw httpError(404, `unknown citizen "${citizenId}"`);
+    c.strangerTrust = Math.min(0.95, Math.max(0.05, Number(value)));
+    c.strangerLog = [...(c.strangerLog ?? []), { at: this.now, value: c.strangerTrust, why: 'director' }].slice(-30);
+    this.saveCitizen(c);
+    return { strangerTrust: c.strangerTrust };
+  }
+
+  /** Director: persona bits that have no effect type of their own (appearance tags, secret goals, covets). */
+  setPersonaList({ citizenId, field, values }) {
+    const c = this.citizens.get(citizenId);
+    if (!c) throw httpError(404, `unknown citizen "${citizenId}"`);
+    if (!['appearanceTags', 'secretGoals', 'covets'].includes(field)) throw httpError(400, 'field must be appearanceTags, secretGoals or covets');
+    c.persona[field] = (Array.isArray(values) ? values : String(values ?? '').split(',')).map((s) => String(s).trim()).filter(Boolean);
+    this.saveCitizen(c);
+    this.logEvent('director', { action: 'persona_list', citizenId, field, values: c.persona[field] });
+    return { [field]: c.persona[field] };
+  }
+
+  setRoomDanger({ roomId, danger }) {
+    const room = this.rooms.get(roomId);
+    if (!room) throw httpError(404, `unknown room "${roomId}"`);
+    room.danger = Math.min(10, Math.max(0, Number(danger) || 0));
+    this.saveRoom(room);
+    return this.roomView(room);
   }
 
   // ---------- memory (director tools + hooks) ----------
@@ -634,14 +719,33 @@ export class World {
     return { ok: true, record };
   }
 
-  setRelationship({ citizenId, otherId, affinity, trust, familiarity, nameConfidence, summary }) {
+  /**
+   * Director: set values (absolute), or apply deltas (dAffinity / dTrust / dFamiliarity), always with a reason
+   * the citizen could name.
+   */
+  setRelationship({ citizenId, otherId, affinity, trust, familiarity, dAffinity, dTrust, dFamiliarity, nameConfidence, summary, reason }) {
     if (!this.citizens.has(citizenId) || !this.citizens.has(otherId)) throw httpError(404, 'unknown citizen');
-    const patch = {};
-    for (const [k, v] of Object.entries({ affinity, trust, familiarity, nameConfidence })) if (v != null && v !== '') patch[k] = Number(v);
-    if (nameConfidence != null && nameConfidence !== '') patch.nameKnown = Number(nameConfidence) > 0;
-    if (summary != null) patch.summary = String(summary).trim() || null;
-    const row = this.memory.upsertRel(citizenId, otherId, patch);
-    this.logEvent('director', { action: 'relationship', citizenId, otherId, ...patch });
+    const given = (v) => v != null && v !== '';
+    const meta = {};
+    if (given(nameConfidence)) {
+      meta.nameConfidence = Number(nameConfidence);
+      meta.nameKnown = Number(nameConfidence) > 0;
+    }
+    if (summary != null) meta.summary = String(summary).trim() || null;
+    const cur = this.memory.rel(citizenId, otherId);
+    const target = {};
+    for (const [k, abs, d] of [['affinity', affinity, dAffinity], ['trust', trust, dTrust], ['familiarity', familiarity, dFamiliarity]]) {
+      if (given(abs)) target[k] = Number(abs);
+      else if (given(d)) target[k] = (cur?.[k] ?? 0) + Number(d);
+    }
+    let row;
+    if (Object.keys(target).length) {
+      const why = String(reason ?? '').trim() || meta.summary || 'Something changed how I see them.';
+      row = this.relationships.change(citizenId, otherId, target, { set: true, source: 'director', reason: why, meta }).row;
+    } else {
+      row = this.memory.upsertRel(citizenId, otherId, meta);
+    }
+    this.logEvent('director', { action: 'relationship', citizenId, otherId, ...target, ...meta, reason: reason ?? null });
     return row;
   }
 
@@ -686,6 +790,7 @@ export class World {
       citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), plan: this.planSummary(c), lastTier: c.lastTier ?? null })),
       conversations: this.conversations.list().map((cv) => this.conversations.view(cv)),
       objects: [...this.objects.byId.values()].map((o) => this.objects.view(o)),
+      groups: this.groups.list(),
     };
   }
 
@@ -709,8 +814,14 @@ export class World {
           thresholds: this.needs.levels(k).map((l) => ({ name: l.name, at: k === 'hp' ? ((l.minPct ?? 0) / 100) * (c.needs.hpMax ?? 100) : l.min })),
         }];
       })),
+      groupsView: this.groups.of(c.id).map((m) => ({ id: m.group.id, name: m.group.name, kind: m.group.kind, public: m.group.public, role: m.role, secret: m.secret, purpose: m.group.data?.purpose ?? null })),
+      invitationsView: this.groups.invitations(c).map((i) => ({ ...i, fromName: name(i.from) })),
+      strangersView: (c.location ? this.citizensIn(c.location, { exceptId: c.id }) : []).filter((o) => this.strangers.isStranger(c, o))
+        .map((o) => ({ id: o.id, name: o.name, ...this.strangers.wariness(c, o) })),
       relationshipsView: this.memory.relsOf(c.id).map((r) => ({
         ...r, name: this.citizens.get(r.otherId)?.name ?? r.otherId,
+        reasons: this.relationships.reasons(c.id, r.otherId, 2).map((e) => ({ reason: detokName(this, e.reason), source: e.source, strength: e.strength, dTrust: e.dTrust, dAffinity: e.dAffinity })),
+        tags: this.citizens.has(r.otherId) ? this.groups.tagsFor(c, this.citizens.get(r.otherId)) : [],
         appearance: this.citizens.get(r.otherId)?.persona?.appearance ?? '',
         lastSeenPlaceName: r.lastSeenPlace ? this.rooms.get(r.lastSeenPlace)?.name ?? r.lastSeenPlace : null,
       })),
@@ -840,6 +951,11 @@ export class World {
     this.stopped = true;
     this.clock.stop();
   }
+}
+
+// Reasons carry {{c:id}} tokens; the director sees real names.
+function detokName(world, text) {
+  return String(text ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => world.citizens.get(id)?.name ?? id);
 }
 
 function sigText(O, sig) {

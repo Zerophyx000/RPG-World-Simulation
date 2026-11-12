@@ -10,6 +10,7 @@
 import { relationSentence } from './words.js';
 import { systemPrompt } from '../agents/prompt.js';
 import { chatForTool } from '../llm.js';
+import { relationLine } from '../social/describe.js';
 
 const FULL = { maxMemories: 3, clamp: 3 };
 const LIGHT = { maxMemories: 1, clamp: 1 };
@@ -33,8 +34,10 @@ async function reflectOne(world, conv, pid, end) {
   const others = (conv.everParticipants ?? []).filter((id) => id !== pid);
   // Every shared conversation makes people a bit more familiar.
   for (const o of others) {
-    const r = world.memory.rel(pid, o);
-    world.memory.upsertRel(pid, o, { familiarity: (r?.familiarity ?? 0) + 0.5, lastSeenAt: world.now, lastSeenPlace: conv.roomId });
+    world.relationships.change(pid, o, { familiarity: 0.5 }, {
+      reason: 'We talked today.', source: 'reflection', aggregate: true, evidence: { conversationId: conv.id },
+      meta: { lastSeenAt: world.now, lastSeenPlace: conv.roomId },
+    });
   }
   if (gate.path === 'template') return templateMemory(world, conv, c, gate.gist);
   return remember(world, conv, c, gate.path === 'full' ? FULL : LIGHT, gate.path);
@@ -56,6 +59,8 @@ async function choosePath(world, conv, c, { reason, leaverId }) {
     return r && (Math.abs(r.affinity) >= 3 || Math.abs(r.trust) >= 3);
   })) fullBecause.push('strong feelings about someone there');
   if (addressed >= 4) fullBecause.push(`addressed ${addressed} times`);
+  // Step 5.5: talking with someone you recently caught at something is never small talk.
+  if (others.some((o) => world.relationships.events(pid, o, 20).some((e) => e.source === 'signal' && world.now - e.gameTime <= 1440))) fullBecause.push('a warning sign about someone there');
   if (reason === 'cap') fullBecause.push('talked themselves out');
   // walked out on mid-exchange (a short greeting that simply ends is not that)
   if (leaverId && leaverId !== pid && lines.length > 3 && lines.slice(-2).some((l) => l.toId === pid)) fullBecause.push('was left mid-exchange');
@@ -141,7 +146,7 @@ async function remember(world, conv, c, limits, path) {
     const thought = l.speakerId === c.id && l.thought ? `\n   (you thought: ${l.thought})` : '';
     return `${who}${to}: "${l.text}"${thought}`;
   }).join('\n');
-  const relLines = others.map((o) => `- ${labelOf.get(o.id)}: ${relationSentence(mem.rel(c.id, o.id), o)}`).join('\n');
+  const relLines = others.map((o) => `- ${labelOf.get(o.id)}: ${relationLine(world, c, o).text}`).join('\n');
   const onMind = (c.onMyMind ?? []).map((m) => `- ${m.text}`).join('\n');
   const seenThings = objectContext(world, conv, c, (id) => labelOf.get(id) ?? mem.nameFor(c, id));
   const user = [
@@ -184,9 +189,10 @@ async function remember(world, conv, c, limits, path) {
                 person: { type: 'string', enum: labelList },
                 affinity_change: { type: 'integer', minimum: -limits.clamp, maximum: limits.clamp, description: 'How much more (+) or less (−) you like them now.' },
                 trust_change: { type: 'integer', minimum: -limits.clamp, maximum: limits.clamp, description: 'How much more (+) or less (−) you trust them now.' },
+                reason: { type: 'string', description: 'Why, in a few of your own words, first person: what they did or said that changed how you see them ("He lied to me about the mine entrance.").' },
                 summary: { type: 'string', description: 'One or two sentences, your words: what you think of them now.' },
               },
-              required: ['person'],
+              required: ['person', 'reason'],
             },
           },
           learned_names: { type: 'array', items: { type: 'string', enum: labelList }, description: 'People whose name you learned in this conversation.' },
@@ -226,11 +232,17 @@ async function remember(world, conv, c, limits, path) {
   for (const rr of Array.isArray(args.relationships) ? args.relationships : []) {
     const o = byLabel(rr?.person);
     if (!o) continue;
-    const cur = mem.rel(c.id, o.id);
     const cl = (v) => Math.max(-limits.clamp, Math.min(limits.clamp, Math.round(Number(v) || 0)));
-    const patch = { affinity: (cur?.affinity ?? 0) + cl(rr.affinity_change), trust: (cur?.trust ?? 0) + cl(rr.trust_change) };
-    if (rr.summary && String(rr.summary).trim()) patch.summary = String(rr.summary).trim().slice(0, 300);
-    mem.upsertRel(c.id, o.id, patch);
+    const dA = cl(rr.affinity_change);
+    const dT = cl(rr.trust_change);
+    const summary = rr.summary && String(rr.summary).trim() ? String(rr.summary).trim().slice(0, 300) : null;
+    if (dA || dT) {
+      // Every change needs a reason; a model that left it out gets its own summary (or the gist of the talk) as one.
+      const reason = String(rr.reason ?? '').trim() || summary || 'Something in how we talked changed how I see them.';
+      world.relationships.change(c.id, o.id, { affinity: dA, trust: dT }, {
+        reason, source: 'reflection', evidence: { conversationId: conv.id }, meta: summary ? { summary } : {},
+      });
+    } else if (summary) mem.upsertRel(c.id, o.id, { summary });
   }
   for (const l of Array.isArray(args.learned_names) ? args.learned_names : []) {
     const o = byLabel(l);

@@ -110,6 +110,7 @@ export function seedCitizensIfEmpty(db, rooms, now, scenarioId) {
   db.exec('BEGIN');
   try {
     for (const input of scenario.citizens) {
+      if (input.active === false) continue; // test characters (e.g. Kael) wait for the director to activate them
       const c = citizenFromInput(input, { rooms, existingIds: ids, now });
       ids.add(c.id);
       const { id, name, kind, alive, location, bornAt, diedAt, ...data } = c;
@@ -122,12 +123,13 @@ export function seedCitizensIfEmpty(db, rooms, now, scenarioId) {
   }
   setState(db, 'scenario', scenarioId);
   console.log(`[content] seeded ${ids.size} citizens from scenario "${scenarioId}"`);
-  return { count: ids.size, inputs: scenario.citizens };
+  return { count: ids.size, inputs: scenario.citizens.filter((x) => x.active !== false) };
 }
 
 /** Dev only: delete all citizens (rooms are re-upserted). Caller backs up first. */
 export function wipeCitizens(db) {
-  db.exec('DELETE FROM citizens; DELETE FROM memories; DELETE FROM relationships; DELETE FROM consolidations;');
+  db.exec(`DELETE FROM citizens; DELETE FROM memories; DELETE FROM relationships; DELETE FROM consolidations;
+           DELETE FROM relationship_events; DELETE FROM groups; DELETE FROM group_members;`);
 }
 
 /** Ready-made director events for the director form (content/director-presets.json). */

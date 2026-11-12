@@ -2,6 +2,7 @@
 // plan, and nights (consolidations).
 import { store } from '../store.js';
 import { esc, citizenName, roomName, gameTime } from '../util.js';
+import { SOURCE_ICON } from './social-ui.js';
 import { colorOf } from '../colors.js';
 
 export const memState = { showForgotten: false, todayOnly: false, person: null, pinned: null, coreHistory: false };
@@ -166,6 +167,9 @@ export function relationshipsHtml(c, now) {
         <span class="dim">${r.lastSeenAt != null ? `seen ${esc(timeLabel(now, r.lastSeenAt))}${r.lastSeenPlaceName ? ` at ${esc(r.lastSeenPlaceName)}` : ''}` : ''}</span></div>
       <div class="rel-bars">${bar(r.affinity, -5, 5, 'affinity')}${bar(r.trust, -5, 5, 'trust')}${bar(r.familiarity, 0, 10, 'familiarity')}</div>
       ${r.summary ? `<div class="rel-sum">“${esc(r.summary)}”</div>` : ''}
+      ${(r.tags ?? []).length ? `<div class="dim rel-tags">(${esc(r.tags.join('; '))})</div>` : ''}
+      ${(r.reasons ?? []).map((x) => `<div class="rel-reason" style="opacity:${Math.max(0.45, Math.min(1, 0.3 + x.strength))}">${SOURCE_ICON[x.source] ?? '·'} ${esc(x.reason)}</div>`).join('')}
+      <button class="link" data-reasons="${esc(r.otherId)}">all reasons…</button>
     </li>`;
   }).join('')}</ul>`;
 }

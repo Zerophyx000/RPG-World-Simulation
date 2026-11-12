@@ -48,7 +48,8 @@
     "x": 50,
     "y": 50,
     "detail": "normal",
-    "kind": "village square"
+    "kind": "village square",
+    "danger": 1
   },
   {
     "id": "tavern",
@@ -86,7 +87,8 @@
     "x": 22,
     "y": 30,
     "detail": "rich",
-    "kind": "tavern"
+    "kind": "tavern",
+    "danger": 0
   },
   {
     "id": "bakery",
@@ -123,7 +125,8 @@
     "x": 78,
     "y": 30,
     "detail": "normal",
-    "kind": "bakery"
+    "kind": "bakery",
+    "danger": 0
   },
   {
     "id": "smithy",
@@ -137,6 +140,10 @@
       {
         "to": "house_tomas",
         "travelMinutes": 1
+      },
+      {
+        "to": "old_mine_entrance",
+        "travelMinutes": 12
       }
     ],
     "tags": [
@@ -154,7 +161,8 @@
     "x": 80,
     "y": 75,
     "detail": "normal",
-    "kind": "smithy"
+    "kind": "smithy",
+    "danger": 1
   },
   {
     "id": "well",
@@ -180,7 +188,8 @@
     "x": 50,
     "y": 18,
     "detail": "sparse",
-    "kind": "well"
+    "kind": "well",
+    "danger": 1
   },
   {
     "id": "house_greta",
@@ -217,7 +226,9 @@
     "x": 95,
     "y": 50,
     "detail": "normal",
-    "kind": "house"
+    "kind": "house",
+    "danger": 0,
+    "owner": "greta"
   },
   {
     "id": "house_tomas",
@@ -253,7 +264,9 @@
     "x": 62,
     "y": 92,
     "detail": "sparse",
-    "kind": "cottage"
+    "kind": "cottage",
+    "danger": 0,
+    "owner": "tomas"
   },
   {
     "id": "house_lena",
@@ -287,6 +300,35 @@
     "x": 12,
     "y": 70,
     "detail": "rich",
-    "kind": "herbalist's cottage"
+    "kind": "herbalist's cottage",
+    "danger": 0,
+    "owner": "lena"
+  },
+  {
+    "id": "old_mine_entrance",
+    "name": "the old mine entrance",
+    "description": "A timbered mouth in the hillside behind the smithy, half choked with bramble. Cold air breathes out of it. Rusted cart rails vanish into the dark, and the props groan when the wind turns.",
+    "appearance": "A dark, timbered opening in the hillside, half hidden by bramble.",
+    "exits": [
+      {
+        "to": "smithy",
+        "travelMinutes": 12
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "wild"
+    ],
+    "affordances": [
+      "peer into the dark",
+      "listen",
+      "pick through the old spoil heap"
+    ],
+    "services": {},
+    "detail": "sparse",
+    "kind": "abandoned mine",
+    "danger": 5,
+    "x": 97,
+    "y": 96
   }
 ]

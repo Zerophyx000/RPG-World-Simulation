@@ -2,8 +2,8 @@
 import { store, subscribe } from '../store.js';
 import { api, esc, gameTime, eventHtml, eventCategory, showEvent, prefs } from '../util.js';
 
-const CATEGORIES = ['speech', 'action', 'object', 'body', 'memory', 'movement', 'director', 'interrupt', 'system', 'activity'];
-let enabled = new Set(prefs.get('eventCats', ['speech', 'action', 'object', 'body', 'movement', 'director', 'interrupt']));
+const CATEGORIES = ['speech', 'action', 'object', 'social', 'body', 'memory', 'movement', 'director', 'interrupt', 'system', 'activity'];
+let enabled = new Set(prefs.get('eventCats', ['speech', 'action', 'object', 'social', 'body', 'movement', 'director', 'interrupt']));
 let root = null;
 
 export function mount(el) {

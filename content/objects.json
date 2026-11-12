@@ -39,5 +39,8 @@
   {"id": "lena_hearth", "type": "hearth", "room": "house_lena", "state": "lit", "surfaceText": "a hearth with a simmering pot"},
   {"id": "lena_table", "type": "table", "room": "house_lena", "state": "standing"},
   {"id": "lena_bed", "type": "bed", "room": "house_lena", "state": "made"},
-  {"id": "lena_door", "type": "door", "room": "house_lena", "state": "closed"}
+  {"id": "lena_door", "type": "door", "room": "house_lena", "state": "closed"},
+  {"id": "mine_lantern", "type": "lantern", "room": "old_mine_entrance", "state": "broken", "visibility": "noticeable", "trueText": "A miner's lantern, its glass long since shattered. Scratched into the base: K.B."},
+  {"id": "mine_rope", "type": "rope", "room": "old_mine_entrance", "state": "tangled"},
+  {"id": "smithy_hatchet", "type": "hatchet", "room": "smithy", "state": "sharp", "visibility": "noticeable", "placement": {"relation": "beside", "of": "smithy_forge"}}
 ]

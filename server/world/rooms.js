@@ -32,6 +32,9 @@ export function normalizeRoom(row) {
     // step 5: how much stuff a citizen's prompt lists here (sparse 5 / normal 8 / rich 12) and what kind of place it is
     detail: ['sparse', 'normal', 'rich'].includes(src.detail) ? src.detail : 'normal',
     kind: String(src.kind ?? (src.tags?.includes?.('home') ? 'home' : 'place')),
+    // step 5.5: how dangerous the place feels (0–10, village rooms 0–1) and whose home it is
+    danger: Math.min(10, Math.max(0, Number(src.danger) || 0)),
+    owner: src.owner ? String(src.owner) : null,
     x: Number.isFinite(Number(src.x)) && src.x !== null ? Number(src.x) : null,
     y: Number.isFinite(Number(src.y)) && src.y !== null ? Number(src.y) : null,
     effects: Array.isArray(src.effects) ? src.effects.filter((e) => e && e.text) : [],

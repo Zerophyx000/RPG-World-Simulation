@@ -14,6 +14,7 @@ import * as eventsView from './views/events.js';
 import * as llmView from './views/llm.js';
 import * as directorView from './views/director.js';
 import * as usageView from './views/usage.js';
+import * as groupsView from './views/groups.js';
 import { onObjectMessage, openObject } from './views/objects-ui.js';
 
 const VIEWS = [
@@ -21,6 +22,7 @@ const VIEWS = [
   { id: 'conversations', label: 'Conversations', mod: conversationsView },
   { id: 'timeline', label: 'Timeline', mod: timelineView },
   { id: 'relationships', label: 'Relationships', mod: relationshipsView },
+  { id: 'groups', label: 'Groups', mod: groupsView },
   { id: 'story', label: 'Story', mod: storyView },
   { id: 'events', label: 'Events', mod: eventsView },
   { id: 'llm', label: 'LLM', mod: llmView },
@@ -224,6 +226,7 @@ function connect() {
   });
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
+  es.addEventListener('group', () => emit('groups'));
   es.addEventListener('relationship', (m) => emit('relationship', JSON.parse(m.data)));
   es.addEventListener('llm', (m) => emit('llm', JSON.parse(m.data)));
 }

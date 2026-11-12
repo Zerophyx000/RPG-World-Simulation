@@ -1,0 +1,63 @@
+{
+  "_comment": "Visible cues for meeting strangers (step 5.5). weight: -2..+3 added to wariness. Phrases use {subj} {obj} {poss} {thing}.",
+  "appearance": {
+    "hooded": {
+      "weight": 2,
+      "phrase": "{subj} keeps {poss} hood up"
+    },
+    "armed": {
+      "weight": 3,
+      "phrase": "{subj} is armed"
+    },
+    "wounded": {
+      "weight": 0.5,
+      "phrase": "{subj} is wounded"
+    },
+    "foreign": {
+      "weight": 1,
+      "phrase": "{subj} isn't from around here"
+    },
+    "ragged": {
+      "weight": 1,
+      "phrase": "{subj} is in rags"
+    },
+    "well-dressed": {
+      "weight": -1,
+      "phrase": "{subj} is well dressed"
+    },
+    "uniformed": {
+      "weight": -1,
+      "phrase": "{subj} wears a uniform"
+    },
+    "masked": {
+      "weight": 3,
+      "phrase": "{subj} hides {poss} face"
+    },
+    "bloodied": {
+      "weight": 3,
+      "phrase": "{subj} has blood on {obj}"
+    }
+  },
+  "objectTags": {
+    "weapon": {
+      "weight": 2,
+      "phrase": "{subj} carries {thing}"
+    },
+    "tool": {
+      "weight": 0,
+      "phrase": "{subj} carries {thing}"
+    },
+    "valuable": {
+      "weight": 0,
+      "phrase": "{subj} carries {thing}"
+    },
+    "holy": {
+      "weight": -1,
+      "phrase": "{subj} carries {thing}"
+    }
+  },
+  "ownObject": {
+    "weight": 4,
+    "phrase": "{subj}'s carrying your {thing}"
+  }
+}

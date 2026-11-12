@@ -101,7 +101,7 @@ h3 { margin: 10px 0 4px; font-size: 11px; color: var(--muted); text-transform: u
 @keyframes pulse { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
 
 /* ---------- inspector drawer ---------- */
-.inspector { width: 440px; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 12px 14px 30px; position: relative; }
+.inspector { width: 440px; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; overflow-x: hidden; padding: 12px 14px 30px; position: relative; }
 .close { position: absolute; top: 8px; right: 10px; padding: 2px 8px; }
 .insp-head h2 { margin: 0; font-size: 22px; text-transform: none; letter-spacing: 0; }
 .activity-line { margin-top: 4px; }
@@ -477,3 +477,37 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .types-list { max-height: 360px; overflow: auto; font-size: 12px; }
 .types-list .ty { border-bottom: 1px solid var(--line); padding: 4px 0; }
 .good { color: var(--ok); }
+
+/* ---------- trust with reasons, groups, strangers (step 5.5) ---------- */
+.reasons { list-style: none; margin: 0; padding: 0; }
+.reasons li { border-bottom: 1px solid var(--line); padding: 5px 0; font-size: 13px; }
+.reasons .src { display: inline-block; width: 20px; }
+.reasons .rtext { margin: 2px 0 0 22px; }
+.reasons .rlinks { margin-left: 22px; font-size: 12px; }
+.dchip { font: 11px var(--mono); border-radius: 4px; padding: 0 5px; margin-left: 4px; border: 1px solid var(--line); }
+.dchip.pos { color: var(--ok); border-color: #2f5a41; }
+.dchip.neg { color: var(--bad); border-color: #6b3434; }
+.prompt-line { margin: 8px 0; padding: 6px 9px; border-left: 3px solid var(--accent); background: var(--panel2); font-size: 13px; }
+.rel-reason { font-size: 12.5px; margin-top: 2px; }
+.rel-tags { font-size: 12px; }
+.edge-reasons { margin-top: 6px; }
+.gchips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.gchip { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; background: var(--panel2); }
+.gchip.secret { border-style: dashed; border-color: #b98a3c; }
+.secret-goals { font-size: 12.5px; color: #e0b56a; border: 1px dashed #b98a3c; border-radius: 6px; padding: 4px 8px; margin: 4px 0 8px; }
+.wary { font-size: 12.5px; margin: 6px 0 10px; }
+.wrow { display: grid; grid-template-columns: 110px 1fr 44px; gap: 6px; align-items: center; }
+.wk { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wbar { position: relative; height: 8px; background: var(--panel2); border-radius: 4px; }
+.wbar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.wbar i.pos { background: #c9654f; }
+.wbar i.neg { background: #5fb37b; }
+.wv { font: 11px var(--mono); text-align: right; }
+.groups-view { padding: 4px; }
+.groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.group-card.secret { border-style: dashed; border-color: #b98a3c; }
+.group-card.gone { opacity: 0.55; }
+.group-card .lock { font-size: 11px; color: #e0b56a; font-weight: 400; }
+.group-card .purpose { margin: 4px 0; }
+.gmembers { margin-top: 8px; }
+.known-objs { table-layout: fixed; word-break: break-word; }

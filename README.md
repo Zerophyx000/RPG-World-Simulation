@@ -2,7 +2,9 @@
 
 A persistent RPG world where LLM-driven citizens live, think, remember, fight and die.
 
-**Step 5 (this version): room state, objects and the room keeper.** Rooms now hold real objects with a state and a place: a ground truth that stays put whether anyone watches or not. Citizens see only what they'd plausibly notice (a surface view), can examine, search, take, put (openly or hidden), give and use things, and carry up to two. A narrow LLM, the room keeper, proposes what a free-form "use" does; code checks every proposal. Citizens never create objects. When they come back, they notice what changed ("there are fewer flour sacks by the oven than when you last looked").
+**Step 5.5: trust with reasons, groups and strangers.** Every change in how one citizen sees another is stored with a reason they can name and the evidence behind it. Groups (family, household, village, guild, faction, party, secret gangs) give in-group trust. Strangers are met with a wariness that depends on the place, the citizen's personality, what the stranger looks like and carries, and what strangers have done to them before. Code spots warning signs (being followed, someone carrying your property, an intruder, things hidden in other people's homes). Citizens can have secret goals nobody else sees.
+
+**Step 5: room state, objects and the room keeper.** Rooms now hold real objects with a state and a place: a ground truth that stays put whether anyone watches or not. Citizens see only what they'd plausibly notice (a surface view), can examine, search, take, put (openly or hidden), give and use things, and carry up to two. A narrow LLM, the room keeper, proposes what a free-form "use" does; code checks every proposal. Citizens never create objects. When they come back, they notice what changed ("there are fewer flour sacks by the oven than when you last looked").
 
 **Step 4: memory, relationships, and built to scale.** Citizens remember (subjective first-person memories, a core self-image, "on my mind"), have directed relationships, only know names they've heard, reflect after conversations (gated so it scales), and consolidate their day in their sleep. On the scale side: model profiles with routing (school GLM + optional local model), tiered thinking, day plans carried out by code, a token budget governor, batched observer runs and a Usage tab.
 
@@ -35,6 +37,7 @@ agent-world/
 │   ├── world/           rooms, citizens, needs, places, perception, actions, conversations, director, quiet, scenarios,
 │   │                    objects (ground truth + surface view), object-actions (take/put/give/examine/search/use)
 │   ├── keeper/          the room keeper: proposes object changes, code validates (with a no-LLM fallback)
+│   ├── social/          relationships (reasons, the one write path), groups + parties, strangers, warning signs, leak check
 │   ├── agents/          scheduler (who thinks when), think, prompt (buildMessages), tools, traits
 │   ├── llm.js           LLM client: thinking capture, concurrency limit, abort, logging
 │   ├── readmodels.js    read-only queries for the UI (timeline, conversations, interactions)
@@ -97,6 +100,49 @@ Every citizen is always in one activity: `idle`, `thinking`, `moving`, `doing`, 
 **Observer.** One out-of-world LLM agent (`server/observer/`) writes a running report for the UI: a headline, directed relationships (warmth −5..5, tension 0..5, label, note) and storylines with stable ids. It runs after every conversation ends, every game hour if ≥ 10 new events happened, and on demand (Refresh button); never while paused (except on demand). **Its output never reaches citizens**: nothing in `server/agents/` or `server/world/` imports it; it is wired up in `main.js`. Each report row stores the full merged state, so the Relationships time slider just loads rows.
 
 **UI.** Roster (left, always on: latest inner thought per citizen; click = inspector, shift-click = filter), inspector drawer (right), and views: World (map with effects and walkers), Conversations (live chat panels with each speaker's thought under their line; past conversations with transcripts), Timeline (SVG swimlanes; wheel = zoom, drag = pan), Relationships (SVG graph + time slider), Story (observer storylines), Events (readable sentences, filter chips), LLM, Director. Keys: space = pause/resume, 1–8 = views, Esc = close.
+
+## Step 5.5 in short
+
+### Trust with reasons
+
+- **One write path**: `world.relationships.change(a, b, { affinity, trust, familiarity }, { reason, source, evidence })` (`server/social/relationships.js`). It applies the clamps, updates the `relationships` row and inserts a `relationship_events` row. **A change without a reason throws**; writing the values any other way throws too. Sources: `reflection | witness | signal | first_impression | group | director | seed | consolidation`. Mere encounters share one aggregated row per pair per game day.
+- The reflection tool's `relationships[]` items have a required `reason`.
+- **In the prompt** (WHO IS HERE, reflections, consolidation): each person's line gets up to two reasons, chosen by size of the change × how strong the reason still is: *"Kael — you don't trust him. He told you the east passage was safe, and it wasn't."*
+- **Reasons fade, values stay.** Nightly, reasons decay like memories (big changes slowest). If the stance is clear but nothing nameable is left, the prompt says so: *"…and you don't trust him, though you couldn't say exactly why anymore."* Two or more faded reasons about one person are compressed into one citable summary (*"He's let me down more than once."*).
+- **Live worlds**: migration 007 gives every existing relationship one `seed` reason (its summary, or "We've known each other for years."). A startup check repairs any relationship left without one.
+
+### Groups (`server/social/groups.js`)
+
+Tables `groups` and `group_members`. Groups come from content (`content/groups.json`, `content/scenarios/<id>/groups.json`, seeded once per id), the director, or code (parties). Joining writes `group` reasons towards every other member ("We live under one roof.", "She's my sister."), with deltas by kind (family +3 trust / +2 liking / +4 familiarity … village +0.5 / 0 / +0.5). Leaving reverses nothing by itself.
+
+Who knows a membership: your own groups and their members always (secret ones too); other people's only for public groups with a non-secret membership, once you know their name. The prompt gets a **YOUR GROUPS** block and tags in WHO IS HERE ("(your household)", "(your party)", "(from the village)" for outsiders looking at villagers).
+
+**Parties** are the only groups citizens form: `propose_party(people, purpose)` sends invitations (importance 8, pending 60 game minutes), `accept_invitation` creates the party (max 6) or joins it, `decline_invitation` says the refusal out loud, `leave_group` leaves (a party under 2 members dissolves). Day plans have a `follow(person, minutes)` step: code keeps the citizen with that person, about a minute behind, with no LLM calls.
+
+### Strangers (`server/social/strangers.js`)
+
+For people with familiarity < 2, `strangerWariness` (0–10) = 3 + room danger × 0.5 + personality (agreeableness, neuroticism, openness) + visible cues + learned experience. Cues come from `content/cues.json`: appearance tags on the persona (`hooded`, `armed`, `foreign`, `masked`…), tags on carried objects (`weapon`), public group marks, and **carrying something of yours** (+4, unless you gave it to them). The prompt shows it as words with the top reasons, never numbers: *"Every instinct says to keep your distance — this is a dangerous place, he keeps his hood up."* Rooms have `danger` (0–10); the new **old mine entrance** behind the smithy has 5.
+
+The first meeting writes a `first_impression` reason (Δtrust = (5 − wariness) × 0.4). `strangerTrust` (0–1, starts 0.5) **learns**: a stranger who betrays you within 3 game days costs 0.1 and leaves a memory; three good experiences with people met as strangers add 0.03.
+
+### Warning signs (`server/social/signals.js`)
+
+| Sign | Detected when | Stimulus | Δtrust |
+|---|---|---|---|
+| followed | the same non-group person arrived within 5 game minutes after you in ≥ 3 of your last 4 room changes, within 90 minutes | "…has turned up wherever you've gone this past hour." (6) | −1 |
+| property | you see someone carrying something you own and never gave them | "That's your lantern … is carrying." (8) | −2 (−2 more, once, if you had already noticed it missing) |
+| hiding | you saw someone hide a thing in a home that isn't theirs | (the witnessed action) | −1 (−2 in your own home) |
+| intruder | you come home and find someone who isn't household, family or party | "… is in your house." (7) | −1 |
+
+Per pair and sign there is a 60-minute cooldown, and signals take at most 3 trust per game day. Each is logged as a `signal` event and becomes a reason.
+
+### Secret goals
+
+`persona.secretGoals` appear only in that citizen's own prompt ("Your private aims (nobody knows these)"). The observer and the director UI may read them (🔒). `server/social/leak.js` has `assertNoLeak(prompt, citizenId)`; `DEBUG_LEAK_CHECK=true` checks every decision prompt and logs a leak as an error event. **Kael** (village scenario, `"active": false`) is a hooded newcomer with a cover story, a secret aim to steal something valuable and a secret gang membership; the director brings him in from the Director tab.
+
+### UI
+
+Inspector: group chips, 🔒 secret goals, relationships with their top reasons and a full **reason timeline** (source, deltas, fading, links to the conversation / event / object), a **Strangers** section (learned trust with history, wariness breakdown bars for strangers present). **Groups** tab (director's view, secret groups and memberships marked 🔒, parties with purpose and where members are). Relationship graph: an edge shows each side's own reasons; a filter highlights signal-driven distrust. Director: relationship change with a reason, simulate a sign, appearance tags / secret goals / covets, trust in strangers, room danger, group editor, activating dormant characters. Events: a *social* category.
 
 ## Step 5 in short
 
@@ -240,7 +286,7 @@ Check your school's docs for the exact flag if that doesn't work.
 | POST | `/api/director/whisper` | `{citizenId, text, importance?}`: only that citizen perceives it |
 | POST | `/api/director/memory` | `{citizenId, action: "add", text, importance, about?}` or `{citizenId, action: "forget", memoryId}` |
 | POST | `/api/director/consolidate` | `{citizenId}`: consolidate now |
-| POST | `/api/director/relationship` | `{citizenId, otherId, affinity?, trust?, familiarity?, nameConfidence?, summary?}` |
+| POST | `/api/director/relationship` | `{citizenId, otherId, affinity?, trust?, familiarity?}` (absolute) or `{dAffinity?, dTrust?, dFamiliarity?}`, with `reason`; also `nameConfidence?, summary?` |
 | POST | `/api/director/bootstrap-memories` | `{citizenIds?}`: core memory + seed memories + relationships for citizens without memories (runs in the background) |
 | GET | `/api/citizens/:id/memories` | core memory, on my mind, all memories (`?forgotten=0` to hide forgotten) |
 | GET | `/api/citizens/:id/consolidations` | the nights |
@@ -254,6 +300,14 @@ Check your school's docs for the exact flag if that doesn't work.
 | POST | `/api/director/revive` | `{citizenId}`: a collapsed citizen comes to (hp 30%, hunger ≤ 60) |
 | GET | `/api/director/scenarios` | active scenario + the ones in `content/scenarios/` |
 | POST | `/api/director/reseed` | dev only, `{"confirm":"WIPE", "scenario"?}`: backup, wipe citizens + rooms, seed a scenario |
+| GET | `/api/citizens/:id/relationships/:otherId/events` | the reason timeline for one pair, plus the line as it appears in the prompt |
+| GET | `/api/citizens/:id/wariness?other=` | wariness breakdown (debug) |
+| GET / POST | `/api/groups` | list / create (director): `{name, kind, public?, purpose?, members?}` |
+| GET / PATCH | `/api/groups/:id` | one group / `{name?, public?, purpose?, add: [{id, role?, secret?}], remove: [id], dissolve?}` |
+| GET | `/api/relationships/signals` | pairs where warning signs cost trust |
+| GET / POST | `/api/director/inactive`, `/api/director/activate` | dormant scenario characters / `{id, location?}` brings one in |
+| POST | `/api/director/signal` | `{citizenId, otherId, sign}`: simulate followed / property / intruder / hiding |
+| POST | `/api/director/stranger-trust`, `/persona-list`, `/room-danger` | `{citizenId, value}` · `{citizenId, field: appearanceTags\|secretGoals\|covets, values}` · `{roomId, danger}` |
 | GET | `/api/rooms/:id/objects` | `?view=true` (everything) or `?view=surface&citizen=<id>` (what they perceive, with the prompt lines) |
 | GET | `/api/objects/:id` | one object + history (actors, witnesses) + who thinks it is where |
 | GET | `/api/object-types` | the types from `content/object-types.json` |
@@ -280,4 +334,5 @@ Check your school's docs for the exact flag if that doesn't work.
 - Time-based systems use **elapsed game minutes** from the clock tick, never real seconds, so speed changes can't break them.
 - All world changes go through `World`, which owns the state, so async LLM results can't conflict.
 - Every LLM call goes through `world.llm.chat()` so it's rate-limited, abortable and logged.
+- Relationship values change only through `world.relationships.change()`, always with a reason. Secret goals and secret memberships never reach another citizen's prompt.
 - Citizens never create objects. `world.objects.change()` is the only write path for an existing object; the keeper only proposes, code validates.

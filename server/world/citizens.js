@@ -35,6 +35,9 @@ export function defaultPersona() {
     backstory: '',
     goals: [],
     speechStyle: '',
+    appearanceTags: [],   // step 5.5: visible cues from content/cues.json (hooded, armed, foreign…)
+    secretGoals: [],      // step 5.5: private aims; only ever in their OWN prompt
+    covets: [],           // step 6: tags / object types / roles they want (drives envy)
   };
 }
 
@@ -71,6 +74,14 @@ function defaultData() {
     roomVisits: {},         // { roomId: n }: 5+ visits = familiar (notices the noticeable)
     searchCounts: {},       // { roomId: n }: repeated searches get better
     missingNoted: {},       // { objectId: gameTime }: owned things noticed missing (not repeated for 12 h)
+    // step 5.5: groups, strangers, warning signs
+    invitations: [],        // pending party invitations: [{ from, purpose, at, until }]
+    partyProposal: null,    // their own last proposal
+    roomLog: [],            // last 4 room changes with who arrived right after (the "being followed" sign)
+    strangerTrust: 0.5,     // learned attitude towards strangers, 0..1
+    strangerLog: [],        // [{ at, value, why }]
+    metStrangers: {},       // { otherId: gameTime of the first impression }
+    signalNotes: {},
     // STEP 6: emotions
   };
 }
@@ -81,6 +92,7 @@ export function normalizeCitizen(row) {
   const persona = { ...defaultPersona(), ...(raw.persona ?? {}) };
   persona.traits = { ...defaultPersona().traits, ...(persona.traits ?? {}) };
   persona.goals = Array.isArray(persona.goals) ? persona.goals.map(String) : [];
+  for (const k of ['appearanceTags', 'secretGoals', 'covets']) persona[k] = Array.isArray(persona[k]) ? persona[k].map(String) : [];
 
   const activity = { ...defaultData().activity, ...(d.activity ?? {}) };
   if (!ACTIVITY_TYPES.includes(activity.type)) activity.type = 'idle';
@@ -111,6 +123,12 @@ export function normalizeCitizen(row) {
     roomVisits: obj(d.roomVisits),
     searchCounts: obj(d.searchCounts),
     missingNoted: obj(d.missingNoted),
+    invitations: Array.isArray(d.invitations) ? d.invitations : [],
+    roomLog: Array.isArray(d.roomLog) ? d.roomLog : [],
+    strangerTrust: Number.isFinite(Number(d.strangerTrust)) ? Number(d.strangerTrust) : 0.5,
+    strangerLog: Array.isArray(d.strangerLog) ? d.strangerLog : [],
+    metStrangers: obj(d.metStrangers),
+    signalNotes: obj(d.signalNotes),
     thinkCooldownUntil: Number(d.thinkCooldownUntil) || 0,
   };
 }
@@ -184,6 +202,7 @@ export function citizenFromInput(input, { rooms, existingIds, now }) {
     }
     if (p.age != null && !(Number(p.age) >= 0)) errors.push('persona.age must be a number');
     if (p.goals != null && !Array.isArray(p.goals)) errors.push('persona.goals must be an array of strings');
+    for (const k of ['appearanceTags', 'secretGoals', 'covets']) if (p[k] != null && !Array.isArray(p[k])) errors.push(`persona.${k} must be an array of strings`);
     if (p.traits != null) {
       for (const [k, v] of Object.entries(p.traits)) {
         if (!TRAITS.includes(k)) errors.push(`persona.traits.${k} is not a Big Five trait`);
