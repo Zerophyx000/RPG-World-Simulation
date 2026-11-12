@@ -269,6 +269,16 @@ export class World {
       if (c.activity.type === 'sleeping') {
         // The body speaks differently in sleep: tiredness never wakes you; hunger or pain only when severe.
         if (s.kind === 'body' && (s.data?.need === 'fatigue' || s.importance < 8)) continue;
+        // Dropped from exhaustion and still spent: hunger can't wake them (they'd only fall over again,
+        // every reminder), and only a real emergency (>= 8) gets through.
+        const spent = c.activity.detail?.forced && c.needs.fatigue >= 60;
+        if (spent && (s.kind === 'body' || s.importance < 8)) {
+          if (s.importance >= 4 && s.kind !== 'body') {
+            c.sleepBuffer = [...(c.sleepBuffer ?? []), { text: s.text, gameTime: s.gameTime, importance: s.importance }].slice(-SLEEP_BUFFER_MAX);
+            this.saveCitizen(c);
+          }
+          continue;
+        }
         if (s.importance >= 7) {
           wake(this, c, { reason: 'jolt', cause: s });
         } else {
