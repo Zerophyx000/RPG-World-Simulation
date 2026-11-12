@@ -1,0 +1,292 @@
+[
+  {
+    "id": "square",
+    "name": "the village square",
+    "description": "A patch of trampled earth at the heart of Brackenford, ringed by the tavern, the bakery, the smithy and a few cottages. A cart with a broken wheel has stood in one corner for weeks.",
+    "exits": [
+      {
+        "to": "tavern",
+        "travelMinutes": 1
+      },
+      {
+        "to": "bakery",
+        "travelMinutes": 1
+      },
+      {
+        "to": "smithy",
+        "travelMinutes": 2
+      },
+      {
+        "to": "well",
+        "travelMinutes": 1
+      },
+      {
+        "to": "house_greta",
+        "travelMinutes": 2
+      },
+      {
+        "to": "house_tomas",
+        "travelMinutes": 3
+      },
+      {
+        "to": "house_lena",
+        "travelMinutes": 2
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "public"
+    ],
+    "affordances": [
+      "stand around",
+      "watch people",
+      "chat",
+      "sit on the edge of the cart"
+    ],
+    "appearance": "An open patch of trampled earth ringed by buildings, with a broken-down cart in one corner.",
+    "services": {},
+    "x": 50,
+    "y": 50,
+    "detail": "normal",
+    "kind": "village square"
+  },
+  {
+    "id": "tavern",
+    "name": "the Tilted Cup",
+    "description": "A low-ceilinged tavern that smells of smoke and spilled ale. A crooked doorframe gives the place its name. A few scarred tables, a hearth, and a counter with a row of barrels behind it.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "indoor",
+      "public"
+    ],
+    "affordances": [
+      "drink",
+      "eat",
+      "sit",
+      "gamble at dice",
+      "warm yourself by the hearth"
+    ],
+    "appearance": "A squat timber building with a crooked doorframe. Smoke rises from its chimney and you hear voices inside.",
+    "services": {
+      "food": {
+        "minutes": 30,
+        "hungerRelief": 60,
+        "description": "stew and bread from the kitchen"
+      },
+      "bed": {
+        "quality": "good",
+        "description": "a few rented cots upstairs"
+      }
+    },
+    "x": 22,
+    "y": 30,
+    "detail": "rich",
+    "kind": "tavern"
+  },
+  {
+    "id": "bakery",
+    "name": "the bakery",
+    "description": "A warm, cramped room in front of a big brick oven. Flour sacks are stacked against the back wall next to a locked storeroom door. Loaves cool on wooden racks by the window.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 1
+      },
+      {
+        "to": "house_greta",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "indoor",
+      "workplace"
+    ],
+    "affordances": [
+      "knead dough",
+      "bake",
+      "buy bread",
+      "check the flour sacks"
+    ],
+    "appearance": "A narrow shop with a big brick chimney. The smell of fresh bread drifts out of its door.",
+    "services": {
+      "food": {
+        "minutes": 20,
+        "hungerRelief": 45,
+        "description": "bread and buns from the racks"
+      }
+    },
+    "x": 78,
+    "y": 30,
+    "detail": "normal",
+    "kind": "bakery"
+  },
+  {
+    "id": "smithy",
+    "name": "the smithy",
+    "description": "An open-fronted workshop with a soot-black forge, an anvil worn smooth in the middle, and tools hanging from every beam. It is loud and hot when the forge is lit.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 2
+      },
+      {
+        "to": "house_tomas",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "workplace"
+    ],
+    "affordances": [
+      "work the forge",
+      "hammer metal",
+      "sharpen tools",
+      "shoe a horse"
+    ],
+    "appearance": "An open-fronted workshop. You hear hammering and see the red glow of a forge.",
+    "services": {},
+    "x": 80,
+    "y": 75,
+    "detail": "normal",
+    "kind": "smithy"
+  },
+  {
+    "id": "well",
+    "name": "the village well",
+    "description": "A round stone well with a wooden roof and a creaking winch, just off the square. The ground around it is always muddy. A worn bench stands beside it.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "public"
+    ],
+    "affordances": [
+      "draw water",
+      "sit on the bench",
+      "chat"
+    ],
+    "appearance": "A round stone well under a little wooden roof, with a bench beside it.",
+    "services": {},
+    "x": 50,
+    "y": 18,
+    "detail": "sparse",
+    "kind": "well"
+  },
+  {
+    "id": "house_greta",
+    "name": "Greta's house",
+    "description": "A narrow, tidy house behind the bakery. Everything is in its place; a ledger of who owes what lies on the kitchen table.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 2
+      },
+      {
+        "to": "bakery",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "eat",
+      "go over the accounts"
+    ],
+    "appearance": "A narrow, tidy house tucked behind the bakery.",
+    "services": {
+      "bed": {
+        "quality": "good",
+        "description": "Greta's own bed"
+      }
+    },
+    "x": 95,
+    "y": 50,
+    "detail": "normal",
+    "kind": "house"
+  },
+  {
+    "id": "house_tomas",
+    "name": "Tomas's house",
+    "description": "A dark, sparsely furnished cottage next to the smithy. It smells of iron and old smoke. Jonas sleeps on a cot in the back room.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 3
+      },
+      {
+        "to": "smithy",
+        "travelMinutes": 1
+      }
+    ],
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "eat"
+    ],
+    "appearance": "A dark little cottage beside the smithy, its shutters closed.",
+    "services": {
+      "bed": {
+        "quality": "good",
+        "description": "a hard bed and a cot in the back room"
+      }
+    },
+    "x": 62,
+    "y": 92,
+    "detail": "sparse",
+    "kind": "cottage"
+  },
+  {
+    "id": "house_lena",
+    "name": "Lena's house",
+    "description": "A small cottage full of drying herbs hanging from the rafters, jars on every shelf, and a pot that is always simmering on the hearth.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 2
+      }
+    ],
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "eat",
+      "sort herbs",
+      "brew remedies"
+    ],
+    "appearance": "A small cottage with bundles of herbs hanging under its eaves.",
+    "services": {
+      "bed": {
+        "quality": "good",
+        "description": "Lena's bed by the hearth"
+      }
+    },
+    "x": 12,
+    "y": 70,
+    "detail": "rich",
+    "kind": "herbalist's cottage"
+  }
+]

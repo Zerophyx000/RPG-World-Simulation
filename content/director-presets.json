@@ -1,0 +1,222 @@
+[
+  {
+    "id": "explosion",
+    "label": "Explosion",
+    "icon": "💥",
+    "radius": 2,
+    "importance": 10,
+    "texts": {
+      "here": "A deafening blast throws you against the wall. Smoke and splinters fill the air, and your ears ring.",
+      "near": "A loud bang from the direction of {room}; the ground shudders under your feet and dust trickles from above.",
+      "far": "A distant boom rolls across the village, followed by shouting."
+    },
+    "roomEffect": {
+      "text": "Smoke still hangs in the air; the shutters are blown out, the furniture lies in splinters and black soot streaks the walls.",
+      "durationGameMinutes": 720
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "target": "here",
+        "amount": 25
+      },
+      {
+        "type": "mark",
+        "target": "here",
+        "text": "covered in soot and plaster dust, ears ringing",
+        "minutes": 240
+      }
+    ],
+    "objectChanges": [
+      {
+        "types": [
+          "hearth",
+          "oven",
+          "forge",
+          "shutters",
+          "table",
+          "bench",
+          "jug",
+          "tankard",
+          "rack",
+          "door"
+        ],
+        "state": "@broken"
+      }
+    ]
+  },
+  {
+    "id": "fire",
+    "label": "Fire",
+    "icon": "🔥",
+    "radius": 2,
+    "importance": 9,
+    "texts": {
+      "here": "Flames are licking up the wall right next to you. The heat is fierce and thick smoke stings your eyes.",
+      "near": "You smell smoke, and someone is shouting \"Fire!\" from the direction of {room}.",
+      "far": "A column of grey smoke rises somewhere over the village."
+    },
+    "roomEffect": {
+      "text": "Part of the place is scorched black; the air stinks of burnt wood and wet ash.",
+      "durationGameMinutes": 1440
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "target": "here",
+        "amount": 10
+      },
+      {
+        "type": "mark",
+        "target": "here",
+        "text": "smelling strongly of smoke",
+        "minutes": 180
+      }
+    ],
+    "objectChanges": [
+      {
+        "types": [
+          "shutters",
+          "table",
+          "bench",
+          "broom",
+          "basket",
+          "letter",
+          "ledger"
+        ],
+        "state": "@broken"
+      }
+    ]
+  },
+  {
+    "id": "scream",
+    "label": "A scream",
+    "icon": "😱",
+    "radius": 2,
+    "importance": 8,
+    "texts": {
+      "here": "Someone right here lets out a piercing scream that cuts off suddenly.",
+      "near": "A piercing scream comes from the direction of {room}, then silence.",
+      "far": "Faintly, from somewhere in the village, you think you hear a scream."
+    }
+  },
+  {
+    "id": "bell",
+    "label": "Bell ringing",
+    "icon": "🔔",
+    "radius": 3,
+    "importance": 6,
+    "texts": {
+      "here": "A bell rings three times, loud and close.",
+      "near": "A bell rings three times from the direction of {room}.",
+      "far": "Somewhere a bell rings three times."
+    }
+  },
+  {
+    "id": "rain",
+    "label": "Heavy rain",
+    "icon": "🌧",
+    "radius": 10,
+    "importance": 5,
+    "texts": {
+      "here": "The sky opens: heavy rain hammers down on the roofs and turns the paths to mud.",
+      "near": "Heavy rain starts drumming on the roofs; the paths are turning to mud.",
+      "far": "Heavy rain starts drumming on the roofs; the paths are turning to mud."
+    },
+    "roomEffect": {
+      "text": "Everything is soaked from the downpour; puddles and mud everywhere.",
+      "durationGameMinutes": 240
+    }
+  },
+  {
+    "id": "stranger",
+    "label": "Stranger collapses",
+    "icon": "🧎",
+    "radius": 1,
+    "importance": 8,
+    "texts": {
+      "here": "A stranger in a torn, mud-caked cloak staggers in and collapses face down right in front of you. He isn't moving.",
+      "near": "Raised voices from {room}: someone shouts that a stranger has collapsed.",
+      "far": "You hear a commotion somewhere in the village."
+    },
+    "roomEffect": {
+      "text": "A stranger in a torn, mud-caked cloak lies on the ground, breathing shallowly.",
+      "durationGameMinutes": 180
+    }
+  },
+  {
+    "id": "rockfall",
+    "label": "Rockfall blocks a path",
+    "icon": "🪨",
+    "radius": 1,
+    "importance": 7,
+    "texts": {
+      "here": "With a roar, a slope of loose stone slides down and buries the path out of here.",
+      "near": "A rumble and a crash of falling stone from the direction of {room}.",
+      "far": "A low rumble rolls across the village."
+    },
+    "roomEffect": {
+      "text": "A heap of fallen stone and earth blocks one of the paths.",
+      "durationGameMinutes": 240
+    },
+    "effects": [
+      {
+        "type": "blockExit",
+        "to": "square",
+        "minutes": 240,
+        "both": true,
+        "reason": "a heap of fallen stone"
+      }
+    ]
+  },
+  {
+    "id": "kitchen-fire",
+    "label": "Kitchen fire (no food here)",
+    "icon": "🍳",
+    "radius": 1,
+    "importance": 8,
+    "texts": {
+      "here": "A pan flares up and the kitchen fills with flame and black smoke!",
+      "near": "Shouts of \"Fire in the kitchen!\" from {room}.",
+      "far": "You smell burning somewhere in the village."
+    },
+    "roomEffect": {
+      "text": "The kitchen is blackened and wet from the buckets of water; nothing is being cooked.",
+      "durationGameMinutes": 480
+    },
+    "effects": [
+      {
+        "type": "roomService",
+        "service": "food",
+        "enabled": false,
+        "minutes": 480,
+        "reason": "the kitchen burned"
+      },
+      {
+        "type": "mark",
+        "target": "here",
+        "text": "smelling of smoke",
+        "minutes": 120
+      }
+    ]
+  },
+  {
+    "id": "free-bread",
+    "label": "Free bread for everyone here",
+    "icon": "🥖",
+    "radius": 0,
+    "importance": 6,
+    "texts": {
+      "here": "A cart driver hands out fresh loaves to everyone here, free of charge, and rattles on."
+    },
+    "effects": [
+      {
+        "type": "needs",
+        "target": "here",
+        "mode": "add",
+        "hunger": -40,
+        "notify": false
+      }
+    ]
+  }
+]

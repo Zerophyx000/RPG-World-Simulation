@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent World</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Agent World</div>
+    <div class="clock">
+      <span id="clock-day">Day –</span>
+      <span id="clock-time" class="time">--:--</span>
+      <span id="clock-status" class="pill">…</span>
+    </div>
+    <div class="controls">
+      <button id="btn-toggle" title="Pause / resume (space)">Resume</button>
+      <label class="speed">
+        Speed
+        <select id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="20">20×</option>
+          <option value="100">100×</option>
+        </select>
+      </label>
+      <span id="clock-rate" class="muted"></span>
+      <span id="llm-load" class="pill" title="LLM requests in flight / queued">llm –</span>
+      <span id="gov" class="pill" title="token governor">budget –</span>
+      <span id="conn" class="pill off">offline</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="roster" id="roster"></aside>
+    <main class="main">
+      <nav class="tabs" id="tabs"></nav>
+      <div class="filter-bar hidden" id="filter-bar"></div>
+      <div class="view" id="view"></div>
+    </main>
+    <aside class="inspector hidden" id="inspector"></aside>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+{
+  "hunger": {
+    "peckish": [
+      "You could do with a bite to eat.",
+      "A faint emptiness in your belly reminds you it's been a while since you ate."
+    ],
+    "hungry": [
+      "Your stomach growls. You haven't eaten in a while.",
+      "You're hungry; your thoughts keep drifting to food.",
+      "A hollow ache sits in your belly. You should eat something."
+    ],
+    "starving": [
+      "Hunger gnaws at you. It's getting hard to think about anything else.",
+      "Your stomach cramps with hunger. You need to eat soon.",
+      "You're starving. The smell of anything cooking would make you weak at the knees."
+    ],
+    "ravenous": [
+      "Your hands are shaking. You need food, now.",
+      "You're light-headed with hunger and your legs feel unsteady.",
+      "Hunger has become a pain. You can't go on like this much longer."
+    ],
+    "dying of hunger": [
+      "You're dizzy and weak. If you don't eat soon, you'll collapse.",
+      "Black spots swim before your eyes. Your body is giving out for want of food.",
+      "You can barely stand. Without food you won't last much longer."
+    ]
+  },
+  "fatigue": {
+    "sleepy": [
+      "You stifle a yawn.",
+      "A pleasant heaviness is creeping into your limbs."
+    ],
+    "tired": [
+      "Your eyelids are heavy.",
+      "You're tired. A bed would be very welcome.",
+      "You catch yourself yawning again and again."
+    ],
+    "exhausted": [
+      "Every step is an effort. You need to sleep.",
+      "You're exhausted; your thoughts are slow and muddled.",
+      "Your whole body aches with tiredness. You need rest."
+    ],
+    "collapsing": [
+      "You can barely stay upright. Your body is going to give out.",
+      "Your eyes keep closing on their own. You'll drop where you stand if you don't sleep.",
+      "The world sways. You can't stay awake much longer."
+    ]
+  },
+  "hp": {
+    "hurting": [
+      "Something aches. You're not quite whole.",
+      "You notice a dull pain that wasn't there before."
+    ],
+    "badly hurt": [
+      "You're badly hurt. Every movement hurts.",
+      "Pain throbs through you. You need rest or care.",
+      "You're hurt worse than you'd like to admit."
+    ],
+    "critical": [
+      "You're in a terrible state. You need help, or you won't make it.",
+      "Your strength is draining away. You need help, now.",
+      "Everything hurts and the edges of the world are going grey."
+    ]
+  }
+}

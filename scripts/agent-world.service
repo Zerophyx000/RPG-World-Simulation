@@ -1,0 +1,25 @@
+# systemd unit. Install once on the server:
+#   sudo cp scripts/agent-world.service /etc/systemd/system/
+#   (edit User and WorkingDirectory below first)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now agent-world
+# Logs: journalctl -u agent-world -f
+
+[Unit]
+Description=Agent World simulation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=benas
+WorkingDirectory=/home/benas/agent-world
+ExecStart=/usr/bin/env node --disable-warning=ExperimentalWarning server/main.js
+Restart=on-failure
+RestartSec=5
+# Give the world time to save on stop/restart
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

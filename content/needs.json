@@ -1,0 +1,34 @@
+{
+  "hunger": {
+    "ratePerHour": { "awake": 4.0, "asleep": 1.5, "moving": 5.0 },
+    "levels": [
+      { "min": 0,  "name": "satisfied",       "importance": 0, "remindEvery": null },
+      { "min": 30, "name": "peckish",         "importance": 3, "remindEvery": null },
+      { "min": 50, "name": "hungry",          "importance": 5, "remindEvery": 120 },
+      { "min": 70, "name": "starving",        "importance": 7, "remindEvery": 60 },
+      { "min": 85, "name": "ravenous",        "importance": 8, "remindEvery": 30 },
+      { "min": 95, "name": "dying of hunger", "importance": 9, "remindEvery": 15 }
+    ]
+  },
+  "fatigue": {
+    "ratePerHour": { "awake": 5.0, "moving": 6.5, "asleep": -12.5, "asleepRough": -6.0 },
+    "levels": [
+      { "min": 0,  "name": "rested",     "importance": 0, "remindEvery": null },
+      { "min": 45, "name": "sleepy",     "importance": 3, "remindEvery": null },
+      { "min": 65, "name": "tired",      "importance": 5, "remindEvery": 90 },
+      { "min": 80, "name": "exhausted",  "importance": 7, "remindEvery": 45 },
+      { "min": 93, "name": "collapsing", "importance": 9, "remindEvery": 15 }
+    ]
+  },
+  "hp": {
+    "regenPerHour": { "awake": 1.0, "asleep": 3.0 },
+    "starvationDamagePerHour": 6.0,
+    "levels": [
+      { "minPct": 100, "name": "healthy",    "importance": 0, "remindEvery": null },
+      { "minPct": 75,  "name": "hurting",    "importance": 4, "remindEvery": null },
+      { "minPct": 50,  "name": "badly hurt", "importance": 6, "remindEvery": 60 },
+      { "minPct": 25,  "name": "critical",   "importance": 9, "remindEvery": 20 }
+    ]
+  },
+  "lethal": false
+}

@@ -1,0 +1,317 @@
+// Prompt builder: buildMessages(world, citizen, opts) → OpenAI-style messages. Pure (reads, never writes).
+//
+// Order matters for the server's prefix cache: the most stable content first.
+//   [system] world rules · common knowledge · WHO YOU ARE · WHAT YOU KNOW ABOUT YOURSELF (core memory;
+//            only changes at night, so the system prefix is identical all game day)
+//   [user]   (urgency line) · RIGHT NOW · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · YOUR PLAN · ON YOUR MIND · WHO IS HERE ·
+//            YOU REMEMBER · PLACES YOU KNOW · CONVERSATION · WHAT JUST HAPPENED · instruction
+//
+// People are named only if this citizen knows the name; otherwise they are described by how they look.
+// Relationships appear in words, never numbers.
+import { traitsToWords } from './traits.js';
+import { citizensIn, activeEffects, openExits } from '../world/rooms.js';
+import { pronouns } from '../world/citizens.js';
+import { isIngPhrase, ingOrQuote } from '../world/actions.js';
+import { SOFT_CAP_LINES, TRANSCRIPT_LINES } from '../world/conversations.js';
+import { placeLabel, knownWith, servicesText } from '../world/places.js';
+import { clockTime, timeOfDay, relativeTime } from '../world/time.js';
+import { retrieve, memoryLine } from '../memory/retrieve.js';
+import { relationSentence } from '../memory/words.js';
+import { planBlock, yesterdayText } from './plan.js';
+import { carryingPhrase } from '../world/object-actions.js';
+import { SLOTS } from '../world/objects.js';
+
+export { clockTime, timeOfDay, relativeTime };
+
+const MEMORY_CHAR_BUDGET = 4000; // ON YOUR MIND + YOU REMEMBER ≈ 1,000 tokens
+
+export const WORLD_RULES = `You are a person living in this world, not an assistant. You only know what you have been told here and what you perceive. Never invent people, places or events that are not mentioned; if you don't know something, you don't know it. You speak and act like your character, with their flaws. You are not obligated to be nice, helpful or talkative. Think through the situation privately first: what you notice, how you feel about it, what you want. Then act by calling exactly one tool.
+
+How your world works:
+- Time passes in minutes. Walking, working, eating, sleeping and waiting all take time, and other people act while you do.
+- You have a body: you get hungry and tired, and you can get hurt. How you feel is described to you; what you do about it is up to you.
+- You only know the places listed under PLACES YOU KNOW. Other buildings you can see, but you don't know what they are or what can be had there until you go in or someone tells you. Don't make up places or directions.
+- You only know someone's name if you have heard it. People whose name you don't know are described by how they look; don't call them by a name.
+- Your memories are what's listed under what you remember, on your mind and what you know about yourself — nothing else. If someone mentions something you have no memory of, you don't remember it. You can admit it, ask, or bluff — but if you bluff, you know you're bluffing. Never invent shared past events.
+- You can only talk to people who are in the same place as you. Everyone there hears what you say out loud.
+- When you speak, say only your own words, the way your character would say them. Don't describe your own actions inside your speech.
+- People talk in short turns: usually one or two sentences. You can always say more on your next turn. Don't give speeches unless the moment truly calls for one.
+- Your speech habits are flavor, not a script. Use pet names, catchphrases and verbal tics rarely, the way real people do; most sentences have none.
+- You can only touch, take or use things listed under what's here or what you're carrying. You can't produce objects that aren't there. You may suspect hidden things — searching is how you find out.
+- You cannot control other people or decide what they do, say or feel.
+- It is fine to do nothing special, keep to yourself, refuse, lie, or walk away, if that is what your character would do.`;
+
+/**
+ * @param {object} opts
+ * @param {'full'|'light'|'none'} [opts.tier]
+ * @param {'decide'|'plan'} [opts.mode]
+ * @param {object} [opts.collect]  filled with { recalled: [memory ids] } (the caller decides whether that counts as recall)
+ */
+export function buildMessages(world, c, { tier = 'full', mode = 'decide', collect = null } = {}) {
+  return [
+    { role: 'system', content: systemPrompt(world, c) },
+    { role: 'user', content: situationPrompt(world, c, { tier, mode, collect }) },
+  ];
+}
+
+// ---------- [system] ----------
+export function systemPrompt(world, c) {
+  const blocks = [`# HOW THIS WORKS\n${WORLD_RULES}`];
+  if (world.worldText) blocks.push(`# WHAT EVERYONE AROUND HERE KNOWS\n${world.worldText}`);
+  blocks.push(`# WHO YOU ARE\n${whoYouAre(world, c)}`);
+  if (c.coreMemory) blocks.push(`# WHAT YOU KNOW ABOUT YOURSELF\n${c.coreMemory}`);
+  return blocks.join('\n\n');
+}
+
+function whoYouAre(world, c) {
+  const p = c.persona;
+  const bits = [p.age != null ? `${p.age} years old` : null, p.sex, p.occupation ? `the ${p.occupation}` : null].filter(Boolean);
+  const lines = [`You are ${c.name}${bits.length ? `, ${bits.join(', ')}` : ''}.`];
+  if (p.appearance) lines.push(`Appearance: ${p.appearance}`);
+  const personality = [p.personality, ...traitsToWords(p.traits)].filter(Boolean).join(' ');
+  if (personality) lines.push(`Personality: ${personality}`);
+  if (p.speechStyle) lines.push(`How you tend to talk (use sparingly): ${p.speechStyle}`);
+  if (p.backstory) lines.push(`Your story: ${p.backstory}`);
+  if (p.goals.length) lines.push(`What you want:\n${p.goals.map((g) => `- ${g}`).join('\n')}`);
+  const home = world.rooms.get(c.home);
+  lines.push(home ? `Your home: ${home.name}.` : 'You have no home here yet.');
+  return lines.join('\n');
+}
+
+// ---------- [user] ----------
+function situationPrompt(world, c, { tier, mode, collect }) {
+  const now = world.now;
+  const mem = world.memory;
+  const room = world.rooms.get(c.location);
+  const feel = world.needs.describe(c);
+  const blocks = [];
+
+  // Severe needs go first, so they are not buried under conversation noise.
+  if (feel.urgent) blocks.push(feel.urgent);
+
+  // RIGHT NOW
+  const right = [`It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
+  if (room) {
+    right.push(`You are in ${room.name}. ${room.description}`.trim());
+    const effects = activeEffects(room, now).map((e) => e.text);
+    if (effects.length) right.push(`You notice: ${effects.join(' ')}`);
+    if (room.affordances.length) right.push(`Things people do here: ${room.affordances.join(', ')}.`);
+    const exits = openExits(room, now).filter((e) => world.rooms.has(e.to))
+      .map((e) => `${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes} min)`);
+    if (exits.length) right.push(`From here you can walk to:\n${exits.map((x) => `- ${x}`).join('\n')}`);
+    const blocked = (room.blockedExits ?? []).filter((b) => b.until == null || b.until > now)
+      .map((b) => `the way to ${placeLabel(c, world.rooms.get(b.to))} is blocked${b.reason ? ` (${b.reason})` : ''}`);
+    if (blocked.length) right.push(`Right now ${blocked.join('; ')}.`);
+  } else if (c.activity.type === 'moving') {
+    right.push(`You are on your way to ${placeLabel(c, world.rooms.get(c.activity.detail?.to))}.`);
+  }
+  right.push(ownActivity(world, c));
+  const marks = (c.marks ?? []).filter((m) => m.until == null || m.until > now).map((m) => m.text);
+  if (marks.length) right.push(`About yourself: ${marks.join('; ')}.`);
+  if (c.recentActions.length) {
+    right.push(`What you did recently:\n${c.recentActions.map((a) => `- (${relativeTime(now - a.gameTime)}) ${mem.resolveNames(c, a.text)}`).join('\n')}`);
+  }
+  blocks.push(`# RIGHT NOW\n${right.join('\n')}`);
+
+  // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
+  if (room) {
+    const here = world.objects.whatsHere(c, { aliases: true });
+    blocks.push(`# WHAT'S HERE\n${here.length ? here.join('\n') : 'Nothing worth mentioning.'}`);
+  }
+  blocks.push(`# YOU'RE CARRYING\n${carryingBlock(world, c)}`);
+
+  // HOW YOU FEEL (only when something is off)
+  if (feel.any) {
+    const hints = [];
+    if (feel.idx.hunger >= 2 && !knownWith(c, 'food').length) hints.push("You don't know where to find food around here.");
+    if (feel.idx.fatigue >= 2 && !knownWith(c, 'bed').length) hints.push("You don't know anywhere you could sleep properly.");
+    blocks.push(`# HOW YOU FEEL\n${[feel.text, ...hints].join('\n')}`);
+  }
+
+  // YOUR PLAN
+  if (mode === 'plan') {
+    const y = yesterdayText(world, c);
+    if (y) blocks.push(`# YESTERDAY\n${y}`);
+  } else {
+    const pb = planBlock(world, c);
+    if (pb) blocks.push(`# YOUR PLAN\n${pb}`);
+  }
+
+  // ON YOUR MIND + YOU REMEMBER share a budget
+  let budget = MEMORY_CHAR_BUDGET;
+  const onMind = (c.onMyMind ?? []).map((m) => `- ${mem.resolveNames(c, m.text)}`);
+  const onMindKept = [];
+  for (const l of onMind) {
+    if (budget - l.length < 0) break;
+    budget -= l.length;
+    onMindKept.push(l);
+  }
+  if (onMindKept.length) blocks.push(`# ON YOUR MIND\n${onMindKept.join('\n')}`);
+
+  // WHO IS HERE
+  const others = room ? citizensIn(world.citizens, room.id, { exceptId: c.id }) : [];
+  if (room) blocks.push(`# WHO IS HERE\n${others.length ? others.map((o) => `- ${visibleLine(world, o, c)}`).join('\n') : 'Nobody else is here.'}`);
+
+  // YOU REMEMBER
+  const picked = retrieve(world, c, { presentIds: others.map((o) => o.id), placeId: c.location }, 5);
+  const remember = [];
+  for (const { memory } of picked) {
+    const l = `- ${memoryLine(world, c, { ...memory, text: mem.resolveNames(c, memory.text) })}`;
+    if (budget - l.length < 0) break;
+    budget -= l.length;
+    remember.push(l);
+    collect?.recalled?.push(memory.id);
+  }
+  if (remember.length) blocks.push(`# YOU REMEMBER\n${remember.join('\n')}`);
+
+  // PLACES YOU KNOW
+  blocks.push(`# PLACES YOU KNOW\n${placesBlock(world, c)}`);
+
+  // CONVERSATION
+  const conv = world.conversations.of(c);
+  if (conv) blocks.push(`# CONVERSATION\n${conversationBlock(world, conv, c)}`);
+
+  // WHAT JUST HAPPENED
+  const stimuli = [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime);
+  blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length
+    ? stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`).join('\n')
+    : 'Nothing new has caught your attention.'}`);
+
+  // Instruction
+  if (mode === 'plan') {
+    blocks.push('# WHAT NOW\nPlan your day: what you intend to do, roughly when, and where. Think about what you need (food, rest), what you want, and who you need to see. Only use places you know and people you know. Call make_plan exactly once.');
+  } else if (tier === 'none') {
+    blocks.push('# WHAT NOW\nAct on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.');
+  } else {
+    if (conv) {
+      // Honest forgetting: GLM tends to accept whatever others claim about the shared past.
+      blocks.push("# REMEMBER\nIf someone brings up something you supposedly did, said or promised, it is only true for you if it is under YOU REMEMBER or ON YOUR MIND. If it is not there, you don't remember it: say so, ask, or bluff knowingly — don't just agree.");
+    }
+    blocks.push('# WHAT NOW\nDecide what you do next. Call exactly one tool. You may include a short inner thought.\n'
+      + 'If you speak: one or two short sentences, like a real turn in a conversation. Say it in your own words; '
+      + "don't reach for your usual pet names or sayings.");
+  }
+  return blocks.join('\n\n');
+}
+
+function carryingBlock(world, c) {
+  const O = world.objects;
+  const items = O.carriedBy(c.id);
+  if (!items.length) return 'Nothing. Your hands are free.';
+  const lines = items.map((o) => `- ${O.textFor(c, o)} [${O.alias(o)}]`);
+  if (O.slotsUsed(c.id) >= SLOTS) lines.push('Your hands are full.');
+  return lines.join('\n');
+}
+
+function placesBlock(world, c) {
+  const entries = Object.entries(c.knownPlaces ?? {}).filter(([id]) => world.rooms.has(id));
+  if (!entries.length) return 'None yet.';
+  return entries.map(([id, k]) => {
+    const r = world.rooms.get(id);
+    const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
+    let src = '';
+    if (k.source === 'home') src = ' (your home)';
+    else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
+    else if (k.source === 'visited') src = ' (you have been there)';
+    const here = id === c.location ? ' (you are here)' : '';
+    return `- ${r.name}: ${what}${here || src}`;
+  }).join('\n');
+}
+
+function ownActivity(world, c) {
+  let a = c.activity;
+  let interrupted = false;
+  if (a.type === 'thinking') {
+    a = a.detail?.interrupted ?? { type: 'idle' };
+    interrupted = true;
+  }
+  const left = a.until != null ? Math.max(0, Math.round(a.until - world.now)) : null;
+  const more = left != null ? ` (about ${left} more minute${left === 1 ? '' : 's'})` : '';
+  switch (a.type) {
+    case 'doing': {
+      const what = a.detail?.description ?? 'something';
+      const phrase = isIngPhrase(what) ? ingOrQuote(what) : `busy with "${what}"`;
+      return interrupted
+        ? `You were ${phrase}${more} when something caught your attention. You can carry on or do something else.`
+        : `You are ${phrase}${more}.`;
+    }
+    case 'waiting':
+      return interrupted
+        ? `You were waiting${a.detail?.reason ? ` (${a.detail.reason})` : ''}${more} when something caught your attention.`
+        : `You are waiting${a.detail?.reason ? ` (${a.detail.reason})` : ''}${more}.`;
+    case 'talking':
+      return 'You are in a conversation.';
+    case 'moving':
+      return `You are on your way to ${placeLabel(c, world.rooms.get(a.detail?.to))}.`;
+    default:
+      return 'You are not busy with anything right now.';
+  }
+}
+
+// How another citizen appears to this viewer: name (if known) or look, the relationship in words, what they do.
+function visibleLine(world, o, viewer) {
+  const mem = world.memory;
+  const rel = mem.rel(viewer.id, o.id);
+  const p = o.persona;
+  const pr = pronouns(o);
+  const Subj = pr.subj[0].toUpperCase() + pr.subj.slice(1);
+  const be = pr.subj === 'they' ? 'are' : 'is';
+  const seem = pr.subj === 'they' ? 'seem' : 'seems';
+
+  let who;
+  if (rel?.nameKnown && rel.nameConfidence >= 0.5) who = o.name + (rel.familiarity >= 2 && p.occupation ? `, the ${p.occupation}` : '');
+  else if (rel?.nameKnown && rel.nameConfidence >= 0.2) who = `${cap(mem.nameFor(viewer, o.id).replace(/ \(or so you think\)$/, ''))} — you think ${pr.poss} name is ${o.name}… or something like it`;
+  else who = cap(mem.nameFor(viewer, o.id)) + (rel && rel.familiarity > 0.2 ? (rel.nameKnown ? " — you've met before, but the name escapes you" : " — you've met before") : '');
+
+  let a = o.activity;
+  if (a.type === 'thinking') a = a.detail?.interrupted ?? { type: 'idle' };
+  let doing;
+  switch (a.type) {
+    case 'doing': {
+      const what = a.detail?.description ?? 'something';
+      doing = isIngPhrase(what) ? `${Subj} ${be} ${ingOrQuote(what)}.` : `${Subj} ${be} busy with something ("${what}").`;
+      break;
+    }
+    case 'waiting': doing = `${Subj} ${seem} to be waiting.`; break;
+    case 'sleeping': doing = a.detail?.quality === 'rough' ? `${Subj} ${be} asleep on the ground.` : `${Subj} ${be} asleep.`; break;
+    case 'collapsed': doing = `${Subj} ${be} lying on the ground, unconscious.`; break;
+    case 'talking': {
+      const conv = world.conversations.of(o);
+      const partners = (conv?.participants ?? []).filter((id) => id !== o.id).map((id) => mem.nameFor(viewer, id)).filter(Boolean);
+      doing = partners.length ? `${Subj} ${be} talking with ${listJoin(partners)}.` : `${Subj} ${be} in a conversation.`;
+      break;
+    }
+    default: doing = `${Subj} ${be} not doing anything in particular.`;
+  }
+  const marks = (o.marks ?? []).filter((m) => m.until == null || m.until > world.now).map((m) => m.text);
+  const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : ''].join(' ');
+  const carrying = carryingPhrase(world, viewer, o);
+  const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
+  return `${who}. ${rel ? relationSentence(rel, o) : 'A stranger to you.'} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+}
+
+function conversationBlock(world, conv, c) {
+  const mem = world.memory;
+  const name = (id, start = false) => (id === c.id ? (start ? 'You' : 'you') : mem.nameFor(c, id, { start }));
+  const others = conv.participants.filter((id) => id !== c.id).map((id) => name(id));
+  const lines = [`You are in a conversation with ${listJoin(others) || 'nobody (everyone else has left)'}.`];
+  const recent = conv.lines.slice(-TRANSCRIPT_LINES);
+  if (conv.lines.length > recent.length) lines.push(`(${conv.lines.length - recent.length} earlier lines not shown)`);
+  for (const l of recent) {
+    // With more than two people it matters who a line was aimed at.
+    const to = l.toId && conv.everParticipants.length > 2 ? ` (to ${name(l.toId)})` : '';
+    lines.push(`${name(l.speakerId, true)}${to}: "${l.text}"`);
+  }
+  if (!recent.length) lines.push('Nothing has been said yet.');
+  if (conv.lines.length >= SOFT_CAP_LINES) lines.push('The conversation has gone on for a while.');
+  return lines.join('\n');
+}
+
+function listJoin(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
+function cap(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
