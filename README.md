@@ -2,6 +2,8 @@
 
 A persistent RPG world where LLM-driven citizens live, think, remember, fight and die.
 
+**Step 6 (this version): emotions, mood and contagion.** Citizens now feel: twelve emotions (joy, sadness, fear, anger, disgust, shame, guilt, pride, affection, gratitude, envy, jealousy) that come from code appraisal and from the model's own self-report, decay at different rates with personality, sit on top of a slow mood, show on a face unless they are masked, and spread through a room. Feelings change only how the world is presented to a citizen (perception, framing, memory, what others see) — never what they do — and step 6 adds no new LLM calls.
+
 **Step 5.5: trust with reasons, groups and strangers.** Every change in how one citizen sees another is stored with a reason they can name and the evidence behind it. Groups (family, household, village, guild, faction, party, secret gangs) give in-group trust. Strangers are met with a wariness that depends on the place, the citizen's personality, what the stranger looks like and carries, and what strangers have done to them before. Code spots warning signs (being followed, someone carrying your property, an intruder, things hidden in other people's homes). Citizens can have secret goals nobody else sees.
 
 **Step 5: room state, objects and the room keeper.** Rooms now hold real objects with a state and a place: a ground truth that stays put whether anyone watches or not. Citizens see only what they'd plausibly notice (a surface view), can examine, search, take, put (openly or hidden), give and use things, and carry up to two. A narrow LLM, the room keeper, proposes what a free-form "use" does; code checks every proposal. Citizens never create objects. When they come back, they notice what changed ("there are fewer flour sacks by the oven than when you last looked").
@@ -38,6 +40,7 @@ agent-world/
 │   │                    objects (ground truth + surface view), object-actions (take/put/give/examine/search/use)
 │   ├── keeper/          the room keeper: proposes object changes, code validates (with a no-LLM fallback)
 │   ├── social/          relationships (reasons, the one write path), groups + parties, strangers, warning signs, leak check
+│   ├── emotions/        emotions, mood, appraisal rules, self-report parsing, presentation (present.js), contagion
 │   ├── agents/          scheduler (who thinks when), think, prompt (buildMessages), tools, traits
 │   ├── llm.js           LLM client: thinking capture, concurrency limit, abort, logging
 │   ├── readmodels.js    read-only queries for the UI (timeline, conversations, interactions)
@@ -47,7 +50,8 @@ agent-world/
 │   └── migrations/      numbered schema changes (never edit old ones)
 ├── public/              frontend: app.js (boot, SSE, router), store.js, colors.js, util.js, views/*.js
 ├── content/             world.md, rooms.json, object-types.json, objects.json, needs.json, needs-text.json,
-│                        director-presets.json, scenarios/<id>/ (citizens.json, objects.json, scenario.md/json)
+│                        director-presets.json, emotions.json, appraisals.json, cues.json,
+│                        scenarios/<id>/ (citizens.json, objects.json, scenario.md/json)
 ├── scripts/
 │   ├── mock-llm.js      fake LLM for offline development
 │   ├── deploy.sh        pull + restart without touching the world
@@ -100,6 +104,89 @@ Every citizen is always in one activity: `idle`, `thinking`, `moving`, `doing`, 
 **Observer.** One out-of-world LLM agent (`server/observer/`) writes a running report for the UI: a headline, directed relationships (warmth −5..5, tension 0..5, label, note) and storylines with stable ids. It runs after every conversation ends, every game hour if ≥ 10 new events happened, and on demand (Refresh button); never while paused (except on demand). **Its output never reaches citizens**: nothing in `server/agents/` or `server/world/` imports it; it is wired up in `main.js`. Each report row stores the full merged state, so the Relationships time slider just loads rows.
 
 **UI.** Roster (left, always on: latest inner thought per citizen; click = inspector, shift-click = filter), inspector drawer (right), and views: World (map with effects and walkers), Conversations (live chat panels with each speaker's thought under their line; past conversations with transcripts), Timeline (SVG swimlanes; wheel = zoom, drag = pan), Relationships (SVG graph + time slider), Story (observer storylines), Events (readable sentences, filter chips), LLM, Director. Keys: space = pause/resume, 1–8 = views, Esc = close.
+
+## Step 6 in short
+
+### The emotion model
+
+Emotions are content (`content/emotions.json`): each type has an aimed rule (which entries need a person or a thing to be about), a valence, a half-life in game hours and a contagion rate. All of it lives in code as numbers; a citizen is never shown a number, only words.
+
+| Emotion | Aimed | Valence | Half-life | Contagious |
+|---|---|---|---|---|
+| joy | optional | + | 4 h | 0.25 |
+| sadness | optional | − | 24 h | 0.1 |
+| fear | optional | − | 1 h | 0.35 |
+| anger | optional | − | 3 h | 0.25 |
+| disgust | required | − | 6 h | 0.1 |
+| shame | none | − | 24 h | — |
+| guilt | optional | − | 72 h | — |
+| pride | optional | + | 8 h | — |
+| affection | required | + | 6 h | 0.1 |
+| gratitude | required | + | 24 h | — |
+| envy | required | − | 48 h | — |
+| jealousy | required | − | 24 h | — |
+
+- A citizen carries at most **12 entries**, one per (type, target, about); anything that decays under 0.5 is dropped.
+- A bump raises with **diminishing returns**: `i + d·(1 − i/12)`, and always clamps to 0..10.
+- **Decay** is exponential with the type's half-life × a personality factor (negative feelings: `0.6 + 0.8·neuroticism`; positive: `0.7 + 0.6·extraversion`) × a mood factor (in a low mood negative feelings last up to 1.5× longer and positive ones fade up to 1.5× faster; the reverse in a high mood).
+- **Rumination**: seeing or recalling the target of an aimed negative feeling at 3 or more adds +0.5, at most once per 30 game minutes per entry.
+- **History** lands in the `emotion_log` table (migration 008): an hourly `sample` (all entries + mood), a `bump` row for every change of 1 or more, `decay_out` when an entry fades out, and `mood` rows at night or from the director. Samples older than 30 game days are thinned to one per game day. Migration 008 also adds `memories.emotion` and `memories.valence`.
+
+### Where feelings come from
+
+- **Code appraisal** (`content/appraisals.json`, `server/emotions/appraise.js`): plain world events become bumps, no LLM call. `own_object_missing` (anger at the likely suspect + sadness), `own_object_taken_seen` and `own_object_hidden_seen` (anger at the thief), `followed` (fear), `wary_stranger_present` (a slow fear, capped, for a wariness-7 stranger you keep standing next to), `intruder` and `property` (anger + fear), `trust_broken` / `trust_broken_by_loved` (anger, or sadness when it was someone with affinity ≥ 3), `gift_received` (gratitude + affection), `own_act_witnessed` (shame at being caught) and `own_act_witnessed_guilt` (guilt for the agreeable or conscientious), `close_one_hurt` (fear + sadness for someone close who collapsed or was hurt), `director_event_here` (fear, scaled by the event's importance), `plan_finished` (joy + pride at the end of a plan) and `need_severe_hourly` (a slow sadness when the body is worn down).
+- **Modulation**: every type has a personality rule (fear shrinks with openness, anger with low agreeableness, guilt and shame with conscientiousness, joy with extraversion, all negative feelings with neuroticism). Anger at someone you like is dampened (`angerPerAffinity`), and a need at level 3+ makes anger 1.5× touchier (irritability).
+- **Envy** (`persona.covets`: object types, tags or roles): seeing someone carry a coveted thing (not family, not their own thing) gives intensity `2 + 2·(1 − agreeableness) + 0.5·envy bumps in the last 3 days`, with a 60-minute cooldown. Coveting the leadership of a group counts too: envy at whoever was made leader or head.
+- **Jealousy**: attachment is affinity ≥ 4. Triggers: the beloved and a rival in a two-person conversation of 6+ lines you overhear, walking in on the two of them alone together, gifts passed between them, a party forming without you. Intensity `2 + 3·neuroticism − 0.3·trust in the beloved + 1` if their affection is openly showing, ×0.5 secondhand (you only heard about it), 60-minute cooldown.
+- **Lasting envy / jealousy**: still at 5+ for more than half of the day's hourly samples, it hardens at consolidation into a relationship event (−1 affinity, with a reason) — feelings slowly becoming attitudes.
+- **Self-report**: every decision tool carries an optional `feeling` string, explained once in the system prompt, in the format `<emotion> <+N or -N> [at <person>]: <why>` (e.g. `anger +2 at Tomas: he lied to my face again`). It is a string rather than an object so that adding it to every tool costs ~10 tokens per tool instead of ~80. Parsed leniently (`report.js`): synonyms accepted (afraid → fear, guilty → guilt…), changes clamped to ±3, and only people the citizen knows can be targets. Reflections get `feelings` (up to 3) and consolidation gets `lingering` (up to 3) plus a `mood_shift` of −2..+2.
+
+### Mood
+
+- A slow layer per citizen: `valence` −5..+5 and `tension` 0..10, each with a personality **baseline** (valence `1.5·(extraversion − 0.5) − 2·(neuroticism − 0.5)`, tension `3 + 4·(neuroticism − 0.5)`).
+- Every game hour it drifts 10% of the way towards the current balance of feeling; at night the model's `mood_shift` is applied and the mood is then pulled 15% per day back towards the baseline.
+- The prompt shows mood in words, never numbers: "Everything feels grey and heavy today.", "You are wound tight; small things set your teeth on edge.", and after two days away from the baseline "You've felt low for days now."
+- **Mood-congruent recall**: when |valence| ≥ 1.5, memories of the same colour score × `1 + 0.15`, and memories of the opposite colour × `1 − 0.075`.
+
+### Present, don't force
+
+`server/emotions/present.js` shapes every decision prompt. Every effect only compresses, emphasises, reorders or colours; nothing removes information the citizen needs, removes a tool or picks one.
+
+| Emotion (threshold) | What changes in the prompt |
+|---|---|
+| any (top 3) | HOW YOU FEEL: body lines in the second person, never numbers, plus the cause and masking ("You're keeping it off your face.") |
+| anger ≥ 6, target present | the target gets their full line (with what they just did), everyone else is compressed into one line |
+| fear ≥ 6 | threats first and in full, neutral people compressed; RIGHT NOW spells out the ways out (and that the exit may lead towards the danger) |
+| sadness ≥ 5, aimed | reminders of the person: their things here ("it catches at you"), their place |
+| jealousy ≥ 4 | the pair's interactions come first in WHAT JUST HAPPENED, plus a plain line that the two of them are here together |
+| envy ≥ 3 | WHO IS HERE notes what they have ("Your eyes keep going to …: they have it and you don't.") |
+| disgust ≥ 5 | a note on the person ("Everything about him grates on you.") |
+| joy ≥ 6, or mood ≥ 2 | people you like come first, gifts in WHAT JUST HAPPENED rank higher |
+| shame ≥ 5 | who saw it, and "You feel eyes on you." |
+| mood | one framing sentence at the top of RIGHT NOW when far from the baseline, or tense |
+
+- **Tool framing** changes only the order (emotion-congruent tools first) and adds a short note to a description ("say — say what's on your mind"); the set of tools never changes. An instruction clause ("Your heart is pounding. It's hard to think past the danger.") appears at intensity ≥ 7.
+- **Tiers**: an intense (≥ 7) emotion about the people or the kind of event that triggered the think **raises** the tier to full. It never lowers one — unless `EMOTION_PARAM_EFFECTS=true` (off by default, experiments only), where overwhelming anger or fear (≥ 8) lowers the tier one step and raises the temperature by 0.15 above `EMOTION_PARAM_BASE_TEMPERATURE` (default 0.7).
+- **Memory encoding**: a memory laid down while a feeling (≥ 2) is up about the same people or from the same event gets `+ min(3, intensity/3)` importance and is tagged with the emotion and its valence. Emotional memories fade at the next slower band.
+
+### Expression, masking, contagion
+
+- **Composure** = `0.5 + 0.3·(conscientiousness − 0.5) − 0.4·(neuroticism − 0.5) + 0.2·(0.5 − extraversion)`, clamped to 0.1..0.9. **Expressed** = `max(0, intensity − composure·4)`; at intensity ≥ 8 at least 40% shows whatever they do.
+- **Cues** (what others read off a face) start at expressed ≥ 3, and in the emotion's own words ("Kael looks angry, jaw set, glaring at Tomas"). Close observers (familiarity ≥ 6) notice a feeling from expressed 1.5, and a masked strong feeling as "seems to be hiding something".
+- **`hide_feelings`** is offered when a feeling is at 5 or more and someone is awake in the room; for 45 game minutes that feeling (or all of them) shows less. The feeling itself does not change, and people who know them well may still notice.
+- **Contagion** runs every 10 game minutes per room: each expresser at expressed ≥ 4 of a contagious type nudges everyone else awake there by `rate × (expressed − 3) × susceptibility × closeness × crowd`, with rates fear 0.35, anger 0.25, joy 0.25, sadness 0.1, disgust 0.1. Susceptibility is personality + low composure, closeness is a little affinity, crowd grows with other expressers of the same type (max ×2). Aimed contagion only lands on people who know the target (and not on the target themself). Caps: +2 per type per citizen per game hour, and never above 7 from contagion alone. Crossing a band (4 or 7) sends a stimulus ("The anger in the room has swept you up.") and makes the room glow in the world view. `EMOTION_CONTAGION=false` (or the Director toggle) turns it off.
+- **Open anger** (expressed ≥ 5) also makes strangers warier of you (+1: "he looks angry").
+- **Witnessed theft**: a bystander who sees someone take a thing that belongs to a third person (not given by the owner, not family or household) gets a `theft_seen` warning sign about them (trust −1, same cooldown and daily cap as the step 5.5 signs). The owner instead gets the `property` sign and the anger appraisal.
+
+### UI
+
+- **Roster**: a ring in the dominant emotion's colour (brighter the stronger), plus an eye for envy and a broken heart for jealousy at 4+.
+- **Inspector Emotions panel**: one bar per entry with target, cause, source, how much shows (a tick on the bar) and a 🎭 for masks; a "What others see" line with the cues as another citizen in the room would read them; composure; and the mood line with valence, tension, both baselines, how long the mood has been off, and a small SVG chart with night markers.
+- **Timeline**: lanes tinted by the dominant emotion of each hourly sample, with diamond markers for bumps of 3 or more (cause on hover).
+- **Relationship graph**: an *emotions* overlay draws aimed emotions as animated arcs in the emotion's colour; a jealousy arc shows the beloved as a dot on the arc.
+- **World view**: a room glows briefly in the emotion's colour when contagion crosses a band ("anger spreading").
+- **Director**: an *Emotions and mood* card — change a feeling with a cause, set valence and tension, a contagion toggle, and an appraisal log of which rule caused what.
+- **Events**: an *emotion* category (contagion band crossings, envy / jealousy crossing 4).
 
 ## Step 5.5 in short
 
@@ -275,7 +362,7 @@ Check your school's docs for the exact flag if that doesn't work.
 |---|---|---|
 | GET | `/api/state` | clock, LLM queue stats, recent events |
 | POST | `/api/clock` | `{"action":"pause"}`, `{"action":"resume"}`, `{"action":"speed","value":5}` |
-| GET | `/api/stream` | live Server-Sent Events: `clock` (+ LLM load), `event`, `llm`, `citizen`, `conversation`, `room`, `observer`, `world`, `object` |
+| GET | `/api/stream` | live Server-Sent Events: `clock` (+ LLM load), `event`, `llm`, `citizen`, `conversation`, `room`, `observer`, `world`, `object`, `group`, `emotion_room` |
 | GET | `/api/world` | rooms (incl. map position, active effects) + citizen summaries + active conversations |
 | GET | `/api/citizens/:id` | full citizen: persona, inbox, activity, thoughts, prompt preview, last 10 LLM calls |
 | POST | `/api/citizens` | create a citizen (same shape as `content/citizens.json` entries) |
@@ -287,6 +374,14 @@ Check your school's docs for the exact flag if that doesn't work.
 | POST | `/api/director/memory` | `{citizenId, action: "add", text, importance, about?}` or `{citizenId, action: "forget", memoryId}` |
 | POST | `/api/director/consolidate` | `{citizenId}`: consolidate now |
 | POST | `/api/director/relationship` | `{citizenId, otherId, affinity?, trust?, familiarity?}` (absolute) or `{dAffinity?, dTrust?, dFamiliarity?}`, with `reason`; also `nameConfidence?, summary?` |
+| GET | `/api/citizens/:id/emotions` | current entries + mood + what shows (per-viewer cue lines, composure, masks) |
+| GET | `/api/citizens/:id/emotions/history` | `?from=&to=&limit=` rows from `emotion_log` (sample, bump, decay_out, mood) |
+| POST | `/api/director/emotion` | `{citizenId, type, target?, about?, delta, cause}`: change a feeling (source `director`) |
+| POST | `/api/director/mood` | `{citizenId, valence?, tension?}`: set the slow mood directly |
+| GET | `/api/emotions/types` | the 12 types from `content/emotions.json`, contagion on/off, param effects |
+| GET | `/api/emotions/appraisals` | `?limit=` recent bumps across the village: which rule caused what |
+| GET | `/api/emotions/aimed` | aimed emotions ≥ 2 across everyone, for the relationship graph overlay |
+| POST | `/api/director/contagion` | `{enabled}`: turn the contagion pass on or off live |
 | POST | `/api/director/bootstrap-memories` | `{citizenIds?}`: core memory + seed memories + relationships for citizens without memories (runs in the background) |
 | GET | `/api/citizens/:id/memories` | core memory, on my mind, all memories (`?forgotten=0` to hide forgotten) |
 | GET | `/api/citizens/:id/consolidations` | the nights |
@@ -318,7 +413,7 @@ Check your school's docs for the exact flag if that doesn't work.
 | GET | `/api/events/:id` | one event (speech events include their `conversationId`) |
 | GET | `/api/conversations` | `?active=1\|0&citizen=&limit=` active (live) and past (from `conversation_end`) |
 | GET | `/api/conversations/:id` | one conversation with all lines (incl. each speaker's thought) |
-| GET | `/api/timeline` | `?from=&to=` (game minutes): activity spans per citizen, point events, conversation bands |
+| GET | `/api/timeline` | `?from=&to=` (game minutes): activity spans per citizen, point events, conversation bands, `emotions: { samples, bumps }` (lanes tinted by the dominant emotion, bumps ≥ 3 as markers) |
 | GET | `/api/relationships` | `?from=&to=`: addressed speech counts per direction |
 | GET | `/api/relationships/lines` | `?a=&b=&until=`: last lines between two citizens |
 | GET | `/api/observer/latest` | latest observer report + status |
@@ -336,3 +431,4 @@ Check your school's docs for the exact flag if that doesn't work.
 - Every LLM call goes through `world.llm.chat()` so it's rate-limited, abortable and logged.
 - Relationship values change only through `world.relationships.change()`, always with a reason. Secret goals and secret memberships never reach another citizen's prompt.
 - Citizens never create objects. `world.objects.change()` is the only write path for an existing object; the keeper only proposes, code validates.
+- Emotions change only how the world is presented to a citizen (perception, framing, memory, what others see). Code never picks an action, skips a call or removes a tool because of a feeling.
