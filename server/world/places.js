@@ -6,6 +6,15 @@
 import { serviceNames, openExits, exitTo, activeEffects } from './rooms.js';
 import { clockTime, relativeTime } from './time.js';
 
+// step 7A (review): the game minutes when a room effect began = its source director event's game_time
+// (room effects carry no start time of their own; primary-key lookup, at most a couple per prompt).
+function effectStart(db, effect) {
+  const id = Number(effect.sourceEventId);
+  if (!Number.isFinite(id) || id <= 0) return -Infinity; // not from a director event: older than any look
+  const row = db?.prepare('SELECT game_time FROM events WHERE id = ?').get(id);
+  return row?.game_time ?? -Infinity;
+}
+
 export const SERVICE_WORDS = { food: 'food', bed: 'a bed for the night' };
 
 /** Starting knowledge for a new citizen: "all" (a local) or a list of room ids (visited). */
@@ -143,8 +152,13 @@ export function knownRoomState(world, c, roomId) {
   if (!k) return { seenAt: null, parts: [], bed: null };
   const room = world.rooms.get(roomId);
   const seenAt = c.roomSnapshots?.[roomId]?.at ?? k.learnedAt ?? null;
-  // The room they stand in already shows its effects in RIGHT NOW; other rooms get them here.
-  const parts = room && roomId !== c.location ? activeEffects(room, world.now).map((e) => e.text) : [];
+  // step 7A (review): no knowledge leaks. A lasting effect is only shown where they could have seen it
+  // happen: they are in the room now, or their last look at it came after the effect started.
+  // (Room effects carry no start time; their source director event's game_time is when it began.)
+  const effects = room ? activeEffects(room, world.now) : [];
+  const parts = effects
+    .filter((e) => roomId === c.location || (seenAt != null && seenAt >= effectStart(world.db, e)))
+    .map((e) => e.text);
   const O = world.objects;
   const notable = [];
   for (const [id, known] of Object.entries(c.knownObjects ?? {})) {

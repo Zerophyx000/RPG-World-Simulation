@@ -146,11 +146,11 @@ export function runPlan(world, c) {
   plan.interrupted = false;
   // step 7A: the step before the cursor was still running — it ended now (this call happens the moment
   // its activity finished or was cut short). Steps that end instantly are stamped at their transition.
-  stampFinished(plan.steps[plan.cursor - 1]);
+  stampFinished(world, plan.steps[plan.cursor - 1]);
   for (let guard = 0; guard <= PLAN_MAX_STEPS + 1; guard++) {
     if (plan.cursor >= plan.steps.length) {
       plan.status = 'done';
-      stampFinished(plan.steps[plan.steps.length - 1]);
+      stampFinished(world, plan.steps[plan.steps.length - 1]);
       world.saveCitizen(c);
       world.perceive([c.id], { kind: 'timer', text: "You've done everything you planned for today.", importance: 5, data: { planEnd: true } });
       return;
@@ -172,7 +172,7 @@ export function runPlan(world, c) {
     }
     // failed / found: the citizen has to decide
     step.status = r.kind === 'found' ? 'done' : 'failed';
-    stampFinished(step);
+    stampFinished(world, step);
     plan.cursor++;
     world.saveCitizen(c);
     world.perceive([c.id], {
@@ -184,7 +184,7 @@ export function runPlan(world, c) {
 }
 
 // step 7A: when a step started and (once known) when it ended, in game minutes.
-function stampFinished(step) {
+function stampFinished(world, step) {
   if (!step) return;
   step.startedAt ??= world.now;
   step.doneAt ??= world.now;
@@ -294,7 +294,12 @@ function stepWhen(world, s) {
     if (started == null) return clockTime(end);
     return end - started >= 30 ? `${clockTime(started)}–${clockTime(end)}` : clockTime(started);
   }
-  if (s.kind === 'wait_until' && s.time) return s.time;
+  // step 7A (review): wait_until stores its time as "HH:MM", not game minutes — render it as clock time.
+  if (s.kind === 'wait_until' && s.time != null) {
+    if (/^\d{1,2}:\d{2}$/.test(s.time)) return s.time;
+    const m = Number(s.time);
+    return Number.isFinite(m) ? clockTime(m) : null;
+  }
   if (started != null) return clockTime(started);
   return null;
 }

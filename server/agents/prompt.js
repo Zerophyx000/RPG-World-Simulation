@@ -147,7 +147,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
     if (feel.idx.fatigue >= 2) {
       const bed = nearest('bed');
       const state = bed ? knownRoomState(world, c, bed.id).bed : null;
-      const word = state === 'broken' ? 'damaged' : state === 'usable' ? 'usable' : null;
+      const word = state === 'broken' ? 'damaged but usable' : state === 'usable' ? 'usable' : null;
       hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins} min${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
     }
     blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
@@ -258,17 +258,19 @@ function placesBlock(world, c) {
 function placeLine(world, c, id, k, mins) {
   const r = world.rooms.get(id);
   const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
+  const state = knownRoomState(world, c, id);
+  const seen = lastSeenPhrase(world.now, state.seenAt);
+  // step 7A (review): the Last seen phrase carries the freshness; drop the redundant 'been there' tag,
+  // but keep 'your home' and who told them about it.
   let src = '';
   if (k.source === 'home') src = ' (your home)';
   else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
-  else if (k.source === 'visited') src = ' (you have been there)';
+  else if (k.source === 'visited' && !seen) src = ' (you have been there)'; // only when there is no Last seen to show
   const where = id === c.location ? ' (you are here)' : mins != null ? ` (${mins} min)` : '';
-  const state = knownRoomState(world, c, id);
   const bits = [];
   if (state.parts.length) bits.push(state.parts.join('; '));
   if (state.bed) bits.push(`bed ${state.bed}`);
-  const seen = lastSeenPhrase(world.now, state.seenAt);
-  const tail = src || (seen ? ` Last seen ${seen}.` : '');
+  const tail = `${src}${seen ? ` Last seen ${seen}.` : ''}`;
   return `- ${r.name}${where}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}${tail}`;
 }
 
