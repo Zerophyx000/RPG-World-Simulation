@@ -199,6 +199,7 @@ function connect() {
     const cv = JSON.parse(m.data);
     if (cv.ended) {
       store.conversations.delete(cv.id);
+      store.endedConversations.set(cv.id, { reason: cv.reason ?? null, at: Date.now() }); // step 9: the on-map panel says why it ended
       emit('conversations');
       emit('conversationEnded', cv.id);
       return;

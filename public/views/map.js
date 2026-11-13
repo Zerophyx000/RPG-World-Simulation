@@ -310,7 +310,7 @@ export function mount(el) {
   }, { passive: false });
   const pick = (px, py) => {
     const X = px * dpr; const Y = py * dpr;
-    for (const type of ['citizen', 'object', 'room']) {
+    for (const type of ['citizen', 'pin', 'object', 'room']) { // step 9: 'pin' = an event pin of the story overlays ({ event, label })
       for (let i = hits.length - 1; i >= 0; i--) {
         const h = hits[i];
         if (h.type !== type) continue;
@@ -332,7 +332,8 @@ export function mount(el) {
     } else if (h.type === 'object') {
       const o = store.objects.get(h.id);
       html = `<b>${esc(o?.typeName ?? h.id)}</b> <span class="dim">${esc(o?.state ?? '')}</span><br>${esc(opt.objView === 'surface' ? (o?.surface ?? '') : (o?.trueText ?? o?.surface ?? o?.label ?? ''))}`;
-    } else html = `<b>${esc(store.rooms.get(h.id)?.name ?? h.id)}</b><br><span class="dim">click to look inside</span>`;
+    } else if (h.type === 'pin') html = `<b>${esc(h.label ?? 'event')}</b><br><span class="dim">click for the events</span>`;
+    else html = `<b>${esc(store.rooms.get(h.id)?.name ?? h.id)}</b><br><span class="dim">click to look inside</span>`;
     tip.innerHTML = html; tip.classList.remove('hidden');
     tip.style.left = `${Math.min(px + 14, cam.w / dpr - 240)}px`; tip.style.top = `${Math.min(py + 14, cam.h / dpr - 80)}px`;
   }
@@ -340,6 +341,7 @@ export function mount(el) {
     const h = pick(px, py);
     if (!h) { select(null); return; }
     if (h.type === 'citizen') { if (shift) follow = true; select(h.id); markSegs(); } else if (h.type === 'object') openObject(h.id);
+    else if (h.type === 'pin') { if (h.event?.actorId) select(h.event.actorId); setDock('events'); }
     else if (h.type === 'room') jumpToRoom(h.id);
   }
   // minimap: click or drag to jump
