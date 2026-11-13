@@ -261,7 +261,9 @@ export class Objects {
   }
 
   slotsUsed(citizenId) {
-    return this.carriedBy(citizenId).reduce((n, o) => n + (this.type(o)?.size ?? 1), 0);
+    // step 7B: carrying a person takes both hands
+    const person = this.world.citizens.get(citizenId)?.carryingPerson ? 2 : 0;
+    return person + this.carriedBy(citizenId).reduce((n, o) => n + (this.type(o)?.size ?? 1), 0);
   }
 
   /** step 7B: how many hands they can use (0-2), from the body's manipulation capacities. */

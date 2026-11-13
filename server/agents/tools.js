@@ -8,6 +8,8 @@ import { RELATIONS } from '../world/objects.js';
 import { frameTools } from '../emotions/present.js';
 import { feelingParam } from '../emotions/report.js';
 import { CRAWL_FACTOR } from '../body/content.js';
+import { treatOptions, pendingList, carriable, WASH_OFFERED } from '../body/treat.js';
+import { cuesFor } from '../body/perceive.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -216,6 +218,51 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, ['who']));
   }
+
+  // Step 7B: tending wounds, looking people over, consent, carrying, washing.
+  const treat = treatOptions(world, c, present);
+  if (treat) {
+    const list = treat.methods.map((id) => `"${id}" = ${world.body.content.treatments.methods[id].label}`).join('; ');
+    tools.push(fn('treat', `Tend to one wound, yours or someone else's here. Pick the wound and what you do for it (${list}). Improvised care is limited; real supplies and the right method do more.`, {
+      wound: { type: 'string', enum: treat.wounds.map((w) => w.key), description: 'Whose wound, and which one (the most dangerous first if you can).' },
+      method: { type: 'string', enum: treat.methods, description: 'What you do about it.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['wound', 'method']));
+  }
+  const hurtHere = present.filter((o) => o.alive && (o.activity.type === 'collapsed' || cuesFor(world, o)));
+  if (hurtHere.length && !['sleeping', 'collapsed'].includes(c.activity.type)) {
+    tools.push(fn('examine_person', 'Look someone over carefully for injuries (a few minutes). You may find what is hurt, but things inside are hard to tell.', {
+      person: { type: 'string', enum: [...world.memory.labelsFor(c, hurtHere).keys()], description: 'Who you look over.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['person']));
+  }
+  const pending = pendingList(world, c);
+  if (pending.length) {
+    const from = pending.map((p) => world.citizens.get(p.from)).filter(Boolean);
+    const labels = [...world.memory.labelsFor(c, from).keys()];
+    if (labels.length) {
+      tools.push(fn('refuse_treatment', 'Refuse what someone here is about to do to you (tending, looking you over, carrying you). They stop.', {
+        from: { type: 'string', enum: labels, description: 'Whose help you refuse.' }, inner_thought: INNER_THOUGHT,
+      }, ['from']));
+      const carriers = pending.filter((p) => p.kind === 'carry').map((p) => world.citizens.get(p.from)).filter(Boolean);
+      if (carriers.length) {
+        tools.push(fn('accept_help', 'Let someone carry you.', {
+          from: { type: 'string', enum: [...world.memory.labelsFor(c, carriers).keys()], description: 'Who carries you.' }, inner_thought: INNER_THOUGHT,
+        }, ['from']));
+      }
+    }
+  }
+  if (c.carryingPerson) {
+    tools.push(fn('put_down_person', 'Lay down the person you are carrying, here.', { inner_thought: INNER_THOUGHT }, []));
+  } else if (!['sleeping', 'collapsed'].includes(c.activity.type) && O.handsOf(c.id) >= 2 && O.slotsUsed(c.id) === 0) {
+    const carriable_ = present.filter((o) => carriable(world, c, o));
+    if (carriable_.length) {
+      tools.push(fn('carry_person', "Lift someone who can't walk and carry them. It takes both hands, twice as long, and wears you out twice as fast. If they are awake they have to agree.", {
+        person: { type: 'string', enum: [...world.memory.labelsFor(c, carriable_).keys()], description: 'Who you carry.' }, inner_thought: INNER_THOUGHT,
+      }, ['person']));
+    }
+  }
+  if (WASH_OFFERED(world, c)) tools.push(fn('wash_clothes', 'Wash the blood out of your clothes here (a few minutes).', { inner_thought: INNER_THOUGHT }, []));
 
   // Parties (step 5.5): the only groups citizens can form themselves.
   const invitable = world.groups.invitable(c, awake);

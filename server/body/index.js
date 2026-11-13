@@ -21,6 +21,8 @@ import { ensureGarments, wornGarments, garmentsCovering, setBloodied } from './g
 import { killCitizen } from './death.js';
 import { collapse, revive } from '../world/actions.js';
 import { sizeFactor } from './bleeding.js';
+import { dropCarried } from './treat.js';
+import { restock } from './supplies.js';
 
 const SLOW_EVERY = 10; // game minutes
 const httpError = (status, message) => Object.assign(new Error(message), { status });
@@ -192,6 +194,10 @@ export class Body {
   }
 
   #touch(cond) {
+    this.dirty.add(cond);
+  }
+
+  markDirty(cond) {
     this.dirty.add(cond);
   }
 
@@ -468,6 +474,7 @@ export class Body {
 
   knockOut(c, { reason = 'unconscious' } = {}) {
     if (c.activity.type === 'collapsed') return;
+    if (c.carryingPerson) dropCarried(this.world, c, 'dropped');
     c.body.unconsciousSince = this.world.now;
     collapse(this.world, c, { reason });
   }
@@ -485,6 +492,7 @@ export class Body {
   // ---------- the clock ----------
   tick(elapsed, now) {
     const needs = this.world.needs;
+    if (now - (this.lastRestock ?? -Infinity) >= SLOW_EVERY) { this.lastRestock = now; restock(this.world, now); } // supplies come back on a timer
     for (const c of this.world.citizens.values()) {
       if (!c.alive) continue;
       if (!c.body) this.ensureState(c);

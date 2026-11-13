@@ -7,6 +7,7 @@ import { citizensIn } from '../world/rooms.js';
 import { ref } from '../memory/index.js';
 import { pronouns } from '../world/citizens.js';
 import { wornGarments } from './garments.js';
+import { dropCarried } from './treat.js';
 
 export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {}) {
   const w = body.world;
@@ -21,6 +22,8 @@ export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {
   }
   body.dying.add(c.id);
   try {
+    if (c.carryingPerson) dropCarried(w, c, 'dropped');
+    if (c.carriedBy) { const carrier = w.citizens.get(c.carriedBy); if (carrier) dropCarried(w, carrier, 'dropped'); }
     w.cancelThink(c);
     if (!c.location && c.activity.type === 'moving') {
       const d = c.activity.detail ?? {};

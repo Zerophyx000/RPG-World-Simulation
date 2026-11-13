@@ -9,6 +9,7 @@ import { pronouns } from './citizens.js';
 import { learnPlace, placeLabel, findPath, routeHint, servicesText, knows } from './places.js';
 import { nowPhrase } from './time.js';
 import { CRAWL_FACTOR } from '../body/content.js';
+import { startTreatment, finishTreatment, startExamine, finishExamine as finishExaminePerson, refuseTreatment, acceptHelp, startCarry, putDownPerson, dropCarried, carryAlong, carryArrive, washClothes } from '../body/treat.js';
 import { ref } from '../memory/index.js';
 import { endOfDay, revisePlan, planActive } from '../agents/plan.js';
 import {
@@ -31,6 +32,13 @@ export function applyAction(world, c, call) {
     case 'travel_to': return travelTo(world, c, call);
     case 'crawl_to': return crawlTo(world, c, call);   // step 7B
     case 'gesture': return gesture(world, c, call);    // step 7B (mute)
+    case 'treat': return startTreatment(world, c, call, { stale, logAction });
+    case 'examine_person': return startExamine(world, c, call, { stale, logAction });
+    case 'refuse_treatment': return refuseTreatment(world, c, call, { stale, logAction });
+    case 'accept_help': return acceptHelp(world, c, call, { stale, logAction });
+    case 'carry_person': return startCarry(world, c, call, { stale, logAction });
+    case 'put_down_person': return putDownPerson(world, c, call, { stale, logAction });
+    case 'wash_clothes': return washClothes(world, c, call, { stale, logAction });
     case 'say': return say(world, c, call);
     case 'tell_about_place': return tellAboutPlace(world, c, call);
     case 'do': return doAction(world, c, call);
@@ -132,7 +140,9 @@ function startLeg(world, c, toId, trip) {
   const room = world.rooms.get(c.location);
   const exit = exitTo(room, toId);
   const dest = world.rooms.get(toId);
-  const minutes = exit.travelMinutes * (trip?.slow ?? 1); // step 7B: crawling takes longer
+  const carrying = Boolean(c.carryingPerson);
+  const minutes = exit.travelMinutes * (trip?.slow ?? 1) * (carrying ? 2 : 1); // step 7B: crawling and carrying take longer
+  if (carrying) carryAlong(world, c, toId);
   world.body?.onMove(c, { crawl: Boolean(trip?.crawl) });
   if (c.conversationId) world.conversations.leave(c, { reason: 'moved' });
   world.objects.snapshotRoom(c, room.id); // the baseline for noticing changes next time
@@ -159,6 +169,10 @@ export function arrive(world, c) {
   const origin = world.rooms.get(d.from);
   c.location = dest.id;
   if (d.crawl && c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 2 * 6.5 * ((d.travelMinutes ?? 0) / 60)); // crawling tires three times as fast
+  if (c.carryingPerson) {
+    if (c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 6.5 * ((d.travelMinutes ?? 0) / 60)); // carrying someone doubles the effort
+    carryArrive(world, c);
+  }
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now); // being there teaches everything
   world.setActivity(c, { type: 'idle' });
   // Objects: diff what they see against the last time they were here ("fewer flour sacks than this morning").
@@ -450,6 +464,7 @@ function sleep(world, c, call) {
 
 /** Fall asleep (by choice, forced by exhaustion, or by the director). */
 export function startSleep(world, c, { quality = 'rough', untilRested = true, hours = null, bed = null, forced = false } = {}) {
+  if (c.carryingPerson) dropCarried(world, c, 'dropped');
   landIfWalking(world, c);
   if (c.conversationId) world.conversations.leave(c, { reason: 'left' });
   const until = world.now + (hours ? hours * 60 : SLEEP_SAFETY_CAP_MINUTES);
@@ -505,6 +520,7 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
 
 /** hp reached 0 (non-lethal): unconscious until someone feeds them or the director revives them. */
 export function collapse(world, c, { reason = 'hp' } = {}) {
+  if (c.carryingPerson) dropCarried(world, c, 'dropped');
   world.cancelThink(c);
   landIfWalking(world, c);
   if (c.conversationId) world.conversations.leave(c, { reason: 'left' });
@@ -692,6 +708,8 @@ export function resolveTimers(world, now) {
       // step 5: object activities finish in their own modules
       if (a.detail?.kind === 'examine') { finishExamine(world, c, a); continue; }
       if (a.detail?.kind === 'search') { finishSearch(world, c, a); continue; }
+      if (a.detail?.kind === 'treat') { finishTreatment(world, c, a); continue; }
+      if (a.detail?.kind === 'examine_person') { finishExaminePerson(world, c, a); continue; }
       if (a.detail?.kind === 'use') { finishUse(world, c, a.detail.token, null); continue; }
       if (a.detail?.kind === 'conceal') { finishConceal(world, c, a.detail.token, null); continue; }
       if (a.detail?.kind === 'eat') {

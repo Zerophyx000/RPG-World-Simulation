@@ -253,11 +253,15 @@ function blindWhoIsHere(world, c, others) {
   });
 }
 
+const mem = (world, c, id) => world.memory.nameFor(c, id);
+
 function carryingBlock(world, c) {
   const O = world.objects;
   const items = O.carriedBy(c.id);
   const wearing = wearingLine(world, c); // step 7B: only when something worn is damaged or stained
   const hands = O.handsOf(c.id);
+  if (c.carryingPerson) return `You are carrying ${mem(world, c, c.carryingPerson)}. Both your hands are taken up.${wearing ? `
+${wearing}` : ''}`;
   if (!items.length) return `${hands === 0 ? "You can't use your hands." : hands === 1 ? 'You have one hand free.' : 'Nothing. Your hands are free.'}${wearing ? `\n${wearing}` : ''}`;
   const lines = items.map((o) => `- ${O.textFor(c, o)} [${O.alias(o)}]`);
   if (O.freeSlots(c.id) <= 0) lines.push('Your hands are full.');

@@ -1,0 +1,41 @@
+{
+  "_doc": "Step 7B: supplies live at dedicated places and are restocked by code: an existing object is reset to its refill state on a timer (nothing is created). announce: told to people in the room.",
+  "supplies": [
+    {
+      "objectId": "lena_bandages_1",
+      "refill": "full",
+      "everyGameHours": 24,
+      "announce": "Lena's linen chest has clean strips again."
+    },
+    {
+      "objectId": "lena_bandages_2",
+      "refill": "full",
+      "everyGameHours": 24
+    },
+    {
+      "objectId": "lena_herbs_1",
+      "refill": "full",
+      "everyGameHours": 24
+    },
+    {
+      "objectId": "lena_herbs_2",
+      "refill": "full",
+      "everyGameHours": 24
+    },
+    {
+      "objectId": "lena_needle",
+      "refill": "sound",
+      "everyGameHours": 24
+    },
+    {
+      "objectId": "lena_spirits",
+      "refill": "full",
+      "everyGameHours": 48
+    },
+    {
+      "objectId": "tavern_spirits",
+      "refill": "full",
+      "everyGameHours": 72
+    }
+  ]
+}

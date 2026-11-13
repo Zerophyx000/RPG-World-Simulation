@@ -1,0 +1,28 @@
+{
+  "_doc": "Step 7B treatment methods. fit[type] = how well the method fits a condition type (0 = no medical effect: 'it does nothing'). needs: supply = an object tag (bandage, spirits, needle, herbs, splint, blade, cord) in hand or here; water / fire = a room source; garment = a worn or carried garment better than rags; hands = working hands needed (1 or 2). steps = state steps the supply loses. minutes = how long it takes (stitch: per cm). selfOk: can a person do it to themselves. quality = the base supply quality (improvised 0.6). Nothing here restores sight, hearing, organs, the spine or lost parts: that is for future RPG sources.",
+  "waterRooms": ["well"],
+  "waterTags": ["water"],
+  "fireStates": { "hearth": ["lit", "smouldering"], "forge": ["lit", "roaring"], "oven": ["hot"], "candle": [] },
+  "lightStates": { "lantern": ["lit"], "candle": ["lit"], "hearth": ["lit"], "forge": ["lit", "roaring"], "oven": ["hot"] },
+  "methods": {
+    "apply_pressure": { "label": "press on it", "verb": "press on", "improvised": true, "minutes": 1, "fit": { "cut": 1, "puncture": 1, "burn": 0.2, "fracture": 0.6, "severed": 0.6 }, "needs": { "hands": 1 }, "selfOk": true, "external": true,
+      "doc": "while held: capillary/venous x0.3, clotting x2; minor arterial x0.5; major arterial x0.7. The presser is busy with that hand. No effect on internal bleeding." },
+    "wrap_with_cloth": { "label": "wrap it with cloth", "verb": "wrap", "improvised": true, "minutes": 3, "fit": { "cut": 0.8, "puncture": 0.8, "burn": 0.7, "fracture": 0.2, "severed": 0.5 }, "needs": { "garment": true, "hands": 1 }, "selfOk": true, "external": true, "maxBurn": 4, "quality": 0.6 },
+    "keep_still": { "label": "keep still and rest", "verb": "rest", "improvised": true, "minutes": 1, "fit": { "bruise": 1, "fracture": 0.8, "dislocation": 0.8, "concussion": 1, "cut": 0.5, "crush": 0.7 }, "needs": {}, "selfOk": true, "restMinutes": 180 },
+    "tourniquet": { "label": "tie a tourniquet", "verb": "tie a tourniquet on", "improvised": true, "minutes": 2, "fit": { "cut": 1, "puncture": 1, "severed": 1, "fracture": 0.5, "burn": 0.1 }, "needs": { "garmentOrCord": true, "hands": 2 }, "selfOk": true, "limbOnly": true, "quality": 0.95 },
+    "rinse": { "label": "rinse it with water", "verb": "rinse", "minutes": 3, "fit": { "cut": 1, "puncture": 0.9, "burn": 1, "severed": 0.6 }, "needs": { "water": true, "hands": 1 }, "selfOk": true, "external": true },
+    "clean_with_spirits": { "label": "clean it with spirits", "verb": "clean", "minutes": 3, "fit": { "cut": 1, "puncture": 1, "burn": 0.8, "severed": 0.7 }, "needs": { "supply": "spirits", "hands": 1 }, "steps": 1, "selfOk": true, "external": true },
+    "bandage": { "label": "bandage it", "verb": "bandage", "minutes": 6, "fit": { "cut": 1, "puncture": 1, "burn": 0.9, "fracture": 0.4, "severed": 0.6 }, "needs": { "supply": "bandage", "hands": 1 }, "steps": 1, "selfOk": true, "external": true, "quality": 1.0 },
+    "pack_wound": { "label": "pack the wound", "verb": "pack the wound in", "minutes": 8, "fit": { "cut": 1, "puncture": 1, "severed": 0.7 }, "needs": { "supplyOrGarment": "bandage", "hands": 2 }, "steps": 2, "selfOk": true, "external": true, "quality": 1.0, "improvisedQuality": 0.6, "deepOnly": true },
+    "splint": { "label": "splint it", "verb": "splint", "minutes": 8, "fit": { "fracture": 1, "dislocation": 0.4 }, "needs": { "supply": "splint", "hands": 2 }, "selfOk": false, "quality": 1.0 },
+    "set_bone": { "label": "set the bone", "verb": "set", "minutes": 6, "fit": { "fracture": 1, "dislocation": 1 }, "needs": { "hands": 2 }, "selfOk": false, "quality": 0.85, "twoHanded": true },
+    "stitch": { "label": "stitch it closed", "verb": "stitch", "minutesPerCm": 2, "minMinutes": 6, "fit": { "cut": 1, "puncture": 0.8 }, "needs": { "supply": "needle", "hands": 2 }, "selfOk": true, "external": true, "quality": 1.0, "twoHanded": true, "notArterial": true },
+    "cauterize": { "label": "cauterize it", "verb": "cauterize", "minutes": 4, "fit": { "cut": 1, "puncture": 0.9, "severed": 1, "burn": 0 }, "needs": { "fire": true, "hands": 1 }, "selfOk": true, "external": true, "maxCm": 8 },
+    "herbal_remedy": { "label": "give herbs", "verb": "treat with herbs", "minutes": 8, "fit": { "infection": 1, "fever": 1, "chill": 1, "cut": 0.3, "burn": 0.4, "bruise": 0.3, "puncture": 0.3 }, "needs": { "supply": "herbs", "hands": 1 }, "steps": 1, "selfOk": true, "quality": 1.0 },
+    "amputate": { "label": "amputate it", "verb": "amputate", "minutes": 12, "fit": { "infection": 1, "crush": 0.8, "fracture": 0.4, "burn": 0.6, "severed": 0.5 }, "needs": { "supply": "blade", "hands": 2 }, "selfOk": false, "limbOnly": true, "twoHanded": true, "quality": 0.8 }
+  },
+  "qualityWords": [[1.15, "excellent"], [0.85, "good"], [0.0, "poor"]],
+  "consent": { "windowMinutes": 5 },
+  "carry": { "timeFactor": 2, "fatigueFactor": 2 },
+  "examine": { "minutes": 5, "baseChance": 0.7, "perDifficulty": 0.08, "min": 0.02, "max": 0.7 }
+}

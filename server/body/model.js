@@ -74,7 +74,9 @@ export function computeBody(content, state) {
   for (const c of conds) {
     const def = content.typeDef(c.type);
     if (!def) continue;
-    let p = (def.painPerSev ?? 0) * c.severity + (c.flags?.painBoost && c.flags.painBoost > (state.now ?? 0) ? 1 : 0);
+    const pb = c.flags?.painBoost;
+    const boost = pb && typeof pb === 'object' ? ((pb.until ?? 0) > (state.now ?? 0) ? pb.amount ?? 1 : 0) : pb && pb > (state.now ?? 0) ? 1 : 0;
+    let p = (def.painPerSev ?? 0) * c.severity + boost;
     if (c.flags?.bandaged) p -= 0.5;
     if (aids.sling && content.limbOf(c.partId) === 'arm') p -= 1;
     if (aids.eyePatch && c.type === 'eye_damage') p -= 1;
