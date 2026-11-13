@@ -6,6 +6,7 @@ import path from 'node:path';
 import { config } from './config.js';
 import { listEvents, getEvent, listConversations, getConversation, timeline, interactions, pairLines, usage, memoriesOf, consolidationsOf, beliefs } from './readmodels.js';
 import { loadDirectorPresets } from './world/scenarios.js';
+import { testDayRoutes } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -38,6 +39,7 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('object', (o) => broadcast('object', o));
   world.bus.on('group', (g) => broadcast('group', g));
   world.bus.on('emotion_room', (r) => broadcast('emotion_room', r));
+
   const qs = (req) => new URL(req.url, 'http://x').searchParams;
   const num = (v) => (v == null || v === '' ? null : Number(v));
   const found = (v) => {
@@ -91,6 +93,9 @@ export function createServer(world, { observer = null } = {}) {
     ['POST', /^\/api\/director\/revive$/, (_req, body) => world.revive({ citizenId: body.citizenId })],
 
     ['GET', /^\/api\/director\/scenarios$/, () => world.scenarios()],
+
+    // ---- Test days (step A8): scripted director days, see world/testdays.js ----
+    ...testDayRoutes(world),
 
     // ---- Memory & relationships (director tools) ----
     ['POST', /^\/api\/director\/memory$/, (_req, body) => world.directorMemory(body)],
