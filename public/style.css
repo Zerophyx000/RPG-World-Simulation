@@ -546,3 +546,10 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .emo-bump { stroke: #121418; stroke-width: 0.6; }
 .emo-sliders label { display: grid; grid-template-columns: 70px 1fr 34px; gap: 6px; align-items: center; font-size: 12.5px; }
 .appr-log { max-height: 260px; overflow: auto; }
+
+/* ---------- step A6: full reasoning, cut-off rates ---------- */
+.warn-red { color: var(--bad); }
+.muted-note { display: block; margin-top: 2px; font-size: 10.5px; color: var(--muted); }
+#u-cutoff-note p { margin: 2px 0 0; }
+
+

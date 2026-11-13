@@ -3,6 +3,7 @@
 import { store, subscribe, select, setFilter } from '../store.js';
 import { esc, ICONS, activityLabel, roomName, needBadges } from '../util.js';
 import { colorOf } from '../colors.js';
+import { trimmedNote } from './inspector.js';
 import { ringStyle, ringTitle, emoIcons } from './emotions-ui.js';
 
 let root = null;
@@ -63,6 +64,7 @@ function cardHtml(c) {
     <div class="r-act"><span>${ICONS[a.type] ?? '·'}</span> <span class="r-act-label" data-countdown="${esc(c.id)}">${esc(activityLabel(c))}</span></div>
     ${planLine(c)}
     <div class="r-thought">${c.lastInnerThought ? esc(c.lastInnerThought) : '<span class="dim">no thought yet</span>'}</div>
+    ${c.lastInnerThought ? trimmedNote(c.lastInnerThought) : ''}
   </div>`;
 }
 
