@@ -508,11 +508,24 @@ export class Objects {
     return `the ${o?.data?.short ?? this.type(o)?.name ?? 'thing'}`;
   }
 
-  placementPhrase(o) {
+  /**
+   * step A4: the anchor of a placement as this viewer reads it. Two flour sacks side by side are not
+   * "beside the flour sack" but "beside the other flour sack".
+   */
+  shortFor(viewer, o, roomId = null) {
+    const peers = this.#sameTypePeers(viewer, o, roomId);
+    if (!peers.length) return this.short(o);
+    return `the other ${o.data?.short ?? this.type(o)?.name ?? 'thing'}`;
+  }
+
+  /** "by the oven"; for a viewer aware of a same-type anchor, "by the other flour sack" (step A4). */
+  placementPhrase(o, viewer = null) {
     const p = o.placement ?? {};
     if (!p.of || !RELATION_WORD[p.relation]) return '';
     const anchor = this.byId.get(p.of);
-    return anchor ? `${RELATION_WORD[p.relation]} ${this.short(anchor)}` : '';
+    if (!anchor) return '';
+    if (viewer && anchor.typeId === o.typeId) return `${RELATION_WORD[p.relation]} ${this.shortFor(viewer, anchor)}`;
+    return `${RELATION_WORD[p.relation]} ${this.short(anchor)}`;
   }
 
   /** Ownership as this viewer knows it: "yours", "Greta's" or nothing. */
@@ -527,7 +540,7 @@ export class Objects {
   /** What this viewer calls the object in a sentence: "a full flour sack (Greta's)". */
   textFor(viewer, o, { withPlace = false } = {}) {
     const own = viewer ? this.ownerTag(viewer, o) : '';
-    const place = withPlace ? this.placementPhrase(o) : '';
+    const place = withPlace ? this.placementPhrase(o, viewer) : '';
     return `${this.surfaceText(o)}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}`;
   }
 
@@ -608,7 +621,7 @@ export class Objects {
     const { listed, overflow, kind } = this.perceiveRoom(c);
     const groups = new Map();
     for (const it of listed) {
-      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o)}|${it.o.typeId}`;
+      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o, c)}|${it.o.typeId}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(it);
     }
@@ -616,7 +629,8 @@ export class Objects {
     for (const list of groups.values()) {
       const it = list[0];
       const own = this.ownerTag(c, it.o);
-      const place = this.placementPhrase(it.o);
+      const place = this.placementPhrase(it.o, c);
+      // Identical things share a group (so the line is already unambiguous); otherwise keep the description.
       const what = list.length > 1 ? this.plural(it.o, list.length) : this.surfaceText(it.o);
       const ids = aliases ? ` [${list.map((x) => this.alias(x.o)).join(', ')}]` : '';
       lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${ids}`);
@@ -633,14 +647,60 @@ export class Objects {
     return `${word} of: ${s}`;
   }
 
+  // ---------- step A4: telling look-alikes apart ----------
+  /**
+   * Everything of the same type this viewer can see in the room now (step A4). Two flour sacks must never
+   * both read as plain "the flour sack".
+   */
+  #sameTypePeers(c, o, roomId = null) {
+    const here = roomId ?? o.roomId ?? (c?.location ?? null);
+    if (!here) return [];
+    return this.inRoom(here).filter((x) => x.id !== o.id && x.typeId === o.typeId && (!c || this.surfaceTier(x) !== 'hidden'));
+  }
+
+  /** "the full flour sack" / "the half-empty one": the type's own surface words for this state. */
+  stateName(o) {
+    const type = this.type(o);
+    if (!type || type.states.length < 2) return null;
+    const body = (s) => String(type.surface?.[s] ?? type.surface?.default ?? `a ${type.name}`)
+      .replace(/\{state\}/g, s).replace(/^(a|an) /i, '').split(',')[0].trim();
+    const own = body(o.state);
+    return own && own !== type.name ? own : null;          // a state the surface doesn't show says nothing
+  }
+
+  /**
+   * step A4: how this viewer names one object among several of the same kind in the room. A content name
+   * override wins and is used verbatim; otherwise a state word, then the placement, then the owner, then
+   * an ordinal by id. peers = the same-type objects perceived in the same room.
+   */
+  distinctName(viewer, o, peers = null, roomId = null) {
+    if (o.name || o.data?.short) return this.short(o);             // content override: as-is, no qualifiers
+    const same = peers ?? this.#sameTypePeers(viewer, o, roomId);
+    const base = this.short(o);
+    if (!same.length) return base;
+    const state = this.stateName(o);
+    const states = same.map((x) => this.stateName(x));
+    if (state && states.some((s) => s !== state)) return `the ${state}`;
+    const place = this.placementPhrase(o, viewer);
+    if (place && !same.some((x) => this.placementPhrase(x, viewer) === place)) return `${base} ${place}`;
+    const own = viewer ? this.ownerTag(viewer, o) : '';
+    if (own && own !== 'yours' && !same.some((x) => (viewer ? this.ownerTag(viewer, x) : '') === own)) return `${own} ${base.replace(/^the /, '')}`;
+    const order = [o, ...same].map((x) => x.id).sort();
+    const n = order.indexOf(o.id) + 1;
+    return n === 1 ? base : `the ${ORDINALS[n] ?? `#${n}`} ${base.replace(/^the /, '')}`;
+  }
+
   // ---------- knowledge ----------
   /** c saw where o is now (or that it is carried by someone). */
   learn(c, o, { touched = false, roomId = null, save = true } = {}) {
     if (!c) return;
     c.knownObjects ??= {};
     const prev = c.knownObjects[o.id];
+    // step A3: the anchor too, so "last you saw, you left it on the bakery counter" can be said later.
+    const anchor = o.placement?.of ? this.byId.get(o.placement.of) : null;
     c.knownObjects[o.id] = {
       lastSeenAt: this.world.now, roomId: o.roomId, holderId: o.holderId, placementSig: placementSig(o), state: o.state,
+      relation: anchor ? o.placement.relation : null, anchorId: anchor?.id ?? null,
       visible: !this.effectivelyHidden(o),
       ...(touched ? { touchedAt: this.world.now } : prev?.touchedAt != null ? { touchedAt: prev.touchedAt } : {}),
     };
@@ -680,6 +740,9 @@ export class Objects {
     const old = c.roomSnapshots?.[roomId] ?? null;
     const { items } = this.perceiveRoom(c, roomId);
     const now = new Map(items.map((it) => [it.o.id, it]));
+    const seen = [...now.values()].map((it) => it.o);
+    const peersOf = (o) => seen.filter((x) => x.id !== o.id && x.typeId === o.typeId); // step A4: what they can compare it with
+    const nameOf = (o) => this.distinctName(c, o, peersOf(o), roomId);                 // never two plain "the flour sack"
     const changes = [];
     const importanceOf = (o) => (o.ownerId === c.id ? 7 : c.knownObjects?.[o.id]?.touchedAt != null ? 5 : 3);
 
@@ -695,8 +758,8 @@ export class Objects {
           continue;
         }
         const [oldState, oldPlace] = splitSig(sig);
-        if (oldState !== o.state) changes.push({ o, kind: 'state', text: `${cap(this.short(o))} has changed: now ${this.surfaceText(o)}.`, importance: importanceOf(o) });
-        else if (oldPlace !== placementSig(o)) changes.push({ o, kind: 'moved', text: `${cap(this.short(o))} has been moved: it is now ${this.placementPhrase(o) || 'on the floor'}.`, importance: importanceOf(o) });
+        if (oldState !== o.state) changes.push({ o, kind: 'state', text: `${cap(nameOf(o))} has changed: now ${this.surfaceText(o)}.`, importance: importanceOf(o) });
+        else if (oldPlace !== placementSig(o)) changes.push({ o, kind: 'moved', text: `${cap(nameOf(o))} has been moved: it is now ${this.placementPhrase(o, c) || 'on the floor'}.`, importance: importanceOf(o) });
       }
       // Missing things, grouped by type: "fewer flour sacks by the oven" when some of the same kind remain.
       const byType = new Map();
@@ -729,16 +792,30 @@ export class Objects {
       if (o.ownerId !== c.id || o.data?.home !== roomId || now.has(o.id) || o.holderId === c.id || reported.has(o.id)) continue;
       const last = c.missingNoted[o.id];
       if (last != null && this.world.now - last < MISSING_RENOTICE_MINUTES) continue;
-      changes.push({ o, kind: 'missing', text: `Your ${o.data?.short ?? this.type(o)?.name ?? 'thing'} is not where it belongs.`, importance: 7 });
+      // step A3: when they saw it put somewhere else, it isn't an alarm but a reminder of where it is.
+      const k = c.knownObjects?.[o.id];
+      const kRoom = k?.roomId ?? null;
+      const elsewhere = Boolean(k) && (kRoom !== roomId || (k.holderId && k.holderId !== c.id));
+      const what = o.data?.short ?? this.type(o)?.name ?? 'thing';
+      if (elsewhere) {
+        const seen = k.holderId
+          ? `Last you saw, ${this.world.citizens.get(k.holderId)?.name ?? 'someone'} had it.`
+          : `Last you saw, you left it ${this.placementFromKnown(k) || `in ${this.world.rooms.get(kRoom)?.name ?? kRoom ?? 'another room'}`}.`;
+        changes.push({ o, kind: 'misplaced', text: `Your ${what} isn't here. ${seen}`, importance: 3, knownElsewhere: true });
+      } else {
+        changes.push({ o, kind: 'missing', text: `Your ${what} is not where it belongs.`, importance: 7 });
+      }
     }
-    for (const ch of changes) if (ch.kind === 'missing') for (const id of ch.ids ?? [ch.o.id]) c.missingNoted[id] = this.world.now;
+    for (const ch of changes) if (ch.kind === 'missing' || ch.kind === 'misplaced') for (const id of ch.ids ?? [ch.o.id]) c.missingNoted[id] = this.world.now;
     for (const id of Object.keys(c.missingNoted)) if (now.has(id)) delete c.missingNoted[id];
 
     this.snapshotRoom(c, roomId);
     if (!changes.length) return null;
+    const ids = [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))];
+    const kinds = changes.map((ch) => ch.kind);
     this.world.logEvent('notice', {
       actorId: c.id, location: roomId, importance: Math.max(...changes.map((ch) => ch.importance)),
-      text: changes.map((ch) => ch.text).join(' '), objectIds: [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))],
+      text: changes.map((ch) => ch.text).join(' '), objectIds: ids, kinds,
     });
     const since = old ? ` from when you were last here (${relativeTime(this.world.now - old.at)})` : '';
     return {
@@ -746,8 +823,20 @@ export class Objects {
       text: `Something's different${since}: ${changes.map((ch) => ch.text).join(' ')}`,
       importance: Math.max(...changes.map((ch) => ch.importance)),
       roomId,
-      data: { personal: true, objectIds: [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))], changes: changes.map((ch) => ch.kind) },
+      // step A3: only real "missing" changes may anger or raise suspicion; a thing they left elsewhere is no mystery.
+      data: {
+        personal: true, objectIds: ids,
+        changes: kinds.filter((k) => k !== 'misplaced'),
+        ...(kinds.includes('misplaced') && !kinds.includes('missing') ? { knownElsewhere: true } : {}),
+      },
     };
+  }
+
+  /** step A3: "on the bakery counter" from what the citizen last saw (knownObjects entry). */
+  placementFromKnown(k) {
+    const word = { on: 'on', in: 'in', behind: 'behind', under: 'under', beside: 'by' }[k?.relation] ?? null;
+    const anchor = k?.anchorId ? this.byId.get(k.anchorId) : null;
+    return anchor && word ? `${word} ${this.short(anchor)}` : '';
   }
 
   // ---------- views for the API / UI ----------
@@ -860,6 +949,7 @@ export function hash01(s) {
 }
 
 const NUMBER_WORDS = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
+const ORDINALS = { 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth', 6: 'sixth', 7: 'seventh', 8: 'eighth' };
 
 function article(s) {
   const t = String(s).trim();
