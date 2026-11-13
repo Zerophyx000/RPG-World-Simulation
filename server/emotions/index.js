@@ -253,7 +253,7 @@ export class Emotions {
       // low mood: bad feelings linger (up to 1.5×), good ones fade faster (up to 1.5×); the reverse when high
       const stretch = 1 + 0.5 * Math.abs(m);
       const mood = (negative ? m > 0 : m < 0) ? stretch : 1 / stretch;
-      const halfLife = def.halfLifeHours * 60 * personality * (m === 0 ? 1 : mood);
+      const halfLife = (e.data?.halfLifeHours ?? def.halfLifeHours) * 60 * personality * (m === 0 ? 1 : mood); // step 7B: grief lingers for days
       e.intensity *= 0.5 ** (elapsed / halfLife);
       if (e.intensity < MIN_INTENSITY) dropped = true;
     }

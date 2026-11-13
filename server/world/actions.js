@@ -475,10 +475,13 @@ export function collapse(world, c, { reason = 'hp' } = {}) {
   world.logEvent('collapse', { actorId: c.id, location: c.location, reason, hp: Math.round(c.needs.hp), hunger: Math.round(c.needs.hunger) });
 }
 
-export function revive(world, c, { by = null, text = null } = {}) {
-  if (c.activity.type !== 'collapsed') return false;
-  c.needs.hp = Math.max(c.needs.hp, Math.round((c.needs.hpMax ?? 100) * 0.3));
-  c.needs.hunger = Math.min(c.needs.hunger, 60);
+export function revive(world, c, { by = null, text = null, body = false } = {}) {
+  if (c.activity.type !== 'collapsed' || !c.alive) return false;
+  if (!body) {
+    // step 7B: the director / a meal brings them round: vitality at least 30 (conditions stay)
+    if (c.body) c.body.vitality = Math.max(c.body.vitality, 30);
+    if (c.needs) c.needs.hunger = Math.min(c.needs.hunger, 60);
+  }
   world.setActivity(c, { type: 'idle' });
   world.perceive([c.id], { kind: 'body', text: text ?? 'You come to, weak and dizzy.', importance: 7, roomId: c.location });
   world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
@@ -488,19 +491,9 @@ export function revive(world, c, { by = null, text = null } = {}) {
   return true;
 }
 
-/** Death (only when content/needs.json says lethal: true). STEP 10 builds on this. */
-export function die(world, c, { reason = 'hp' } = {}) {
-  world.cancelThink(c);
-  landIfWalking(world, c);
-  if (c.conversationId) world.conversations.leave(c, { reason: 'left' });
-  world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
-    kind: 'action', text: `${ref(c)} stops breathing.`, importance: 9, sourceId: c.id, roomId: c.location, data: { interrupt: true },
-  });
-  c.alive = false;
-  c.diedAt = world.now;
-  world.setActivity(c, { type: 'collapsed', detail: { reason, dead: true } });
-  world.saveCitizen(c);
-  world.logEvent('death', { actorId: c.id, location: c.location, reason });
+/** Death (step 7B: see body/death.js: corpse, drops, witnesses, grief). Kept as the one entry point other modules call. */
+export function die(world, c, { reason = 'injury', cause = null } = {}) {
+  return world.body.die(c, { reason, cause: cause ?? undefined });
 }
 
 function feed(world, c, call) {
@@ -509,9 +502,10 @@ function feed(world, c, call) {
   const target = findPerson(world, c, citizensIn(world.citizens, c.location, { exceptId: c.id }), call.arguments.who);
   if (!food) return stale(world, c, call, "There's nothing here you could feed anyone with.");
   if (!target || target.activity.type !== 'collapsed') return stale(world, c, call, 'You kneel down, but there is nobody here who needs feeding.');
+  if (target.activity.detail?.reason === 'unconscious') return stale(world, c, call, `You kneel by ${ref(target)}, but food won't bring ${pronouns(target).obj} round: ${pronouns(target).subj} ${pronouns(target).subj === 'they' ? 'are' : 'is'} out cold from ${pronouns(target).poss ?? 'their'} wounds.`);
   logAction(world, c, call, { targetId: target.id });
   target.needs.hunger = Math.max(0, target.needs.hunger - food.hungerRelief);
-  target.needs.hp = Math.max(target.needs.hp, Math.round((target.needs.hpMax ?? 100) * 0.2));
+  if (target.body) target.body.vitality = Math.max(target.body.vitality, 20);
   world.setActivity(target, { type: 'idle' });
   world.perceive([target.id], {
     kind: 'body', text: `You come to. ${ref(c)} is kneeling beside you, feeding you ${food.description}.`, importance: 8, sourceId: c.id, roomId: room.id,

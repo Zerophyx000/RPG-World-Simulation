@@ -16,6 +16,7 @@ import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, d
 import { Conversations } from './world/conversations.js';
 import { upsertRooms, seedCitizensIfEmpty, wipeCitizens, loadWorldText, activeScenario, loadScenario, listScenarios } from './world/scenarios.js';
 import { Needs, NEED_KINDS, UNAWARE } from './world/needs.js';
+import { Body } from './body/index.js';
 import { initialKnownPlaces, learnPlace } from './world/places.js';
 import { Quiet } from './world/quiet.js';
 import { directorEvent, expireDirectorState, EFFECT_TYPES } from './world/director.js';
@@ -69,6 +70,7 @@ export class World {
     this.conversations = new Conversations(this);
     this.scheduler = new Scheduler(this);
     this.needs = new Needs();
+    this.body = new Body(this);           // step 7B: parts, conditions, blood, healing, death (the one writer)
     this.quiet = new Quiet(this);
     this.rooms = new Map();
     this.citizens = new Map();
@@ -111,6 +113,7 @@ export class World {
     this.memory.load();
     if (seeded) seedFromScenario(this, seeded.inputs);
     this.objects.load(this.scenario); // types from content, new content instances seeded, invariant checked
+    this.body.load();                 // step 7B: body state for everyone (HP → vitality), garments seeded once
 
     for (const c of this.citizens.values()) {
       let changed = false;
@@ -160,6 +163,7 @@ export class World {
 
   // ---------- tick ----------
   #tick(elapsed, now) {
+    this.body.tick(elapsed, now);     // step 7B: bleeding, clotting, vitality, healing (before the needs levels read them)
     this.#updateBodies(elapsed, now);
     if (now - this.lastCoPresence >= CO_PRESENCE_EVERY) {
       this.lastCoPresence = now;
@@ -242,6 +246,7 @@ export class World {
 
   #flushNeeds() {
     this.lastFlush = Date.now();
+    this.body.flush();
     for (const id of this.dirty) {
       const c = this.citizens.get(id);
       if (c) this.saveCitizen(c);
@@ -562,7 +567,7 @@ export class World {
     const c = this.citizens.get(citizenId);
     if (!c) throw httpError(404, `unknown citizen "${citizenId}"`);
     if (c.activity.type !== 'collapsed') throw httpError(400, `${c.name} is not collapsed`);
-    return this.directorEvent({ effects: [{ type: 'revive', target: citizenId }] });
+    return this.body.reviveCitizen(citizenId); // step 7B: vitality at least 30, conditions stay
   }
 
   /** Director: remove one room effect (or all with effectId = null). */
@@ -655,6 +660,7 @@ export class World {
     }
     this.store.insert(c);
     this.citizens.set(c.id, c);
+    this.body.ensureState(c); // step 7B: body state and garments for newcomers too
     this.saveCitizen(c);
     this.groups.seed(this.scenario); // content memberships for someone who appears later
     this.perceive(this.citizensIn(c.location, { exceptId: c.id }).map((o) => o.id), {

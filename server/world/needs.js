@@ -80,12 +80,9 @@ export class Needs {
     return 0;
   }
 
-  hpRate(c) {
-    const n = c.needs;
-    if (n.hunger >= this.starvingAt) return -(this.cfg.hp?.starvationDamagePerHour ?? 6);
-    const asleep = c.activity?.type === 'sleeping' || c.activity?.type === 'collapsed';
-    const regen = this.cfg.hp?.regenPerHour ?? {};
-    return asleep ? regen.asleep ?? 3 : regen.awake ?? 1;
+  /** step 7B: vitality (needs.hp mirrors it) is owned by world.body: regeneration, starvation and wounds live there. */
+  hpRate(_c) {
+    return 0;
   }
 
   /**
@@ -102,11 +99,10 @@ export class Needs {
     if ((key === 'asleep' || key === 'asleepRough') && fRate >= 0) fRate = Math.min(-0.5, this.rate('fatigue', 'asleep'));
     n.hunger = clamp(n.hunger + (this.rate('hunger', key) * elapsed) / 60, 0, 100);
     n.fatigue = clamp(n.fatigue + (fRate * elapsed) / 60, 0, 100);
-    n.hp = clamp(n.hp + (this.hpRate(c) * elapsed) / 60, 0, n.hpMax ?? 100);
     const a = c.activity?.type;
     return {
       forcedSleep: n.fatigue >= 100 && a !== 'sleeping' && a !== 'collapsed',
-      hpZero: n.hp <= 0 && a !== 'collapsed',
+      hpZero: false, // death and collapse come from the body (blood, vitality, vital parts), see body/index.js
       rested: a === 'sleeping' && c.activity.detail?.untilRested && n.fatigue <= 5,
     };
   }
@@ -229,7 +225,7 @@ export class Needs {
     const idx = Object.fromEntries(NEED_KINDS.map((k) => [k, this.levelIndex(k, n)]));
     const hungerWords = [null, 'a little peckish', 'hungry', 'starving', 'ravenous', 'faint with hunger'];
     const fatigueWords = [null, 'a little sleepy', 'tired', 'exhausted', 'barely able to stay awake'];
-    const hpWords = ['unhurt', 'a little hurt', 'badly hurt', 'critically hurt'];
+    const hpWords = ['unhurt', 'a little hurt', 'weak and badly hurt', 'fading', "at death's door"];
     const word = (k) => ({ hunger: hungerWords, fatigue: fatigueWords, hp: hpWords })[k][idx[k]] ?? this.levelName(k, idx[k]);
     const feel = ['hunger', 'fatigue'].filter((k) => idx[k] > 0).map(word);
     const parts = [];

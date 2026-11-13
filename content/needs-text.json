@@ -48,18 +48,20 @@
   },
   "hp": {
     "hurting": [
-      "Something aches. You're not quite whole.",
-      "You notice a dull pain that wasn't there before."
+      "Something aches. You are not quite whole.",
+      "You notice a dull pain that was not there before."
     ],
-    "badly hurt": [
-      "You're badly hurt. Every movement hurts.",
-      "Pain throbs through you. You need rest or care.",
-      "You're hurt worse than you'd like to admit."
+    "weak": [
+      "You are weak and hurt, and every movement costs you.",
+      "Pain throbs through you. You need rest or care."
     ],
-    "critical": [
-      "You're in a terrible state. You need help, or you won't make it.",
-      "Your strength is draining away. You need help, now.",
-      "Everything hurts and the edges of the world are going grey."
+    "fading": [
+      "You're fading. Your strength is draining away; you need help, now.",
+      "The edges of the world are going grey."
+    ],
+    "dying": [
+      "You're dying. Whatever you do next may be the last thing you do.",
+      "Everything is far away and cold."
     ]
   }
 }

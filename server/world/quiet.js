@@ -27,6 +27,7 @@ export class Quiet {
   isQuiet() {
     const w = this.world;
     if (w.llm.activeFor('decide') > 0) return false;
+    if (w.body?.anyBleedingOver(5)) return false; // step 7B: nobody fast-forwards past a bleed
     let anyCitizen = false;
     for (const c of w.citizens.values()) {
       if (!c.alive || c.kind !== 'citizen') continue;
@@ -69,6 +70,7 @@ export class Quiet {
       if (h != null) consider(now + h);
       for (const m of c.marks ?? []) consider(m.until);
     }
+    for (const c of w.citizens.values()) if (c.alive && c.body?.critical) consider(c.body.critical.until);
     for (const conv of w.conversations.list()) consider(conv.lastLineAt + 30);
     for (const r of w.rooms.values()) {
       for (const e of activeEffects(r, now)) consider(e.until);

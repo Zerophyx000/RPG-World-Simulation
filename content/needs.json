@@ -21,14 +21,15 @@
     ]
   },
   "hp": {
-    "regenPerHour": { "awake": 1.0, "asleep": 3.0 },
+    "_doc": "Step 7B: 'hp' is vitality, mirrored from world.body (c.body.vitality). These levels are its reminders; the numbers that move it live in server/body.",
     "starvationDamagePerHour": 6.0,
     "levels": [
-      { "minPct": 100, "name": "healthy",    "importance": 0, "remindEvery": null },
-      { "minPct": 75,  "name": "hurting",    "importance": 4, "remindEvery": null },
-      { "minPct": 50,  "name": "badly hurt", "importance": 6, "remindEvery": 60 },
-      { "minPct": 25,  "name": "critical",   "importance": 9, "remindEvery": 20 }
+      { "minPct": 90, "name": "healthy", "importance": 0, "remindEvery": null },
+      { "minPct": 65, "name": "hurting", "importance": 4, "remindEvery": null },
+      { "minPct": 40, "name": "weak",    "importance": 6, "remindEvery": 60 },
+      { "minPct": 15, "name": "fading",  "importance": 8, "remindEvery": 20 },
+      { "minPct": 0,  "name": "dying",   "importance": 9, "remindEvery": 10 }
     ]
   },
-  "lethal": false
+  "lethal": true
 }

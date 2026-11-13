@@ -38,6 +38,8 @@ export function defaultPersona() {
     appearanceTags: [],   // step 5.5: visible cues from content/cues.json (hooded, armed, foreign…)
     secretGoals: [],      // step 5.5: private aims; only ever in their OWN prompt
     covets: [],           // step 6: tags / object types / roles they want (drives envy)
+    practiced: [],        // step 7B: provisional skills for accidents ("hot", "tool", "danger"); the RPG step replaces them
+    clothing: [],         // step 7B: optional garment types to seed (default: tunic, trousers or skirt, boots…)
   };
 }
 
@@ -58,6 +60,7 @@ function defaultData() {
     knownPlaces: null,      // { roomId: { services: [], source, learnedAt } }; null = never set (World fills it in)
     marks: [],              // visible changes to appearance from director effects: [{ id, text, until }]
     sleepBuffer: [],        // importance 4–6 stimuli perceived while asleep, told on waking
+    body: null,             // step 7B: { vitality, blood, parts, capacities, status, pain, regen, … } (world.body fills it in)
     // step 4: memory
     coreMemory: '',         // first person, ≤ ~250 words; rewritten at nightly consolidation
     onMyMind: [],           // [{ text, importance, gameTime, memoryId }], cleared at consolidation
@@ -106,7 +109,7 @@ export function normalizeCitizen(row) {
   const persona = { ...defaultPersona(), ...(raw.persona ?? {}) };
   persona.traits = { ...defaultPersona().traits, ...(persona.traits ?? {}) };
   persona.goals = Array.isArray(persona.goals) ? persona.goals.map(String) : [];
-  for (const k of ['appearanceTags', 'secretGoals', 'covets']) persona[k] = Array.isArray(persona[k]) ? persona[k].map(String) : [];
+  for (const k of ['appearanceTags', 'secretGoals', 'covets', 'practiced', 'clothing']) persona[k] = Array.isArray(persona[k]) ? persona[k].map(String) : [];
 
   const activity = { ...defaultData().activity, ...(d.activity ?? {}) };
   if (!ACTIVITY_TYPES.includes(activity.type)) activity.type = 'idle';
@@ -129,6 +132,7 @@ export function normalizeCitizen(row) {
     knownPlaces: d.knownPlaces && typeof d.knownPlaces === 'object' && !Array.isArray(d.knownPlaces) ? d.knownPlaces : null,
     marks: Array.isArray(d.marks) ? d.marks : [],
     sleepBuffer: Array.isArray(d.sleepBuffer) ? d.sleepBuffer : [],
+    body: d.body && typeof d.body === 'object' && !Array.isArray(d.body) ? d.body : null,
     onMyMind: Array.isArray(d.onMyMind) ? d.onMyMind : [],
     coreMemory: typeof d.coreMemory === 'string' ? d.coreMemory : '',
     carrying: Array.isArray(d.carrying) ? d.carrying : [],

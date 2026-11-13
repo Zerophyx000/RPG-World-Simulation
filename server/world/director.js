@@ -281,21 +281,30 @@ function applyToCitizen(world, c, e, now, minutes) {
   const n = c.needs;
   switch (e.type) {
     case 'damage': {
+      // step 7B: damage is a real hit on a body part, resolved by the damage API (a profile list, or one blunt hit)
       const amount = Math.max(0, Number(e.amount) || 0);
-      n.hp = Math.max(0, n.hp - amount);
-      world.logEvent('damage', { actorId: c.id, location: c.location, amount, hp: Math.round(n.hp) });
-      break; // hp 0 → collapse/death happens on the next needs tick
+      const cause = e.cause ?? 'a director event';
+      const hits = Array.isArray(e.profile) && e.profile.length ? e.profile : amount > 0 ? [{ damageType: e.damageType ?? 'blunt', part: e.part ?? 'random', amount }] : [];
+      for (const h of hits) world.body.applyProfileEntry(c, h, cause, null);
+      world.logEvent('damage', { actorId: c.id, location: c.location, amount, vitality: Math.round(c.body?.vitality ?? 0), blood: Math.round(c.body?.blood ?? 100) });
+      break;
     }
     case 'heal':
-      n.hp = Math.min(n.hpMax ?? 100, n.hp + Math.max(0, Number(e.amount) || 0));
+      // step 7B: external healing (director): reduces severities; vitality comes back with it
+      world.body.heal(c.id, { all: true, amount: Math.max(0, Number(e.amount) || 0) / 4, source: 'director' });
+      if (c.body) c.body.vitality = Math.min(100, c.body.vitality + Math.max(0, Number(e.amount) || 0));
+      world.body.afterChange(c);
       break;
     case 'needs': {
       for (const k of ['hunger', 'fatigue', 'hp']) {
         if (e[k] == null || e[k] === '') continue;
         const v = Number(e[k]);
         if (!Number.isFinite(v)) continue;
-        const max = k === 'hp' ? n.hpMax ?? 100 : 100;
-        n[k] = Math.min(max, Math.max(0, e.mode === 'add' ? n[k] + v : v));
+        if (k === 'hp') { // step 7B: "hp" is vitality
+          if (c.body) c.body.vitality = Math.min(100, Math.max(0, e.mode === 'add' ? c.body.vitality + v : v));
+          continue;
+        }
+        n[k] = Math.min(100, Math.max(0, e.mode === 'add' ? n[k] + v : v));
       }
       break; // levels update on the next tick and announce themselves normally
     }

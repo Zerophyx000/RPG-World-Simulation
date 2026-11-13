@@ -117,6 +117,21 @@ export function createServer(world, { observer = null } = {}) {
     // ---- Emotions (step 6) ----
     ['GET', /^\/api\/citizens\/([\w-]+)\/emotions$/, (_req, _body, [id]) => world.emotions.view(found(world.citizens.get(id)))],
     ['GET', /^\/api\/citizens\/([\w-]+)\/emotions\/history$/, (req, _body, [id]) => world.emotions.history(id, { from: num(qs(req).get('from')), to: num(qs(req).get('to')), limit: qs(req).get('limit') })],
+    // ---- Step 7B: body, injuries, death ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/body$/, (_req, _body, [id]) => world.body.view(found(world.citizens.get(id)).id)],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/conditions$/, (req, _body, [id]) => world.body.conditionsView(found(world.citizens.get(id)).id, { all: qs(req).get('all') === '1' })],
+    ['POST', /^\/api\/director\/injure$/, (_req, body) => {
+      const r = world.body.injure(body.citizenId, body);
+      return { conditions: r.conditions.map((x) => world.body.conditionView(x)), garments: r.garments };
+    }],
+    ['POST', /^\/api\/director\/heal$/, (_req, body) => world.body.heal(body.citizenId, { conditionId: body.conditionId ?? null, partId: body.partId ?? null, all: body.conditionId == null && !body.partId, amount: body.amount ?? 10, source: 'director', allowPermanent: false })],
+    ['POST', /^\/api\/director\/kill$/, (_req, body) => ({ ok: world.body.kill(body.citizenId, body.cause ?? 'the director') })],
+    ['POST', /^\/api\/director\/regen$/, (_req, body) => world.body.setRegen(body.citizenId, body.multiplier, { source: 'director', until: body.until ?? null })],
+    ['GET', /^\/api\/body\/rates$/, () => ({ ...config.body })],
+    ['POST', /^\/api\/director\/body-rates$/, (_req, body) => {
+      for (const k of ['accidentRate', 'illnessRate', 'healTimeScale', 'criticalGraceMinutes', 'criticalSlowdown']) if (body[k] != null && Number.isFinite(Number(body[k]))) config.body[k] = Number(body[k]);
+      return { ...config.body };
+    }],
     ['POST', /^\/api\/director\/emotion$/, (_req, body) => world.emotions.directorEmotion(body)],
     ['POST', /^\/api\/director\/mood$/, (_req, body) => world.emotions.directorMood(body)],
     ['GET', /^\/api\/emotions\/types$/, () => ({ types: world.emotions.types, contagion: world.emotions.contagionOn, paramEffects: world.emotions.paramEffects })],

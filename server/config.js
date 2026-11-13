@@ -129,6 +129,16 @@ export const config = {
     maxTokens: { full: num('LLM_MAX_TOKENS_FULL', 3000), light: num('LLM_MAX_TOKENS_LIGHT', 1000), none: num('LLM_MAX_TOKENS_NONE', 300) },
   },
 
+  // Step 7B: body, injuries, illness and death.
+  body: {
+    lethal: env('LETHAL', 'true') !== 'false',            // false: dying means permanent unconsciousness (debugging)
+    healTimeScale: num('HEAL_TIME_SCALE', 1.0),           // 1 = realistic; 0.1 = ten times faster
+    illnessRate: num('ILLNESS_RATE', 0.5),                // infections, fevers, chills
+    accidentRate: num('ACCIDENT_RATE', 1.0),
+    criticalGraceMinutes: num('CRITICAL_GRACE_MINUTES', 15), // 0 = fully realistic bleeding
+    criticalSlowdown: num('CRITICAL_SLOWDOWN', 1.0),      // < 1: the clock runs slower while a critical window is open
+  },
+
   // Token budget governor: output tokens per rolling real hour, per profile (0 = off).
   governor: {
     budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 500000),

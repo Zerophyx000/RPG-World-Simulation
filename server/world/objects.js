@@ -149,7 +149,7 @@ export class Objects {
     const state = d.state ?? type.states[0];
     if (!type.states.includes(state)) return fail(`state "${state}" is not one of ${type.states.join(', ')}`);
     const visibility = VISIBILITIES.includes(d.visibility) ? d.visibility : 'obvious';
-    let placement = holderId ? {} : normPlacement(d.placement);
+    let placement = holderId ? (d.placement?.relation === 'worn' ? { relation: 'worn', of: null } : {}) : normPlacement(d.placement);
     if (placement.of) {
       const anchor = this.byId.get(placement.of);
       const why = this.#anchorProblem({ id, roomId }, placement, anchor);
@@ -183,10 +183,10 @@ export class Objects {
   }
 
   /** Director / code: create an instance (origin 'director' or 'code'). */
-  create(def, { actorId = 'director', origin = 'director' } = {}) {
+  create(def, { actorId = 'director', origin = 'director', action = 'create' } = {}) {
     if (origin === 'citizen') throw httpError(400, 'citizens never create objects');
     const o = this.#fromDef(def, { strict: true, origin });
-    this.#insert(o, { actorId, action: 'create' });
+    this.#insert(o, { actorId, action });
     if (o.ownerId) this.learn(this.world.citizens.get(o.ownerId), o, { touched: false });
     this.#syncCarrying();
     this.#announce(o, { action: 'create', actorId, witnesses: [] });
@@ -246,9 +246,17 @@ export class Objects {
     return out;
   }
 
+  /** What they hold in their hands (worn garments and aids don't use hands). */
   carriedBy(citizenId) {
     const out = [];
-    for (const o of this.byId.values()) if (o.holderId === citizenId) out.push(o);
+    for (const o of this.byId.values()) if (o.holderId === citizenId && o.placement?.relation !== 'worn') out.push(o);
+    return out;
+  }
+
+  /** step 7B: what they wear (garments, splints, slings, a peg leg…). */
+  wornBy(citizenId) {
+    const out = [];
+    for (const o of this.byId.values()) if (o.holderId === citizenId && o.placement?.relation === 'worn') out.push(o);
     return out;
   }
 
@@ -311,12 +319,13 @@ export class Objects {
       if (!this.world.citizens.has(patch.holderId)) throw httpError(400, `unknown citizen "${patch.holderId}"`);
       next.holderId = patch.holderId;
       next.roomId = null;
-      next.placement = {};
+      next.placement = patch.placement?.relation === 'worn' ? { relation: 'worn', of: null } : {}; // step 7B: worn, not carried
     } else if (patch.roomId !== undefined && patch.roomId !== null) {
       if (!this.world.rooms.has(patch.roomId)) throw httpError(400, `unknown room "${patch.roomId}"`);
       next.roomId = patch.roomId;
       next.holderId = null;
       next.placement = normPlacement(patch.placement ?? { relation: 'floor' });
+      if (next.placement.relation === 'worn') next.placement = { relation: 'floor', of: null };
     } else if (patch.placement !== undefined) {
       if (!next.roomId) throw httpError(400, 'a carried object has no placement');
       next.placement = normPlacement(patch.placement);
@@ -345,7 +354,7 @@ export class Objects {
     if (next.roomId !== o.roomId && next.roomId) next.data.arrivedAt = this.world.now;
     next.updatedAt = this.world.now;
     assertLocation(next);
-    if (next.holderId && next.holderId !== o.holderId) {
+    if (next.holderId && next.placement?.relation !== 'worn' && (next.holderId !== o.holderId || o.placement?.relation === 'worn')) {
       const cap = SLOTS - this.slotsUsed(next.holderId);
       if ((type?.size ?? 1) > cap) throw httpError(400, `${this.world.citizens.get(next.holderId)?.name ?? next.holderId} has no free hands for that`);
       if (!type?.portable && actorId !== 'director') throw httpError(400, `${type?.name ?? 'that'} can't be carried`);
@@ -443,7 +452,7 @@ export class Objects {
 
   #syncCarrying() {
     const by = new Map();
-    for (const o of this.byId.values()) if (o.holderId) by.set(o.holderId, [...(by.get(o.holderId) ?? []), o.id]);
+    for (const o of this.byId.values()) if (o.holderId && o.placement?.relation !== 'worn') by.set(o.holderId, [...(by.get(o.holderId) ?? []), o.id]);
     for (const c of this.world.citizens.values()) {
       const list = by.get(c.id) ?? [];
       if (JSON.stringify(c.carrying ?? []) !== JSON.stringify(list)) {
@@ -899,6 +908,7 @@ export function loadTypes() {
       affordances: (raw.affordances ?? []).map(String), surface: raw.surface ?? {}, rules,
       concealable: Boolean(raw.concealable), container: Boolean(raw.container),
       tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [], // step 5.5: weapon | tool | valuable | holy … (perception only)
+      covers: Array.isArray(raw.covers) ? raw.covers.map(String) : [], // step 7B: the body parts a garment covers
     });
   }
   return map;
@@ -924,6 +934,7 @@ function placementFromSig(objects, sig) {
 
 export function normPlacement(p) {
   if (!p || typeof p !== 'object') return { relation: 'floor', of: null };
+  if (p.relation === 'worn') return { relation: 'worn', of: null };
   const relation = RELATIONS.includes(p.relation) ? p.relation : 'floor';
   return relation === 'floor' || !p.of ? { relation: 'floor', of: null } : { relation, of: String(p.of) };
 }

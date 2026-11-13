@@ -1,0 +1,853 @@
+{
+  "_doc": "Step 7B condition types. loss = share of the part's maxHealth lost per severity point (part health is DERIVED from active conditions, so healing a condition gives the health back). heal.base + heal.perSev * initialSeverity = game hours to full healing at HEAL_TIME_SCALE=1. naturalMax: rest and time only heal it while severity <= naturalMax (above that it needs outside help: treatment or a future RPG cure). healFloor: natural healing stops at this severity. requires: above this severity the condition does not heal at all unless the flags are present (anyOf / allOf). surface/feel: [[maxSeverity, text]] for onlookers / the patient; {part} is the part's name. destroyAt: severity at which the part counts as destroyed. sequelae roll when the condition resolves (type, chance, minSeverity, optional when: 'untreated' | 'poor' for badly set/untreated, parts: limb kinds). curableBy: tags of future cures that can remove the permanent result.",
+  "types": {
+    "bruise": {
+      "label": "bruise",
+      "painPerSev": 0.6,
+      "loss": 0.03,
+      "heal": {
+        "base": 24,
+        "perSev": 24
+      },
+      "naturalMax": 10,
+      "detect": 0,
+      "surface": [
+        [
+          3,
+          "a faint bruise on the {part}"
+        ],
+        [
+          6,
+          "a dark bruise on the {part}"
+        ],
+        [
+          10,
+          "a huge, livid bruise across the {part}"
+        ]
+      ],
+      "feel": [
+        [
+          3,
+          "Your {part} is tender."
+        ],
+        [
+          6,
+          "Your {part} aches deeply where it was struck."
+        ],
+        [
+          10,
+          "Your {part} throbs savagely."
+        ]
+      ]
+    },
+    "cut": {
+      "label": "cut",
+      "open": true,
+      "painPerSev": 0.75,
+      "loss": 0.04,
+      "heal": {
+        "base": 24,
+        "perSev": 60
+      },
+      "naturalMax": 10,
+      "detect": 0,
+      "requires": {
+        "above": 5,
+        "anyOf": [
+          "bandaged",
+          "stitched",
+          "cauterized",
+          "wrapped"
+        ]
+      },
+      "infection": {
+        "untreated": 0.05,
+        "cleaned": 0.02,
+        "bandaged": 0.012,
+        "cauterized": 0.004
+      },
+      "surface": [
+        [
+          2,
+          "a shallow scratch on the {part}"
+        ],
+        [
+          4,
+          "a cut on the {part}"
+        ],
+        [
+          7,
+          "a deep gash on the {part}"
+        ],
+        [
+          10,
+          "a terrible gaping wound in the {part}"
+        ]
+      ],
+      "feel": [
+        [
+          2,
+          "Your {part} stings."
+        ],
+        [
+          4,
+          "Your {part} burns where it is cut."
+        ],
+        [
+          7,
+          "A deep, hot gash pulses in your {part}."
+        ],
+        [
+          10,
+          "Your {part} is torn open; the pain is blinding."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "scar",
+          "chance": 1,
+          "minSeverity": 5
+        },
+        {
+          "type": "scar",
+          "chance": 0.3,
+          "minSeverity": 3
+        }
+      ]
+    },
+    "puncture": {
+      "label": "puncture",
+      "open": true,
+      "painPerSev": 0.8,
+      "loss": 0.05,
+      "heal": {
+        "base": 48,
+        "perSev": 60
+      },
+      "naturalMax": 10,
+      "detect": 0,
+      "requires": {
+        "above": 6,
+        "anyOf": [
+          "bandaged",
+          "stitched",
+          "cauterized",
+          "wrapped"
+        ]
+      },
+      "infection": {
+        "untreated": 0.08,
+        "cleaned": 0.03,
+        "bandaged": 0.018,
+        "cauterized": 0.006
+      },
+      "surface": [
+        [
+          3,
+          "a small puncture in the {part}"
+        ],
+        [
+          6,
+          "a stab wound in the {part}"
+        ],
+        [
+          10,
+          "a deep stab wound in the {part}"
+        ]
+      ],
+      "feel": [
+        [
+          3,
+          "A sharp little pain pricks your {part}."
+        ],
+        [
+          6,
+          "Your {part} throbs around the stab."
+        ],
+        [
+          10,
+          "A deep stab burns in your {part}."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "scar",
+          "chance": 0.6,
+          "minSeverity": 3
+        }
+      ]
+    },
+    "burn": {
+      "label": "burn",
+      "painPerSev": 1,
+      "loss": 0.06,
+      "heal": {
+        "base": 36,
+        "perSev": 55
+      },
+      "naturalMax": 10,
+      "detect": 0,
+      "requires": {
+        "above": 7,
+        "anyOf": [
+          "bandaged",
+          "wrapped"
+        ]
+      },
+      "infection": {
+        "minSeverity": 4,
+        "untreated": 0.06,
+        "cleaned": 0.025,
+        "bandaged": 0.012,
+        "cauterized": 0.004
+      },
+      "surface": [
+        [
+          2,
+          "a reddened patch of skin on the {part}"
+        ],
+        [
+          5,
+          "a blistered burn on the {part}"
+        ],
+        [
+          8,
+          "a raw, weeping burn on the {part}"
+        ],
+        [
+          10,
+          "charred, blackened skin on the {part}"
+        ]
+      ],
+      "feel": [
+        [
+          2,
+          "Your {part} stings and is hot."
+        ],
+        [
+          5,
+          "Your {part} burns, blistered and raw."
+        ],
+        [
+          8,
+          "Your {part} is on fire with pain."
+        ],
+        [
+          10,
+          "You feel nothing in your {part}, and then everything."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "scar",
+          "chance": 0.5,
+          "minSeverity": 3
+        },
+        {
+          "type": "scar",
+          "chance": 1,
+          "minSeverity": 6
+        }
+      ]
+    },
+    "fracture": {
+      "label": "fracture",
+      "painPerSev": 0.95,
+      "loss": 0.08,
+      "heal": {
+        "base": 300,
+        "perSev": 140
+      },
+      "naturalMax": 10,
+      "detect": 1,
+      "capCap": {
+        "unsplinted": 0.3,
+        "splinted": 0.5,
+        "set": 0.85
+      },
+      "requires": {
+        "above": 0,
+        "allOf": [
+          "splinted"
+        ]
+      },
+      "worsensWhenMoved": 0.2,
+      "surface": [
+        [
+          4,
+          "a {part} held stiffly, swelling"
+        ],
+        [
+          7,
+          "a {part} bent wrong, badly swollen"
+        ],
+        [
+          10,
+          "a {part} twisted out of shape"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your {part} grinds with pain when you move it."
+        ],
+        [
+          7,
+          "Your broken {part} screams at any movement."
+        ],
+        [
+          10,
+          "Your {part} is shattered; the pain makes you faint."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "limp",
+          "chance": 0.5,
+          "minSeverity": 6,
+          "when": "poor",
+          "parts": "leg"
+        },
+        {
+          "type": "chronic_pain",
+          "chance": 0.5,
+          "minSeverity": 6,
+          "when": "poor",
+          "parts": "other"
+        }
+      ]
+    },
+    "dislocation": {
+      "label": "dislocation",
+      "painPerSev": 0.8,
+      "loss": 0.03,
+      "heal": {
+        "base": 24,
+        "perSev": 30
+      },
+      "naturalMax": 10,
+      "detect": 1,
+      "capCap": {
+        "unsplinted": 0.6,
+        "splinted": 0.6,
+        "set": 0.95
+      },
+      "requires": {
+        "above": 0,
+        "allOf": [
+          "set"
+        ]
+      },
+      "surface": [
+        [
+          10,
+          "a {part} hanging at a wrong angle"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "Your {part} is out of its socket; any movement is agony."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "chronic_pain",
+          "chance": 0.15,
+          "minSeverity": 5,
+          "when": "poor"
+        }
+      ]
+    },
+    "crush": {
+      "label": "crush injury",
+      "painPerSev": 0.9,
+      "loss": 0.06,
+      "heal": {
+        "base": 60,
+        "perSev": 40
+      },
+      "naturalMax": 10,
+      "detect": 1,
+      "surface": [
+        [
+          4,
+          "a swollen, purpling {part}"
+        ],
+        [
+          7,
+          "a mangled-looking {part}"
+        ],
+        [
+          10,
+          "a flattened, ruined {part}"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your {part} is crushed and throbbing."
+        ],
+        [
+          7,
+          "Your {part} is a mass of pain."
+        ],
+        [
+          10,
+          "Your {part} is pulp; you can barely stay conscious."
+        ]
+      ]
+    },
+    "concussion": {
+      "label": "concussion",
+      "painPerSev": 0.4,
+      "loss": 0,
+      "heal": {
+        "base": 12,
+        "perSev": 14
+      },
+      "naturalMax": 10,
+      "detect": 4,
+      "visible": false,
+      "partsOnly": [
+        "head",
+        "skull",
+        "brain"
+      ],
+      "surface": [
+        [
+          10,
+          "dazed, with unfocused eyes"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your head is fuzzy and aching."
+        ],
+        [
+          10,
+          "Your head is pounding and the world swims."
+        ]
+      ]
+    },
+    "organ_damage": {
+      "label": "internal injury",
+      "internal": true,
+      "painPerSev": 0.55,
+      "loss": 0.1,
+      "heal": {
+        "base": 400,
+        "perSev": 100
+      },
+      "naturalMax": 5,
+      "healFloor": 3,
+      "detect": 7,
+      "visible": false,
+      "destroyAt": 10,
+      "vitalityDrain": {
+        "above": 5,
+        "perHour": 0.8
+      },
+      "surface": [
+        [
+          10,
+          "pale and clutching at {their} middle"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "A dull ache sits deep inside you."
+        ],
+        [
+          7,
+          "A deep, hot ache spreads through your chest and belly."
+        ],
+        [
+          10,
+          "Something is badly wrong inside you."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "chronic_pain",
+          "chance": 0.4,
+          "minSeverity": 5
+        }
+      ]
+    },
+    "severed": {
+      "label": "severed part",
+      "open": true,
+      "painPerSev": 0.6,
+      "loss": 0,
+      "permanent": true,
+      "detect": 0,
+      "naturalMax": 0,
+      "infection": {
+        "untreated": 0.07,
+        "cleaned": 0.03,
+        "bandaged": 0.02,
+        "cauterized": 0.004
+      },
+      "surface": [
+        [
+          10,
+          "a missing {part}"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "Your {part} is gone; where it was there is only fire."
+        ]
+      ]
+    },
+    "eye_damage": {
+      "label": "eye injury",
+      "painPerSev": 0.8,
+      "loss": 0.1,
+      "heal": {
+        "base": 100,
+        "perSev": 40
+      },
+      "naturalMax": 4,
+      "healFloor": 0,
+      "detect": 0,
+      "destroyAt": 8,
+      "partsOnly": [
+        "eye_left",
+        "eye_right"
+      ],
+      "surface": [
+        [
+          4,
+          "a red, swollen {part}"
+        ],
+        [
+          7,
+          "a ruined, weeping {part}"
+        ],
+        [
+          10,
+          "an empty, ruined {part}"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your {part} stings and waters."
+        ],
+        [
+          7,
+          "Your {part} is a blur of pain."
+        ],
+        [
+          10,
+          "Your {part} sees nothing."
+        ]
+      ],
+      "sequelae": [
+        {
+          "type": "reduced_sight",
+          "chance": 0.7,
+          "minSeverity": 6
+        }
+      ]
+    },
+    "ear_damage": {
+      "label": "ear injury",
+      "painPerSev": 0.5,
+      "loss": 0.1,
+      "heal": {
+        "base": 100,
+        "perSev": 40
+      },
+      "naturalMax": 4,
+      "healFloor": 0,
+      "detect": 0,
+      "partsOnly": [
+        "ear_left",
+        "ear_right"
+      ],
+      "tempHeal": {
+        "base": 1,
+        "perSev": 1.5
+      },
+      "surface": [
+        [
+          4,
+          "a bleeding {part}"
+        ],
+        [
+          10,
+          "a ruined {part}"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your {part} rings."
+        ],
+        [
+          10,
+          "Sounds come muffled, as if through water."
+        ]
+      ]
+    },
+    "infection": {
+      "label": "infection",
+      "painPerSev": 0.35,
+      "loss": 0.02,
+      "heal": {
+        "base": 120,
+        "perSev": 30
+      },
+      "naturalMax": 6,
+      "detect": 1,
+      "grows": 0.08,
+      "feverAfterHours": 24,
+      "surface": [
+        [
+          4,
+          "a red, hot, swollen {part}"
+        ],
+        [
+          7,
+          "a festering {part} oozing pus"
+        ],
+        [
+          10,
+          "a blackening, foul-smelling {part}"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "Your {part} throbs, hot and tight."
+        ],
+        [
+          7,
+          "Your {part} pounds with a sickening heat."
+        ],
+        [
+          10,
+          "Your {part} is rotting; you can smell it."
+        ]
+      ]
+    },
+    "fever": {
+      "label": "fever",
+      "systemic": true,
+      "painPerSev": 0.25,
+      "loss": 0,
+      "heal": {
+        "base": 48,
+        "perSev": 20
+      },
+      "naturalMax": 6,
+      "detect": 1,
+      "vitalityDrain": {
+        "above": 6,
+        "perHour": 1.2
+      },
+      "surface": [
+        [
+          4,
+          "flushed and sweating"
+        ],
+        [
+          7,
+          "burning up, shivering and glassy-eyed"
+        ],
+        [
+          10,
+          "delirious with fever"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "You're hot and cold by turns."
+        ],
+        [
+          7,
+          "You're shivering and burning up at once."
+        ],
+        [
+          10,
+          "Fever swallows your thoughts."
+        ]
+      ]
+    },
+    "chill": {
+      "label": "chill",
+      "systemic": true,
+      "painPerSev": 0.1,
+      "loss": 0,
+      "heal": {
+        "base": 18,
+        "perSev": 6
+      },
+      "naturalMax": 10,
+      "detect": 0,
+      "surface": [
+        [
+          10,
+          "shivering and sniffling"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "You can't stop shivering."
+        ]
+      ]
+    },
+    "anemia": {
+      "label": "weakness from blood loss",
+      "systemic": true,
+      "painPerSev": 0,
+      "loss": 0,
+      "heal": {
+        "base": 1,
+        "perSev": 1
+      },
+      "naturalMax": 10,
+      "detect": 2,
+      "auto": true,
+      "surface": [
+        [
+          10,
+          "pale and drawn"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "You feel drained and slow."
+        ]
+      ]
+    },
+    "scar": {
+      "label": "scar",
+      "permanent": true,
+      "painPerSev": 0,
+      "loss": 0,
+      "detect": 0,
+      "surface": [
+        [
+          3,
+          "a pale scar on the {part}"
+        ],
+        [
+          10,
+          "a thick, ugly scar on the {part}"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "The scar on your {part} pulls when you stretch."
+        ]
+      ]
+    },
+    "chronic_pain": {
+      "label": "chronic pain",
+      "permanent": true,
+      "painPerSev": 0.25,
+      "loss": 0,
+      "detect": 2,
+      "curableBy": [
+        "regeneration",
+        "healing_magic"
+      ],
+      "surface": [
+        [
+          10,
+          "favouring {their} {part}"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "Your {part} aches, as it will for the rest of your life."
+        ]
+      ]
+    },
+    "limp": {
+      "label": "lasting limp",
+      "permanent": true,
+      "painPerSev": 0.1,
+      "loss": 0,
+      "detect": 0,
+      "curableBy": [
+        "regeneration",
+        "healing_magic"
+      ],
+      "movingMax": 0.85,
+      "surface": [
+        [
+          10,
+          "walking with a limp"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "Your {part} never quite bears your weight the way it used to."
+        ]
+      ]
+    },
+    "reduced_sight": {
+      "label": "dim sight",
+      "permanent": true,
+      "painPerSev": 0,
+      "loss": 0,
+      "detect": 3,
+      "curableBy": [
+        "regeneration",
+        "healing_magic"
+      ],
+      "sightMax": 0.8,
+      "surface": [
+        [
+          10,
+          "squinting"
+        ]
+      ],
+      "feel": [
+        [
+          10,
+          "The world is dimmer on that side, and always will be."
+        ]
+      ]
+    },
+    "internal_bleeding": {
+      "label": "internal bleeding",
+      "internal": true,
+      "painPerSev": 0.4,
+      "loss": 0,
+      "naturalMax": 10,
+      "detect": 8,
+      "visible": false,
+      "surface": [
+        [
+          10,
+          "pale, breathing fast, with a swelling belly"
+        ]
+      ],
+      "feel": [
+        [
+          4,
+          "A dull, heavy ache sits deep inside you."
+        ],
+        [
+          10,
+          "Something is leaking inside you; you feel cold and faint."
+        ]
+      ]
+    }
+  }
+}
