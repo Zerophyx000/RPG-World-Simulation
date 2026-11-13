@@ -18,12 +18,16 @@ const SYNONYMS = {
   envious: 'envy', covet: 'envy',
   jealous: 'jealousy',
   disgusted: 'disgust', contempt: 'disgust', revulsion: 'disgust',
+  wary: 'fear', wariness: 'fear', suspicion: 'fear', suspicious: 'fear', distrust: 'fear', apprehension: 'fear',
+  frustration: 'anger', frustrated: 'anger', irritation: 'anger', bitterness: 'anger', bitter: 'anger',
+  loneliness: 'sadness', melancholy: 'sadness', homesick: 'sadness', homesickness: 'sadness',
+  satisfaction: 'pride', satisfied: 'joy', cheer: 'joy', cheerful: 'joy', calm: 'joy', peace: 'joy',
   fond: 'affection', fondness: 'affection', love: 'affection', warmth: 'affection', tenderness: 'affection', trust: 'affection',
 };
 
 export const FEELING_RULE = '- Feelings: any action may carry an optional `feeling` saying how this moment changes how you feel, written as `<emotion> <+N or -N> [at <person>]: <why>` with N from 1 to 3 and the why in your own first-person words. Emotions: joy, sadness, fear, anger, disgust, shame, guilt, pride, affection, gratitude, envy, jealousy. Example: `anger +2 at Tomas: he lied to my face again`. Leave it out when nothing changed.';
 
-export const FEELING_PARAM = { type: 'string', description: 'Optional: how this moment changes how you feel (see "Feelings").' };
+export const FEELING_PARAM = { type: 'string', description: 'Optional, see Feelings.' };
 
 /** → { type, target (citizen id | null), change (-3..3, non-zero), why } or null. `people`: Map label → citizen. */
 export function parseFeeling(world, c, raw, people) {
@@ -77,7 +81,9 @@ export function parseFeeling(world, c, raw, people) {
 /** Apply a parsed report. source: 'self' | 'reflection' | 'consolidation'. */
 export function applyFeeling(world, c, f, source = 'self') {
   if (!f) return null;
-  return world.emotions.bump(c, { type: f.type, target: f.target, delta: f.change, cause: f.why, source, raw: true, rule: source });
+  // "envy +2 at Jonas" means the envy they already feel about Jonas (and his hammer), not a second entry.
+  const about = (world.emotions.of(c).filter((e) => e.type === f.type && (e.target ?? null) === (f.target ?? null)).sort((a, b) => b.intensity - a.intensity)[0])?.about ?? null;
+  return world.emotions.bump(c, { type: f.type, target: f.target, about, delta: f.change, cause: f.why, source, raw: true, rule: source });
 }
 
 /** JSON-schema item for the structured form (reflection `feelings`, consolidation `lingering`). */

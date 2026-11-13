@@ -89,6 +89,7 @@ export function take(world, c, call) {
   });
   // Step 6: taking what isn't yours in front of others is shaming (and gnaws at the conscientious).
   world.emotions.onOwnActSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? [], 'take');
+  world.signals.onTheftSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 6: bystanders lose trust in a thief
   remember(world, c, `You picked up ${O.textFor(c, o)}.`);
   settle(world, c);
   return { ok: true };

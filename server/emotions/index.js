@@ -23,6 +23,7 @@ import { runContagion } from './contagion.js';
 export const MAX_ENTRIES = 12;
 export const MIN_INTENSITY = 0.5;
 const RUMINATE_EVERY = 30;       // game minutes per entry
+const RUMINATE_MAX = 7;          // brooding alone never makes a feeling intense (GLM run: envy at a co-worker climbed to 10)
 const MASK_MINUTES = 45;
 const SAMPLE_EVERY = 60;         // game minutes
 const CONTAGION_EVERY = 10;
@@ -200,10 +201,10 @@ export class Emotions {
   ruminate(c, otherId, how = 'encounter') {
     let changed = false;
     for (const e of this.of(c)) {
-      if (e.target !== otherId || this.valenceOf(e.type) >= 0 || e.intensity < 3) continue;
+      if (e.target !== otherId || this.valenceOf(e.type) >= 0 || e.intensity < 3 || e.intensity >= RUMINATE_MAX) continue;
       if (this.world.now - (e.lastRuminated ?? -Infinity) < RUMINATE_EVERY) continue;
       e.lastRuminated = this.world.now;
-      e.intensity = Math.min(10, e.intensity + 0.5 * (1 - e.intensity / 12));
+      e.intensity = Math.min(RUMINATE_MAX, e.intensity + 0.5 * (1 - e.intensity / 12));
       e.lastBumped = this.world.now;
       changed = true;
       this.insertLog.run(c.id, this.world.now, 'bump', JSON.stringify({ type: e.type, target: e.target, about: e.about, delta: 0.5, intensity: round(e.intensity), source: 'rumination', rule: how, cause: e.cause }));

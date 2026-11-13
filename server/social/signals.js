@@ -7,6 +7,7 @@
 //               …and you had already noticed it missing ("changed story")                    trust −2 extra, once
 //   hiding      you saw someone hide a thing in somebody else's home                         trust −1 (−2 if it's yours)
 //   intruder    you come home and find someone who isn't household, family or party     (7)  trust −1
+//   theft_seen  you saw someone take a thing that belongs to a third person (not given, not family)  (—)  trust −1
 //
 // Per pair and sign: a cooldown of 60 game minutes; at most −3 trust per game day from signals.
 import { ref } from '../memory/index.js';
@@ -145,6 +146,23 @@ export class Signals {
     }
   }
 
+  /** step 6: bystanders who saw `actor` take something that belongs to someone else (not to them, not to the actor). */
+  onTheftSeen(actor, obj, witnessIds) {
+    const w = this.world;
+    if (!obj?.ownerId || obj.ownerId === actor.id) return;
+    if (w.strangers.gaveIt(obj.ownerId, actor.id, obj.id)) return;
+    if (w.groups.shared(actor.id, obj.ownerId, ['family', 'household']).length > 0) return; // family members borrow things
+    const thing = obj.data?.short ?? w.objects.type(obj)?.name ?? 'thing';
+    for (const id of witnessIds) {
+      if (id === actor.id || id === obj.ownerId) continue; // the owner has the 'property' sign and the anger appraisal
+      const witness = w.citizens.get(id);
+      if (!witness || !witness.alive) continue;
+      this.fire(witness, actor, 'theft_seen', {
+        trust: -1, reason: `I saw ${ref(actor)} take ${ref(obj.ownerId)}'s ${thing}.`, evidence: { objectId: obj.id },
+      });
+    }
+  }
+
   /** Director's "simulate signal" button. */
   simulate({ citizenId, otherId, sign }) {
     const a = this.world.citizens.get(citizenId);
@@ -155,6 +173,7 @@ export class Signals {
       intruder: { text: `${ref(b)} is in your house.`, importance: 7, trust: -1, reason: `I came home and found ${ref(b)} in my house.` },
       property: { text: `That's your lantern ${ref(b)} is carrying.`, importance: 8, trust: -2, reason: `I saw ${ref(b)} carrying something of mine.` },
       hiding: { trust: -1, reason: `I saw ${ref(b)} hide something in a house that isn't theirs.` },
+      theft_seen: { trust: -1, reason: `I saw ${ref(b)} take something that isn't theirs.` },
     };
     if (!defs[sign]) throw Object.assign(new Error(`sign must be one of ${Object.keys(defs).join(', ')}`), { status: 400 });
     return { fired: this.fire(a, b, sign, { ...defs[sign], force: true }) };

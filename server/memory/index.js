@@ -103,9 +103,10 @@ export class Memory {
     const r = this.rel(a, b);
     const patch = { lastSeenAt: this.world.now, lastSeenPlace: placeId ?? null };
     if (r?.nameKnown && r.nameConfidence < 1) patch.nameConfidence = Math.min(1, r.nameConfidence + 0.2);
-    // Step 6: seeing the person a grudge or a fear is about stirs it up again.
+    // Step 6: meeting again the person a grudge or a fear is about stirs it up (not every pass while together).
     const viewer = this.world.citizens.get(a);
-    if (viewer?.emotions?.length) this.world.emotions?.ruminate(viewer, b, 'encounter');
+    const metAgain = r?.lastSeenAt == null || this.world.now - r.lastSeenAt > 30;
+    if (metAgain && viewer?.emotions?.length) this.world.emotions?.ruminate(viewer, b, 'encounter');
     this.upsertRel(a, b, patch);
     this.addFamiliarity(a, b, 0.05);
   }

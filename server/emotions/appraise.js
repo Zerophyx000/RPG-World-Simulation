@@ -6,12 +6,14 @@ import { ref } from '../memory/index.js';
 
 const WARY_AT = 7;
 const WARY_EVERY = 30; // game minutes present per +1 fear
+const SIGHT_AGAIN = 360; // game minutes before seeing the same coveted thing again stings again
 
 export class Appraisal {
   constructor(world, emotions) {
     this.world = world;
     this.emo = emotions;
     this.cool = new Map();    // `${citizen}|${type}|${target}|${about}` -> game time (envy / jealousy signals)
+    this.sighted = new Map(); // `${citizen}|${holder}|${object}` -> game time last seen (envy fires on a NEW sight only)
     this.wary = new Map();    // `${citizen}>${stranger}` -> minutes present since the last fear bump
     // A broken trust hurts (and makes you angry).
     world.relationships.onEvent((ev) => this.onRelationshipEvent(ev));
@@ -187,7 +189,7 @@ export class Appraisal {
     for (const holder of w.citizensIn(roomId)) {
       const carried = w.objects.carriedBy(holder.id);
       if (!carried.length) continue;
-      for (const c of awake) if (c.id !== holder.id) for (const o of carried) this.envyObject(c, holder, o);
+      for (const c of awake) if (c.id !== holder.id) for (const o of carried) this.envyObject(c, holder, o, { glance: true });
     }
   }
 
@@ -200,8 +202,14 @@ export class Appraisal {
   }
 
   /** c sees `holder` with a thing c covets. */
-  envyObject(c, holder, o) {
+  envyObject(c, holder, o, { glance = false } = {}) {
     if (!holder || holder.id === c.id || !this.covetsObject(c, o)) return null;
+    // Working next to it all day is not a new pang every hour: a mere glance (room checks) only counts if they
+    // haven't seen that person with it for 6 game hours. Taking / receiving it in front of them always counts.
+    const key = `${c.id}|${holder.id}|${o.id}`;
+    const last = this.sighted.get(key);
+    this.sighted.set(key, this.world.now);
+    if (glance && last != null && this.world.now - last < SIGHT_AGAIN) return null;
     if (o.ownerId === c.id) return null; // their own thing in someone else's hands is anger, not envy
     if (this.world.groups.isFamily(c.id, holder.id)) return null;
     const thing = this.world.objects.surfaceText(o);
@@ -212,7 +220,7 @@ export class Appraisal {
     const E = this.rules.envy ?? {};
     if (!this.#ready(c, 'envy', targetId, about, E.cooldownMinutes ?? 60)) return null;
     const recent = this.world.db.prepare(`SELECT COUNT(*) AS n FROM emotion_log WHERE citizen_id = ? AND kind = 'bump' AND game_time >= ?
-      AND json_extract(data, '$.type') = 'envy' AND json_extract(data, '$.target') = ?`).get(c.id, this.world.now - (E.recentDays ?? 3) * 1440, targetId).n;
+      AND json_extract(data, '$.type') = 'envy' AND json_extract(data, '$.target') = ? AND json_extract(data, '$.source') = 'signal'`).get(c.id, this.world.now - (E.recentDays ?? 3) * 1440, targetId).n;
     const delta = (E.base ?? 2) + (E.agreeableness ?? 2) * (1 - (c.persona?.traits?.agreeableness ?? 0.5)) + (E.perRecentBump ?? 0.5) * recent;
     const r = this.emo.bump(c, { type: 'envy', target: targetId, about, delta, cause, source: 'signal', rule: 'envy', raw: true });
     if (r && r.before < 4 && r.after >= 4) {
@@ -241,7 +249,7 @@ export class Appraisal {
     let out = null;
     for (const [b, rival] of [[x, y], [y, x]]) {
       if (!attached(b) || attached(rival) && (this.world.memory.rel(c.id, rival)?.affinity ?? 0) > (this.world.memory.rel(c.id, b)?.affinity ?? 0)) continue;
-      if (this.world.groups.isFamily(b, rival)) continue;
+      if (this.world.groups.shared(b, rival, ['family', 'household']).length) continue; // a master and his apprentice are no rivals
       out = this.jealousy(c, b, rival, causeFn(b, rival), factor) ?? out;
     }
     return out;
