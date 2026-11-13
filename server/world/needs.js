@@ -145,15 +145,27 @@ export class Needs {
   }
 
   /**
-   * step A2: the collapse deadline. World forces sleep when a citizen has been at the top fatigue level
-   * ('collapsing') this long — or reaches fatigue 100 sooner.
+   * step A2: absolute game time at which World forces this citizen down. The deadline is whichever
+   * comes first: 30 minutes after fatigue first reached the top level ('collapsing'), or the moment
+   * fatigue itself reaches 100. Already asleep (or recovered below the top level) → null.
    */
-  collapsingDeadline(c, now) {
+  collapseAt(c, now) {
     if (c.needs?.collapsingSince == null) return null;
-    const fatigueMin = this.levels('fatigue').at(-1)?.min ?? 93;
+    const fatigueMin = this.topFatigueMin;
     if ((c.needs.fatigue ?? 0) < fatigueMin) return null; // got better: the deadline no longer applies
     if (UNAWARE.has(c.activity?.type)) return null;       // already down: nothing to force
-    return (c.needs.collapsingSince ?? 0) + COLLAPSE_DEADLINE_MINUTES;
+    return Math.min((c.needs.collapsingSince ?? 0) + COLLAPSE_DEADLINE_MINUTES, this.fatigue100At(c, now));
+  }
+
+  /** Absolute game time when fatigue reaches 100 at the current rate (now if it is already there). */
+  fatigue100At(c, now) {
+    const fr = this.rate('fatigue', this.rateKey(c));
+    return fr < 0 ? now + ((100 - (c.needs.fatigue ?? 0)) / fr) * 60 : now;
+  }
+
+  /** The value at which the top fatigue level ('collapsing') starts. */
+  get topFatigueMin() {
+    return this.levels('fatigue').at(-1)?.min ?? 93;
   }
 
   #stimulus(kind, lvl, reminder) {
@@ -198,7 +210,8 @@ export class Needs {
     const fr = this.rate('fatigue', key);
     toward(n.fatigue, fr, 100); // forced sleep
     // step A2: the collapse deadline is also a scheduled event — a long tick must not jump past it.
-    const dl = this.collapsingDeadline(c, now);
+    // collapseAt() already folds in fatigue reaching 100, whichever comes first.
+    const dl = this.collapseAt(c, now);
     if (dl != null) cands.push(Math.max(0, dl - now));
     if (c.activity?.type === 'sleeping' && c.activity.detail?.untilRested) toward(n.fatigue, fr, 5); // waking rested
     toward(n.hunger, this.rate('hunger', key), this.starvingAt);
