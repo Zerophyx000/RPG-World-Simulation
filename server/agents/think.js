@@ -3,11 +3,12 @@
 //
 // mode 'decide' — the usual decision (purpose 'decide', tier from tiers.js)
 // mode 'plan'   — plan the day (purpose 'plan', tier full, only the make_plan tool)
+import { config } from '../config.js';
 import { buildMessages } from './prompt.js';
 import { buildTools, validateCall } from './tools.js';
 import { chooseTier } from './tiers.js';
 import { makePlanTool } from './plan.js';
-import { ranOut, RETRY_MAX } from '../llm.js';
+import { ranOut, RETRY_MAX, CAP_ABOVE, TIER_MAX_TOKENS } from '../llm.js';
 import { findLeaks } from '../social/leak.js';
 
 const LEAK_CHECK = process.env.DEBUG_LEAK_CHECK === 'true';
@@ -58,7 +59,7 @@ export async function think(world, c, { mode = 'decide' } = {}) {
 }
 
 // Build → call → validate (with corrective retries). Returns null if the think went stale.
-async function decide(world, c, t, call, { mode, tier, maxTokens }) {
+async function decide(world, c, t, call, { mode, tier, maxTokens, noCutoffRetry = false }) {
   const collect = { recalled: [] };
   const messages = buildMessages(world, c, { tier, mode, collect });
   const tools = mode === 'plan' ? [makePlanTool(world, c)] : buildTools(world, c);
@@ -71,8 +72,24 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
   if (!world.isCurrentThink(c, t)) return null;
   let outcome = interpret(first, tools);
 
-  // Ran out of tokens while thinking (no usable tool call): one cheap retry with thinking off.
+  // step A6: cut-off recovery ladder. A decide call that ran out without a usable tool call is retried
+  // ONCE at the next higher cap (none → light, light → full, full → 1.5× what the first call used), with
+  // thinking as that tier implies — the model ran out of words, so it needs more of them, not fewer.
+  // Plan mode keeps the old cheap thinking-off retry. Never more than one cut-off retry per think.
   if (ranOut(first)) {
+    if (mode === 'decide' && !noCutoffRetry) {
+      const toTier = CAP_ABOVE[tier] ?? 'full';
+      // full → 1.5× what the first call was actually given; none/light → the next tier's cap
+      const retryTokens = tier === 'full'
+        ? Math.round(1.5 * (maxTokens ?? TIER_MAX_TOKENS[tier] ?? 3000))
+        : config.llm.maxTokens[toTier];
+      world.logEvent('retry_cutoff', { actorId: c.id, location: c.location, fromTier: tier, toTier, maxTokens: retryTokens });
+      outcome = await decide(world, c, t, call, { mode, tier: toTier, maxTokens: retryTokens, noCutoffRetry: true });
+      if (!outcome) return null; // stale / aborted inside the retry
+      outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
+      return outcome; // the retry already ran its own correction / cheap fallback
+    }
+    // plan mode, or the cut-off retry itself ran out again: one cheap thinking-off attempt, as before
     const quick = buildMessages(world, c, { tier: 'none', mode, collect: null });
     const second = await call(quick, tools, 'none', RETRY_MAX[mode === 'plan' ? 'plan' : 'decide']);
     if (!world.isCurrentThink(c, t)) return null;

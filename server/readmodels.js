@@ -228,7 +228,7 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
   const bucketMs = bucket * 60_000;
   const start = Math.floor((now - minutes * 60_000) / bucketMs) * bucketMs;
   const since = new Date(start).toISOString();
-  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, status, duration_ms, prompt_tokens, completion_tokens
+  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, status, duration_ms, prompt_tokens, completion_tokens, finish_reason
     FROM llm_calls WHERE real_time >= ?`).all(since);
   const buckets = [];
   for (let t = start; t <= now; t += bucketMs) buckets.push({ t, output: {}, input: 0, calls: 0 });
@@ -265,8 +265,21 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
   }
   const reflections = Object.fromEntries(world.db.prepare(`SELECT json_extract(data, '$.path') AS path, COUNT(*) AS n FROM events
     WHERE type = 'reflection_gate' AND real_time >= ? GROUP BY path`).all(since).map((r) => [r.path, r.n]));
+  // step A6: how often each tier ran out of words, and how often we had to climb the cut-off ladder
+  // or caught a tier rule being broken. Empty tiers still show up, at rate 0.
+  const cutoffs = { full: { calls: 0, cutoff: 0 }, light: { calls: 0, cutoff: 0 }, none: { calls: 0, cutoff: 0 } };
+  for (const r of rows) {
+    if (!r.tier || !(r.tier in cutoffs)) continue;
+    cutoffs[r.tier].calls++;
+    if (r.finish_reason === 'length') cutoffs[r.tier].cutoff++;
+  }
+  for (const v of Object.values(cutoffs)) v.rate = v.calls ? Math.round((v.cutoff / v.calls) * 1000) / 1000 : 0;
+  const countEvents = (type) => world.db.prepare('SELECT COUNT(*) AS n FROM events WHERE type = ? AND real_time >= ?').get(type, since).n;
   return {
     minutes, bucket, start, now, buckets, purposes, profiles, reflections,
+    cutoffs,
+    addressedBelowFull: countEvents('tier_violation'),
+    retryCutoff: countEvents('retry_cutoff'),
     governor: world.governor?.view() ?? null,
     llmProfiles: world.llm.profilesView(),
   };

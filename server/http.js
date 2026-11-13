@@ -208,10 +208,18 @@ export function createServer(world, { observer = null } = {}) {
     }],
 
     ['GET', /^\/api\/llm\/calls$/, (req) => {
-      const limit = Math.min(Number(new URL(req.url, 'http://x').searchParams.get('limit')) || 20, 200);
-      return world.db.prepare(`SELECT id, real_time, game_time, citizen_id, purpose, status, duration_ms,
+      const q = new URL(req.url, 'http://x').searchParams;
+      const limit = Math.min(Number(q.get('limit')) || 20, 200);
+      const where = [];
+      const params = [];
+      const qv = q.get('citizenId');
+      if (qv) { where.push('citizen_id = ?'); params.push(qv); }
+      const pv = q.get('purpose');
+      if (pv) { where.push('purpose = ?'); params.push(pv); }
+      params.push(limit);
+      return world.db.prepare(`SELECT id, real_time, game_time, citizen_id, purpose, tier, status, finish_reason, duration_ms,
                                       prompt_tokens, completion_tokens
-                               FROM llm_calls ORDER BY id DESC LIMIT ?`).all(limit);
+                               FROM llm_calls ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`).all(...params);
     }],
 
     ['GET', /^\/api\/llm\/calls\/(\d+)$/, (_req, _body, [id]) => {
