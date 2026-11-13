@@ -275,14 +275,27 @@ export function testDayStatus(world) {
   return { running: Boolean(run.running), name: run.name, seed: run.seed, startedAt: run.startedAt, done: run.done, total: run.total, next: next?.at ?? null };
 }
 
-/** Routes in exactly http.js's format; the orchestrator spreads them into its route table. */
+/** Routes in exactly http.js's format; the orchestrator spreads them into its route table.
+ *  A failed start/stop becomes a 400 so the director UI can show the reason (it reads err.message). */
 export function testDayRoutes(world) {
   return [
     ['GET', /^\/api\/director\/test-days$/, () => listTestDays()],
-    ['POST', /^\/api\/director\/test-days\/run$/, (_req, body) => startTestDay(world, body ?? {})],
-    ['POST', /^\/api\/director\/test-days\/stop$/, () => stopTestDay(world)],
+    ['POST', /^\/api\/director\/test-days\/run$/, (_req, body) => {
+      const r = startTestDay(world, body ?? {});
+      if (!r.ok) throw httpError(400, r.error);
+      return r;
+    }],
+    ['POST', /^\/api\/director\/test-days\/stop$/, () => {
+      const r = stopTestDay(world);
+      if (!r.ok) throw httpError(400, r.error);
+      return r;
+    }],
     ['GET', /^\/api\/director\/test-days\/status$/, () => testDayStatus(world)],
   ];
+}
+
+function httpError(status, message) {
+  return Object.assign(new Error(message), { status });
 }
 
 // ---------- helpers ----------
