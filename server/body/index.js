@@ -396,6 +396,12 @@ export class Body {
     st.pain = r.pain;
     st.stage = r.stage;
     st.fatigueFactor = r.fatigueFactor;
+    st.chips = [
+      ...(conds.some((x) => x.bleeding > 0.3) ? ['bleeding'] : []),
+      ...(conds.some((x) => x.type === 'fracture' && x.severity >= 2) ? ['fracture'] : []),
+      ...(conds.some((x) => x.type === 'fever' || x.type === 'infection') ? ['fever'] : []),
+      ...(r.status.includes('unconscious') ? ['unconscious'] : []),
+    ];
     if (c.needs) {
       c.needs.hp = r1(st.vitality);
       c.needs.hpMax = 100;
@@ -578,6 +584,7 @@ export class Body {
       const base = this.world.needs.rate('fatigue', this.world.needs.rateKey(c));
       if (base > 0) c.needs.fatigue = Math.min(100, c.needs.fatigue + (base * (ff - 1) * elapsed) / 60);
     }
+    st.criticalLeft = st.critical ? Math.max(0, Math.round((st.critical.until - now) * 10) / 10) : null;
     st.bleedTotal = last ? Math.round(last.total * 10) / 10 : 0;
     st.bleedWounds = last ? last.wounds.filter((w) => w.rate > 0.05).map((w) => ({ id: w.cond.id, rate: Math.round(w.rate * 10) / 10 })) : [];
     for (const cond of conds) if (cond.geometry?.vessel || cond.geometry?.internal) this.#touch(cond);
@@ -700,6 +707,11 @@ export class Body {
   /** Every 10 game minutes: healing, infection, fever, anemia, tourniquets, bloodied garments. */
   #slow(c, minutes, now) {
     const st = c.body;
+    // an hourly vitality sample for the timeline overlay (only while something is wrong)
+    if (now - (st.lastSampleAt ?? -Infinity) >= 60) {
+      st.lastSampleAt = now;
+      this.world.logEvent('vitality', { actorId: c.id, location: c.location, vitality: Math.round(st.vitality * 10) / 10, blood: Math.round(st.blood * 10) / 10, pain: st.pain ?? 0 });
+    }
     const conds = this.active(c.id);
     const needs = this.world.needs;
     const act = c.activity.type;

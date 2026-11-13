@@ -350,7 +350,13 @@ function renderEvents(world, rows) {
     } else if (r.type === 'director' && d.action === 'effects') {
       line = `(something happens: ${(d.effects ?? []).map((x) => x.type).join(', ')})`;
     } else if (r.type === 'damage') {
-      line = `${name(r.actor_id)} is hurt (hp now ${d.hp})`;
+      line = `${name(r.actor_id)} is hurt (vitality now ${d.vitality ?? d.hp})`;
+    } else if (r.type === 'injury') {
+      line = `${name(r.actor_id)} is injured (${d.damageType}: ${(d.conditions ?? []).map((x) => `${x.type} on the ${String(x.part ?? '').replace(/_/g, ' ')}`).join(', ') || 'unknown'})`;
+    } else if (r.type === 'treatment') {
+      line = `${name(d.patientId)} is treated by ${name(r.actor_id)} (${String(d.method).replace(/_/g, ' ')}${d.effective === false ? ', to no effect' : ''})`;
+    } else if (r.type === 'critical_window' && d.action === 'open') {
+      line = `${name(r.actor_id)} is bleeding badly; without help it will be fatal within minutes`;
     } else if (r.type === 'conversation_end') {
       line = `(conversation between ${(d.participants ?? []).map((p) => p.name).join(', ')} ended: ${d.reason})`;
     } else if (r.type === 'object') {

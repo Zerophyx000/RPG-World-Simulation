@@ -283,6 +283,16 @@ export function needsSummary(c) {
   };
 }
 
+/** Compact body state for the roster: chips (bleeding / fracture / fever / unconscious), vitality, blood. */
+export function bodySummary(c) {
+  const b = c.body;
+  if (!b) return null;
+  return {
+    vitality: Math.round(b.vitality ?? 100), blood: Math.round(b.blood ?? 100), chips: b.chips ?? [], status: b.status ?? [],
+    critical: b.critical ? b.criticalLeft ?? 0 : null, pain: b.pain ?? 0, bleeding: b.bleedTotal ?? 0,
+  };
+}
+
 export function citizenSummary(c) {
   return {
     id: c.id,
@@ -297,6 +307,7 @@ export function citizenSummary(c) {
     lastInnerThought: c.lastInnerThought,
     lastDecisionAt: c.lastDecisionAt,
     hp: c.needs?.hp ?? 100,
+    body: bodySummary(c),
     needs: needsSummary(c),
     marks: c.marks,
   };

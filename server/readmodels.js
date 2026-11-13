@@ -139,7 +139,7 @@ export function timeline(world, { from = null, to = null } = {}) {
   const points = [];
   const pointRows = db.prepare(`SELECT id, type, actor_id, game_time, location, data FROM events
     WHERE game_time >= ? AND game_time <= ?
-      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place')
+      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window')
            OR (type = 'body' AND json_extract(data, '$.importance') >= 7)
            OR (type = 'action' AND json_extract(data, '$.tool') IN ('say', 'leave_conversation', 'tell_about_place', 'eat')))
     ORDER BY id`).all(from, to);
@@ -189,15 +189,23 @@ export function timeline(world, { from = null, to = null } = {}) {
         label: d.label ?? null, roomId: d.roomId ?? r.location,
       });
     } else {
-      const text = r.type === 'damage' ? `-${d.amount} hp` : r.type === 'body' ? `${d.need}: ${d.level}` : r.type === 'learn_place' ? `learned about ${d.placeId}` : d.reason ?? d.cause?.text ?? null;
-      points.push({ ...base, type: r.type, text });
+      const text = r.type === 'damage' ? `hit for ${d.amount}` : r.type === 'body' ? `${d.need}: ${d.level}`
+        : r.type === 'injury' ? `${d.damageType ?? 'injury'}${d.part ? ` to ${d.part}` : ''}: ${d.cause ?? ''}`
+        : r.type === 'treatment' ? `${d.method}${d.effective === false ? ' (no effect)' : ''}`
+        : r.type === 'accident' ? `accident: ${d.source}`
+        : r.type === 'critical_window' ? `critical bleeding ${d.action}${d.reason ? ` (${d.reason})` : ''}`
+        : r.type === 'learn_place' ? `learned about ${d.placeId}` : d.reason ?? d.cause?.text ?? d.cause ?? null;
+      points.push({ ...base, type: r.type, text, ...(r.type === 'death' ? { cause: d.cause ?? null } : {}) });
     }
   }
 
+  // step 7B: the vitality line (hourly samples while something was wrong)
+  const vitality = db.prepare(`SELECT actor_id, game_time, data FROM events WHERE type = 'vitality' AND game_time >= ? AND game_time <= ? ORDER BY id`).all(from, to)
+    .map((r) => { const d = JSON.parse(r.data); return { citizenId: r.actor_id, t: r.game_time, v: d.vitality, blood: d.blood }; });
   return {
     from, to, now,
     citizens: [...world.citizens.values()].map((c) => ({ id: c.id, name: c.name, alive: c.alive })),
-    spans, points, conversations,
+    spans, points, conversations, vitality,
   };
 }
 

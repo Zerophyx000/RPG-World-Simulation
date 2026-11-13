@@ -12,6 +12,7 @@ import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsH
 import { showEvent } from '../util.js';
 import { openReasons, warinessHtml, groupChip } from './social-ui.js';
 import { emotionsPanelHtml, emotionTypes } from './emotions-ui.js';
+import { bodyPanelHtml } from './body-ui.js';
 
 let emoHistory = null; // GET /api/citizens/:id/emotions/history (last game days)
 let emoFor = null;
@@ -20,7 +21,8 @@ let root = null;
 let data = null;
 let mems = null;   // GET /api/citizens/:id/memories
 let nights = null; // GET /api/citizens/:id/consolidations
-const open = new Set(['reasoning', 'plan', 'memories', 'rels', 'objects']); // which <details> are open (reasoning starts open)
+let bodyInternal = false; // the body panel's "internal organs" layer
+const open = new Set(['reasoning', 'plan', 'memories', 'rels', 'objects', 'body']); // which <details> are open (reasoning starts open)
 
 export function mount(el) {
   root = el;
@@ -47,6 +49,12 @@ export function mount(el) {
   subscribe('relationship', (r) => r?.citizenId === store.selectedId && refresh());
   subscribe('objects', () => store.selectedId && refresh());
 
+  el.addEventListener('change', (e) => {
+    if (e.target.matches?.('.body-internal')) {
+      bodyInternal = e.target.checked;
+      root.querySelector('.body-fig')?.classList.toggle('show-internal', bodyInternal);
+    }
+  });
   el.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) select(null);
     const call = e.target.closest('[data-call]');
@@ -215,6 +223,8 @@ function render() {
 
     <h3>Emotions</h3>
     <div class="emo-panel">${emotionsPanelHtml(c.emotionsView, emoFor === c.id ? emoHistory : null)}</div>
+
+    ${details('body', `Body${c.bodyView?.status?.length ? ` · ${c.bodyView.status.join(', ')}` : ''}${c.bodyView?.conditions?.length ? ` · ${c.bodyView.conditions.length} condition${c.bodyView.conditions.length === 1 ? '' : 's'}` : ''}`, bodyPanelHtml(c.bodyView, { internal: bodyInternal }))}
 
     <h3>Inner thought</h3>
     ${c.lastInnerThought ? `<div class="inner-thought" style="border-color:${color}">“${esc(c.lastInnerThought)}”</div>` : '<div class="inner-thought none">No inner thought yet.</div>'}

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { config } from './config.js';
 import { listEvents, getEvent, listConversations, getConversation, timeline, interactions, pairLines, usage, memoriesOf, consolidationsOf, beliefs } from './readmodels.js';
 import { loadDirectorPresets } from './world/scenarios.js';
-import { testDayRoutes } from './world/testdays.js'; // step A8: the runner's routes, spread in below
+import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -128,6 +128,8 @@ export function createServer(world, { observer = null } = {}) {
     ['POST', /^\/api\/director\/kill$/, (_req, body) => ({ ok: world.body.kill(body.citizenId, body.cause ?? 'the director') })],
     ['POST', /^\/api\/director\/regen$/, (_req, body) => world.body.setRegen(body.citizenId, body.multiplier, { source: 'director', until: body.until ?? null })],
     ['GET', /^\/api\/body\/rates$/, () => ({ ...config.body })],
+    // the A8 runner under the name the plan uses: { file | name, seed }
+    ['POST', /^\/api\/director\/test-day$/, (_req, body) => { const r = startTestDay(world, { name: body.file ?? body.name, seed: body.seed }); if (!r.ok) throw Object.assign(new Error(r.error), { status: 400 }); return r; }],
     ['POST', /^\/api\/director\/body-rates$/, (_req, body) => {
       for (const k of ['accidentRate', 'illnessRate', 'healTimeScale', 'criticalGraceMinutes', 'criticalSlowdown']) if (body[k] != null && Number.isFinite(Number(body[k]))) config.body[k] = Number(body[k]);
       return { ...config.body };

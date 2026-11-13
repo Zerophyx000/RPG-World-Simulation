@@ -4,6 +4,7 @@
 // placement) or one citizen's SURFACE view (what they'd notice; "(you know)" hidden things dashed).
 import { store, subscribeMany } from '../store.js';
 import { esc, ICONS, activityLabel, truncate, navigate, needBadges, api, prefs, debounce } from '../util.js';
+import { bodyChips } from './body-ui.js';
 import { colorOf, tint } from '../colors.js';
 import { objectsIn, pillsHtml } from './objects-ui.js';
 import { ringStyle, ringTitle, emoIcons, colorOfEmotion } from './emotions-ui.js';
@@ -91,9 +92,9 @@ function chip(c) {
   const a = c.activity ?? { type: 'idle' };
   const dim = store.filterCitizen && store.filterCitizen !== c.id ? 'dimmed' : '';
   const label = a.type === 'idle' || a.type === 'thinking' ? '' : `<span class="act">${esc(truncate(activityLabel(c), 26))}</span>`;
-  return `<span class="chip ${a.type} ${c.id === store.selectedId ? 'selected' : ''} ${dim}" data-citizen="${esc(c.id)}"
+  return `<span class="chip ${a.type} ${a.type === 'collapsed' && c.alive !== false ? 'lying' : ''} ${c.alive === false ? 'dead' : ''} ${c.id === store.selectedId ? 'selected' : ''} ${dim}" data-citizen="${esc(c.id)}"
       style="--c:${colorOf(c.id)};--bg:${tint(c.id, 0.16)};${ringStyle(c)}" title="${esc(`${c.name}: ${activityLabel(c)}${ringTitle(c) ? ` · ${ringTitle(c)}` : ''}`)}">
-    <span>${ICONS[a.type] ?? '·'}</span><span class="nm">${esc(c.name)}</span>${emoIcons(c)}${needBadges(c)}${label}</span>`;
+    <span>${ICONS[a.type] ?? '·'}</span><span class="nm">${esc(c.name)}</span>${emoIcons(c)}${bodyChips(c)}${needBadges(c)}${label}</span>`;
 }
 
 function objectStrip(r) {

@@ -96,7 +96,7 @@ const NEED_ICONS = { hunger: '🍞', fatigue: '😴', hp: '❤️' };
 const NEED_LEVEL_NAMES = {
   hunger: ['satisfied', 'peckish', 'hungry', 'starving', 'ravenous', 'dying of hunger'],
   fatigue: ['rested', 'sleepy', 'tired', 'exhausted', 'collapsing'],
-  hp: ['healthy', 'hurting', 'badly hurt', 'critical'],
+  hp: ['healthy', 'hurting', 'weak', 'fading', 'dying'],
 };
 export function needLevel(c, kind) {
   return c?.needs?.levels?.[kind] ?? 0;

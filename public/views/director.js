@@ -6,6 +6,7 @@ import { api, esc, citizenName, roomName, gameTime, who, effectHtml } from '../u
 import { colorOf } from '../colors.js';
 import { objectTypes, objectsIn } from './objects-ui.js';
 import { emotionTypes, appraisalRowsHtml } from './emotions-ui.js';
+import { bodyFigureSvg } from './body-ui.js';
 
 let root = null;
 let presets = [];
@@ -209,6 +210,24 @@ export function mount(el) {
         <p class="muted">For a full replay, reseed the scenario first (Reseed, dev only) and use the same seed.</p>
       </div>
 
+      <div class="card" id="body-card">
+        <h3>Body: injuries, healing, death</h3>
+        <p class="muted">Pick someone, click a part on the figure, choose a hit (goes through the damage API: garments first) or a specific condition, and apply. Heal and revive keep permanent conditions.</p>
+        <div class="row"><select id="bd-citizen"></select><label class="check"><input type="checkbox" id="bd-internal"> internal organs</label></div>
+        <div class="bd-grid"><div id="bd-fig" class="bd-fig"></div>
+          <div class="bd-form">
+            <div class="row"><select id="bd-kind"></select><label>amount / severity <input id="bd-sev" type="number" min="1" max="40" value="8" class="short"></label></div>
+            <div class="row"><label>part <input id="bd-part" placeholder="click the figure, or random" style="width:11em"></label><input id="bd-cause" placeholder="cause" style="flex:1"></div>
+            <div class="row"><button type="button" id="bd-injure">Injure</button><button type="button" id="bd-heal">Heal</button><button type="button" id="bd-kill" class="danger">Kill</button><button type="button" id="bd-revive">Revive</button></div>
+            <div class="row"><label>Regeneration ×<input id="bd-regen" type="number" min="0" max="10" step="0.1" value="1" class="short"></label><button type="button" id="bd-regen-set">Set</button></div>
+            <h4>Rates</h4>
+            <div class="row"><label>Accidents ×<input id="bd-acc" type="range" min="0" max="20" step="0.5" value="1"><b id="bd-acc-v">1</b></label></div>
+            <div class="row"><label>Illness ×<input id="bd-ill" type="range" min="0" max="10" step="0.1" value="0.5"><b id="bd-ill-v">0.5</b></label></div>
+            <div class="row"><label>Healing time ×<input id="bd-heal-scale" type="range" min="0.02" max="2" step="0.02" value="1"><b id="bd-heal-v">1</b></label></div>
+          </div></div>
+        <div class="result" id="bd-result"></div>
+      </div>
+
       <div class="card danger">
         <h3>Reseed (dev only)</h3>
         <p class="muted">Backs up the database, then wipes all citizens and rooms and seeds a scenario from <code>content/scenarios/</code>.</p>
@@ -247,6 +266,7 @@ export function mount(el) {
   bindSocial(el);
   bindEmotions(el);
   bindTestDays(el);
+  bindBody(el);
   for (const id of ['#ob-type', '#ob-where']) el.querySelector(id).addEventListener('change', fillObjectForm);
   objectTypes().then((t) => {
     types = t;
@@ -550,6 +570,12 @@ function fillSelects() {
     + [...store.rooms.values()].map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
     + '<option value="*">* everyone, everywhere</option>';
   room.value = prevRoom || 'square';
+  const bd = root.querySelector('#bd-citizen');
+  if (bd) {
+    const prev = bd.value;
+    bd.innerHTML = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}${c.alive === false ? ' (dead)' : ''}</option>`).join('');
+    if (prev) bd.value = prev;
+  }
   const cit = root.querySelector('#wh-citizen');
   const prevCit = cit.value;
   cit.innerHTML = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(roomName(c.location))})</option>`).join('');
@@ -878,4 +904,66 @@ async function reseed() {
   } catch (err) {
     result('#rs-result', false, err.message);
   }
+}
+
+// ---------- body (step 7B) ----------
+const DAMAGE_KINDS = ['cut', 'pierce', 'blunt', 'burn', 'crush', 'blast'];
+const CONDITION_KINDS = ['bruise', 'cut', 'puncture', 'burn', 'fracture', 'dislocation', 'crush', 'concussion', 'organ_damage', 'internal_bleeding', 'severed', 'eye_damage', 'ear_damage', 'infection', 'fever', 'chill'];
+let bdPart = '';
+
+function bindBody(el) {
+  const say = (ok, t) => result('#bd-result', ok, t);
+  el.querySelector('#bd-kind').innerHTML = `<optgroup label="A hit (damage API)">${DAMAGE_KINDS.map((k) => `<option value="dmg:${k}">${k}</option>`).join('')}</optgroup>
+    <optgroup label="A specific condition">${CONDITION_KINDS.map((k) => `<option value="cond:${k}">${k.replace(/_/g, ' ')}</option>`).join('')}</optgroup>`;
+  const citizen = () => val('#bd-citizen');
+  const draw = async () => {
+    if (!root || !citizen()) return;
+    try {
+      const v = await api.get(`/api/citizens/${encodeURIComponent(citizen())}/body`);
+      el.querySelector('#bd-fig').innerHTML = bodyFigureSvg(v, { pickable: true, selected: bdPart, internal: el.querySelector('#bd-internal').checked })
+        + `<div class="dim">vitality ${Math.round(v.vitality)} · blood ${Math.round(v.blood)}% · ${esc((v.status ?? []).join(', ') || 'no status effects')}</div>`;
+    } catch (err) {
+      say(false, err.message);
+    }
+  };
+  el.querySelector('#bd-citizen').addEventListener('change', () => { bdPart = ''; setVal('#bd-part', ''); draw(); });
+  el.querySelector('#bd-internal').addEventListener('change', draw);
+  el.querySelector('#bd-fig').addEventListener('click', (e) => {
+    const g = e.target.closest('[data-part]');
+    if (!g) return;
+    bdPart = g.dataset.part;
+    setVal('#bd-part', bdPart);
+    draw();
+  });
+  const act = async (path, body, okText) => {
+    try {
+      const r = await api.post(path, { citizenId: citizen(), ...body });
+      say(true, okText(r));
+      draw();
+    } catch (err) {
+      say(false, err.message);
+    }
+  };
+  el.querySelector('#bd-injure').addEventListener('click', () => {
+    const [kind, type] = val('#bd-kind').split(':');
+    const part = val('#bd-part') || (kind === 'dmg' ? 'random' : '');
+    const n = Number(val('#bd-sev'));
+    act('/api/director/injure', kind === 'dmg' ? { type, part, amount: n, cause: val('#bd-cause') || 'the director' } : { type, part, severity: n, cause: val('#bd-cause') || 'the director' },
+      (r) => `${citizenName(citizen())}: ${r.conditions.map((c) => `${c.type.replace(/_/g, ' ')} (${c.partLabel ?? 'systemic'}, severity ${c.severity})`).join(', ') || 'nothing happened'}${r.garments?.length ? ` · ${r.garments.length} garment(s) damaged` : ''}`);
+  });
+  el.querySelector('#bd-heal').addEventListener('click', () => act('/api/director/heal', { amount: 10 }, (r) => `healed ${r.healed.length} condition(s)`));
+  el.querySelector('#bd-kill').addEventListener('click', () => { if (confirm(`Kill ${citizenName(citizen())}?`)) act('/api/director/kill', { cause: 'the director' }, () => 'dead'); });
+  el.querySelector('#bd-revive').addEventListener('click', () => act('/api/director/revive', {}, (r) => `revived: vitality ${Math.round(r.vitality)}, blood ${Math.round(r.blood)}%`));
+  el.querySelector('#bd-regen-set').addEventListener('click', () => act('/api/director/regen', { multiplier: Number(val('#bd-regen')) }, (r) => `regeneration ×${r.regen}`));
+  const rates = [['#bd-acc', '#bd-acc-v', 'accidentRate'], ['#bd-ill', '#bd-ill-v', 'illnessRate'], ['#bd-heal-scale', '#bd-heal-v', 'healTimeScale']];
+  for (const [id, vid, key] of rates) {
+    el.querySelector(id).addEventListener('input', (e) => { el.querySelector(vid).textContent = e.target.value; });
+    el.querySelector(id).addEventListener('change', async (e) => {
+      try { await api.post('/api/director/body-rates', { [key]: Number(e.target.value) }); say(true, `${key} = ${e.target.value}`); } catch (err) { say(false, err.message); }
+    });
+  }
+  api.get('/api/body/rates').then((r) => {
+    for (const [id, vid, key] of rates) if (r[key] != null) { el.querySelector(id).value = r[key]; el.querySelector(vid).textContent = r[key]; }
+  }).catch(() => {});
+  setTimeout(draw, 300);
 }

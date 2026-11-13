@@ -10,7 +10,7 @@ import { LLM } from './llm.js';
 import { config } from './config.js';
 import { backup } from './db.js';
 import { loadRooms, citizensIn, danglingExits, saveRoom, activeEffects, activeServices, serviceNames } from './world/rooms.js';
-import { createCitizenStore, citizenFromInput, citizenSummary, needsSummary } from './world/citizens.js';
+import { createCitizenStore, citizenFromInput, citizenSummary, needsSummary, bodySummary } from './world/citizens.js';
 import { makeStimulus, pushToInbox, mergeInboxes, IMPORTANCE } from './world/perception.js';
 import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, die, finishMeal } from './world/actions.js';
 import { Conversations } from './world/conversations.js';
@@ -264,7 +264,7 @@ export class World {
       id: c.id, name: c.name, kind: c.kind, alive: c.alive, location: c.location,
       activity: c.activity, conversationId: c.conversationId, inboxSize: c.inbox.length,
       lastInnerThought: c.lastInnerThought, lastDecisionAt: c.lastDecisionAt, hp: c.needs?.hp ?? 100,
-      needs: needsSummary(c), marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
+      needs: needsSummary(c), body: bodySummary(c), marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
     });
   }
 
@@ -896,6 +896,7 @@ export class World {
       })),
       ...this.#objectsOf(c),
       emotionsView: this.emotions.view(c),
+      bodyView: this.body.view(c.id), // step 7B
       promptPreview: buildMessages(this, c),
       toolsPreview: buildTools(this, c).map((t) => t.function.name),
       conversation: conv && { ...this.conversations.view(conv), participantNames: conv.participants.map(name) },

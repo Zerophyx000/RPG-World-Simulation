@@ -7,7 +7,7 @@ import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const LABEL_W = 96;
-const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '✝' };
+const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸' };
 const LANE_H = 34;
 const TOP = 26;
 const MIN_SPAN = 15;
@@ -21,11 +21,14 @@ let data = null;
 let timer = null;
 let loading = false;
 
+let showVitality = false;
+
 export function mount(el) {
   root = el;
   el.innerHTML = `
     <div class="tl-toolbar">
       <label class="check"><input type="checkbox" id="tl-follow" checked> Follow live</label>
+      <label class="check" title="hourly vitality while someone is hurt or ill"><input type="checkbox" id="tl-vitality"> Vitality</label>
       <button id="tl-in" title="Zoom in">＋</button><button id="tl-out" title="Zoom out">－</button>
       <button id="tl-6h">6 h</button>
       <span class="dim" id="tl-range"></span>
@@ -41,6 +44,7 @@ export function mount(el) {
     if (follow) end = null;
     load();
   });
+  el.querySelector('#tl-vitality').addEventListener('change', (e) => { showVitality = e.target.checked; render(); });
   el.querySelector('#tl-in').addEventListener('click', () => zoom(1 / 1.5));
   el.querySelector('#tl-out').addEventListener('click', () => zoom(1.5));
   el.querySelector('#tl-6h').addEventListener('click', () => {
@@ -286,6 +290,20 @@ function render(provisional = false) {
       out.push(`<g class="tick red" data-ev="${p.eventId}"><title>${esc(`${p.type}${p.text ? `: ${p.text}` : ''}`)}</title>
         <rect x="${px - 3}" y="${yy + LANE_H - 13}" width="6" height="9" fill="transparent"/>
         <line x1="${px}" y1="${yy + LANE_H - 12}" x2="${px}" y2="${yy + LANE_H - 5}"/></g>`);
+    }
+  }
+
+  // step 7B: the vitality line per citizen (optional overlay): 100 at the top of the lane, 0 at the bottom
+  if (showVitality) {
+    const per = new Map();
+    for (const s of data.vitality ?? []) {
+      if (s.t < from - 120 || s.t > to + 120 || !lane.has(s.citizenId)) continue;
+      (per.get(s.citizenId) ?? per.set(s.citizenId, []).get(s.citizenId)).push(s);
+    }
+    for (const [id, list] of per) {
+      const yy = y(id);
+      const pts = list.map((s) => `${x(s.t).toFixed(1)},${(yy + LANE_H - 3 - (Math.max(0, Math.min(100, s.v)) / 100) * (LANE_H - 6)).toFixed(1)}`);
+      if (pts.length > 1) out.push(`<polyline class="vit-line" points="${pts.join(' ')}" fill="none" stroke="#d9483b" stroke-width="1.4"${dimmed(id)}><title>${esc(citizenName(id))}: vitality</title></polyline>`);
     }
   }
 

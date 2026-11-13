@@ -5,6 +5,7 @@ import { esc, ICONS, activityLabel, roomName, needBadges } from '../util.js';
 import { colorOf } from '../colors.js';
 import { trimmedNote } from './inspector.js';
 import { ringStyle, ringTitle, emoIcons } from './emotions-ui.js';
+import { bodyChips } from './body-ui.js';
 
 let root = null;
 const lastThought = new Map();
@@ -56,7 +57,7 @@ function cardHtml(c) {
   const classes = ['roster-card', a.type === 'sleeping' ? 'asleep' : '', a.type === 'collapsed' ? 'down' : '', c.id === store.selectedId ? 'selected' : '', store.filterCitizen && store.filterCitizen !== c.id ? 'dimmed' : '', c.alive === false ? 'dead' : ''];
   return `<div class="${classes.join(' ')}" data-id="${esc(c.id)}" style="--c:${colorOf(c.id)};${ringStyle(c)}" title="Click: inspect · Shift-click: filter${ringTitle(c) ? `\n${ringTitle(c)}` : ''}">
     <div class="r-head">
-      <span class="r-name">${esc(c.name)}</span>${emoIcons(c)}
+      <span class="r-name">${esc(c.name)}</span>${emoIcons(c)}${bodyChips(c)}
       ${thinking ? '<span class="pulse" title="thinking"></span>' : ''}
       <span class="badges">${needBadges(c)}</span>
       <span class="r-loc">${esc(roomName(c.location))}</span>

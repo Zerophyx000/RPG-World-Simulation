@@ -42,6 +42,9 @@ const TYPES = {
   'objects-patch': 'patchObject',
   'objects-reset': 'resetObject',
   'activate': 'activateCitizen',
+  'injure': 'body.injure',
+  'heal': 'body.heal',
+  'kill': 'body.kill',
 };
 
 // ---------- scripts on disk ----------
@@ -104,6 +107,9 @@ function typeProblems(a) {
     case 'objects-create': return [...missing(a, 'id', 'type'), ...(!a.room && !a.holder ? ['needs "room" or "holder"'] : [])];
     case 'objects-patch': return [...missing(a, 'id'), ...(!a.patch || typeof a.patch !== 'object' || !Object.keys(a.patch).length ? ['needs a non-empty "patch" object'] : [])];
     case 'objects-reset': return missing(a, 'objectId');
+    case 'injure': return [...missing(a, 'citizenId'), ...(a.condition || a.damageType ? [] : ['needs "condition" (a condition type) or "damageType" (cut, pierce, blunt, burn, crush, blast)'])];
+    case 'heal': return missing(a, 'citizenId');
+    case 'kill': return missing(a, 'citizenId');
     case 'activate': return missing(a, 'id');
     default: return [];
   }
@@ -172,6 +178,9 @@ function runAction(world, a) {
     case 'objects-create': return world.createObject(a);
     case 'objects-patch': return world.patchObject(a.id, a.patch ?? {});
     case 'objects-reset': return world.resetObject(a.objectId);
+    case 'injure': return world.body.injure(a.citizenId, { ...a, type: a.condition ?? a.damageType });
+    case 'heal': return world.body.heal(a.citizenId, { conditionId: a.conditionId ?? null, partId: a.partId ?? null, all: a.conditionId == null && !a.partId, amount: a.amount ?? 10, source: 'director' });
+    case 'kill': return world.body.kill(a.citizenId, a.cause ?? 'a test day');
     case 'activate': return world.activateCitizen({ id: a.id, location: a.location });
     default: throw new Error(`unknown type "${a.type}"`); // filtered out at load
   }

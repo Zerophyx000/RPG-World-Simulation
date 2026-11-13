@@ -121,6 +121,22 @@ function chooseTool(tools, prompt = '', stimulus = '') {
   const byName = Object.fromEntries(tools.map((t) => [t.function.name, t]));
   const needy = chooseNeedTool(byName, prompt, stimulus);
   if (needy) return needy;
+  // Step 7B: tend the hurt (mostly sensible, sometimes a wrong method to exercise the "does nothing" feedback)
+  if (byName.treat && Math.random() < 0.6) {
+    const tool = byName.treat;
+    const args = genArgs(tool);
+    const methods = tool.function.parameters.properties.method?.enum ?? [];
+    if (Math.random() < 0.75) {
+      args.method = ['tourniquet', 'bandage', 'pack_wound', 'stitch', 'wrap_with_cloth', 'apply_pressure', 'splint', 'set_bone', 'rinse', 'herbal_remedy', 'keep_still'].find((m) => methods.includes(m)) ?? args.method;
+    }
+    return { tool, args };
+  }
+  if (byName.refuse_treatment && Math.random() < 0.25) return { tool: byName.refuse_treatment, args: genArgs(byName.refuse_treatment) };
+  if (byName.accept_help && Math.random() < 0.6) return { tool: byName.accept_help, args: genArgs(byName.accept_help) };
+  if (byName.examine_person && Math.random() < 0.5) return { tool: byName.examine_person, args: genArgs(byName.examine_person) };
+  if (byName.carry_person && Math.random() < 0.4) return { tool: byName.carry_person, args: genArgs(byName.carry_person) };
+  if (byName.put_down_person && Math.random() < 0.5) return { tool: byName.put_down_person, args: genArgs(byName.put_down_person) };
+  if (byName.wash_clothes && Math.random() < 0.5) return { tool: byName.wash_clothes, args: genArgs(byName.wash_clothes) };
   const say = byName.say;
   if (say?.function.parameters?.properties?.to && Math.random() < 0.4) {
     const args = genArgs(say);
