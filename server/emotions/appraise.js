@@ -212,7 +212,7 @@ export class Appraisal {
     const E = this.rules.envy ?? {};
     if (!this.#ready(c, 'envy', targetId, about, E.cooldownMinutes ?? 60)) return null;
     const recent = this.world.db.prepare(`SELECT COUNT(*) AS n FROM emotion_log WHERE citizen_id = ? AND kind = 'bump' AND game_time >= ?
-      AND json_extract(data, '$.type') = 'envy' AND json_extract(data, '$.target') = ?`).get(c.id, this.world.now - (E.recentDays ?? 3) * 1440, targetId).n;
+      AND json_extract(data, '$.type') = 'envy' AND json_extract(data, '$.target') = ? AND json_extract(data, '$.source') = 'signal'`).get(c.id, this.world.now - (E.recentDays ?? 3) * 1440, targetId).n;
     const delta = (E.base ?? 2) + (E.agreeableness ?? 2) * (1 - (c.persona?.traits?.agreeableness ?? 0.5)) + (E.perRecentBump ?? 0.5) * recent;
     const r = this.emo.bump(c, { type: 'envy', target: targetId, about, delta, cause, source: 'signal', rule: 'envy', raw: true });
     if (r && r.before < 4 && r.after >= 4) {
@@ -241,7 +241,7 @@ export class Appraisal {
     let out = null;
     for (const [b, rival] of [[x, y], [y, x]]) {
       if (!attached(b) || attached(rival) && (this.world.memory.rel(c.id, rival)?.affinity ?? 0) > (this.world.memory.rel(c.id, b)?.affinity ?? 0)) continue;
-      if (this.world.groups.isFamily(b, rival)) continue;
+      if (this.world.groups.shared(b, rival, ['family', 'household']).length) continue; // a master and his apprentice are no rivals
       out = this.jealousy(c, b, rival, causeFn(b, rival), factor) ?? out;
     }
     return out;

@@ -228,8 +228,8 @@ export function tierEffect(world, c, stimuli) {
   const out = { raise: false, reason: null, lower: false, params: null };
   if (!intense.length) return out;
   const people = new Set(intense.flatMap((e) => [e.target, e.about]).filter(Boolean));
-  const relevant = stimuli.some((s) => people.has(s.sourceId) || people.has(s.data?.toId) || s.kind === 'emotion' || s.kind === 'signal' || s.kind === 'notice'
-    || (s.kind === 'director' && intense.some((e) => e.type === 'fear')));
+  const relevant = stimuli.some((s) => (s.importance ?? 0) >= 5 && (people.has(s.sourceId) || people.has(s.data?.toId) || s.kind === 'emotion' || s.kind === 'signal' || s.kind === 'notice'
+    || (s.kind === 'director' && intense.some((e) => e.type === 'fear'))));
   if (relevant) {
     out.raise = true;
     out.reason = `intense ${intense[0].type}`;
