@@ -7,9 +7,10 @@
 // - captures THINKING separately from the answer, logs every call (incl. profile + tier)
 import { config } from './config.js';
 
-// Defaults (the live values come from config: LLM_MAX_TOKENS_FULL/LIGHT/NONE). Heavy background purposes
-// write long tool calls after thinking, which is why PURPOSE_FULL_MAX overrides 'full' for them.
-export const TIER_MAX_TOKENS = { full: 3000, light: 1000, none: 300 };
+// Token caps per tier (full / light / none) come from config: LLM_MAX_TOKENS_FULL/LIGHT/NONE, so an
+// operator can tune them without touching code. Heavy background purposes write long tool calls after
+// thinking, which is why PURPOSE_FULL_MAX overrides 'full' for them.
+export const TIER_MAX_TOKENS = { ...config.llm.maxTokens };
 export const PURPOSE_FULL_MAX = { plan: 4000, reflect: 4000, consolidate: 6000, bootstrap: 6000 };
 // When a call runs out of tokens without a usable tool call, the retry (thinking off) gets this many.
 export const RETRY_MAX = { decide: 600, plan: 2000, reflect: 1500, consolidate: 3000, bootstrap: 3000 };

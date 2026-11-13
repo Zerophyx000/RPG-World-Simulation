@@ -6,6 +6,9 @@
 //                                      with |affinity| >= 3; timers that end a plan; plan snags / visits
 //   none  (thinking off, 300 tokens)   routine: an activity finished, minor timers, low-importance stimuli
 //
+// Caps are defaults, overridable per tier via LLM_MAX_TOKENS_FULL / LLM_MAX_TOKENS_LIGHT / LLM_MAX_TOKENS_NONE
+// (server/llm.js TIER_MAX_TOKENS). A cut-off decide call climbs one tier (server/agents/think.js).
+//
 // Step 6: an intense emotion (>= 7) relevant to what triggered the think RAISES the tier to full. Emotions never
 // lower a tier unless EMOTION_PARAM_EFFECTS=true (experiments only, off by default).
 //

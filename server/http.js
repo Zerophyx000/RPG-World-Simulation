@@ -217,8 +217,9 @@ export function createServer(world, { observer = null } = {}) {
       const pv = q.get('purpose');
       if (pv) { where.push('purpose = ?'); params.push(pv); }
       params.push(limit);
+      // step A6: finish_reason (cut-off analysis) + has_reasoning for the call list
       return world.db.prepare(`SELECT id, real_time, game_time, citizen_id, purpose, tier, status, finish_reason, duration_ms,
-                                      prompt_tokens, completion_tokens
+                                      prompt_tokens, completion_tokens, (reasoning IS NOT NULL AND reasoning <> '') AS has_reasoning
                                FROM llm_calls ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`).all(...params);
     }],
 
