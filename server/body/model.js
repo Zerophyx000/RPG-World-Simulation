@@ -168,7 +168,9 @@ export function computeBody(content, state) {
     const miss = health.missing.has(id);
     if (miss || f < 1) parts[id] = { health: r2(f * content.parts.get(id).maxHealth), missing: miss };
   }
-  return { parts, capacities, status, pain: r2(pain), stage: stage.name, shock, concussed, missing: health.missing, destroyed: health.destroyed };
+  // wear: blood loss stage, anemia (x1.3), pain >= 4 (x1.3), a chill, a fever
+  const fatigueFactor = (stage.fatigue ?? 1) * (conds.some((c) => c.type === 'anemia') ? 1.3 : 1) * (pain >= 4 ? 1.3 : 1) * (1 + 0.05 * sev('chill')) * (fever >= 3 ? 1.1 : 1);
+  return { parts, capacities, status, pain: r2(pain), stage: stage.name, fatigueFactor: r2(fatigueFactor), shock, concussed, missing: health.missing, destroyed: health.destroyed };
 }
 
 const r2 = (v) => Math.round(v * 100) / 100;

@@ -23,7 +23,10 @@
         "Get Tomas to pay the three shillings he owes for bread",
         "Find out who has been stealing flour from her storeroom"
       ],
-      "speechStyle": "Short sentences, dry humor, never says please."
+      "speechStyle": "Short sentences, dry humor, never says please.",
+      "practiced": [
+        "hot"
+      ]
     },
     "relationships": [
       {
@@ -102,6 +105,10 @@
       "speechStyle": "Few words, grunts, gets louder when cornered. Calls people by their trade instead of their name when annoyed.",
       "covets": [
         "valuable"
+      ],
+      "practiced": [
+        "hot",
+        "tool"
       ]
     },
     "relationships": [
@@ -178,7 +185,10 @@
         "Decide whether to tell Greta what she saw Jonas do",
         "Gather fresh herbs before the tax collector's visit, when people will need calming draughts"
       ],
-      "speechStyle": "Chatty and full of questions; now and then calls someone 'love'."
+      "speechStyle": "Chatty and full of questions; now and then calls someone 'love'.",
+      "practiced": [
+        "tool"
+      ]
     },
     "relationships": [
       {
@@ -250,7 +260,10 @@
         "Keep the tavern fed and supplied despite dear flour"
       ],
       "speechStyle": "Slow and measured, old soldier's sayings, calls younger people 'lad' or 'girl'.",
-      "covets": []
+      "covets": [],
+      "practiced": [
+        "danger"
+      ]
     },
     "relationships": [
       {
@@ -335,6 +348,9 @@
       ],
       "covets": [
         "respect"
+      ],
+      "practiced": [
+        "tool"
       ]
     },
     "relationships": [

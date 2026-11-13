@@ -143,7 +143,7 @@ function startLeg(world, c, toId, trip) {
   const carrying = Boolean(c.carryingPerson);
   const minutes = exit.travelMinutes * (trip?.slow ?? 1) * (carrying ? 2 : 1); // step 7B: crawling and carrying take longer
   if (carrying) carryAlong(world, c, toId);
-  world.body?.onMove(c, { crawl: Boolean(trip?.crawl) });
+  world.body?.onMove(c, { crawl: Boolean(trip?.crawl), toId });
   if (c.conversationId) world.conversations.leave(c, { reason: 'moved' });
   world.objects.snapshotRoom(c, room.id); // the baseline for noticing changes next time
   for (const f of citizensIn(world.citizens, room.id, { exceptId: c.id })) {

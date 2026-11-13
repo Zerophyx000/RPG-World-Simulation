@@ -23,6 +23,8 @@ import { collapse, revive } from '../world/actions.js';
 import { sizeFactor } from './bleeding.js';
 import { dropCarried } from './treat.js';
 import { restock } from './supplies.js';
+import { activityAccident, moveAccident, exposure } from './accidents.js';
+import { loadScenario } from '../world/scenarios.js';
 
 const SLOW_EVERY = 10; // game minutes
 const httpError = (status, message) => Object.assign(new Error(message), { status });
@@ -104,6 +106,16 @@ export class Body {
     b.windows ??= 0;
     b.sinceSlow ??= 0;
     if (c.alive) ensureGarments(this.world, c);
+    // provisional practice (accidents) for worlds from before this step: taken from the scenario content, once
+    if (!b.practiceSeeded) {
+      b.practiceSeeded = true;
+      if (!c.persona?.practiced?.length) {
+        try {
+          const def = loadScenario(this.world.scenario).citizens?.find((x) => x.id === c.id);
+          if (def?.persona?.practiced?.length) c.persona.practiced = [...def.persona.practiced];
+        } catch { /* unknown scenario */ }
+      }
+    }
     this.recompute(c, { quiet: true });
     if (fresh) this.world.saveCitizen(c);
   }
@@ -383,6 +395,7 @@ export class Body {
     st.status = r.status;
     st.pain = r.pain;
     st.stage = r.stage;
+    st.fatigueFactor = r.fatigueFactor;
     if (c.needs) {
       c.needs.hp = r1(st.vitality);
       c.needs.hpMax = 100;
@@ -445,8 +458,14 @@ export class Body {
   }
 
   /** Moving on a healed-over wound can reopen it (legs when walking; anything when crawling). Keeping still prevents it. */
-  onMove(c, { crawl = false } = {}) {
+  /** Working at a hot or sharp thing for `minutes`: maybe an accident. → text for the finish line */
+  accidentCheck(c, { object, minutes = 10 } = {}) {
+    return activityAccident(this.world, c, object, minutes);
+  }
+
+  onMove(c, { crawl = false, toId = null } = {}) {
     if (!c.body) return;
+    moveAccident(this.world, c, { crawl, toId });
     const R = this.content.bleeding.rebleed;
     for (const cond of this.active(c.id)) {
       if (!cond.flags?.clotted || cond.geometry?.internal || !cond.geometry?.vessel) continue;
@@ -493,6 +512,11 @@ export class Body {
   tick(elapsed, now) {
     const needs = this.world.needs;
     if (now - (this.lastRestock ?? -Infinity) >= SLOW_EVERY) { this.lastRestock = now; restock(this.world, now); } // supplies come back on a timer
+    if (now - (this.lastExposure ?? now) >= SLOW_EVERY) { // out in the cold and wet (healthy people too)
+      const minutes = now - this.lastExposure;
+      this.lastExposure = now;
+      for (const c of this.world.citizens.values()) if (c.alive && c.body && c.location) exposure(this.world, c, minutes);
+    } else if (this.lastExposure == null) this.lastExposure = now;
     for (const c of this.world.citizens.values()) {
       if (!c.alive) continue;
       if (!c.body) this.ensureState(c);
@@ -547,6 +571,12 @@ export class Body {
       this.#vitality(c, conds, dt, stage);
       if (st.blood < B.deathBlood) return this.die(c, { cause: this.deathCause(c, 'blood'), reason: 'blood' });
       if (st.vitality <= 0) return this.die(c, { cause: this.deathCause(c, 'vitality'), reason: 'vitality' });
+    }
+    // pain, blood loss, anemia and a chill wear on the body: extra fatigue while awake
+    const ff = st.fatigueFactor ?? 1;
+    if (ff > 1 && c.needs && !['sleeping', 'collapsed'].includes(c.activity.type)) {
+      const base = this.world.needs.rate('fatigue', this.world.needs.rateKey(c));
+      if (base > 0) c.needs.fatigue = Math.min(100, c.needs.fatigue + (base * (ff - 1) * elapsed) / 60);
     }
     st.bleedTotal = last ? Math.round(last.total * 10) / 10 : 0;
     st.bleedWounds = last ? last.wounds.filter((w) => w.rate > 0.05).map((w) => ({ id: w.cond.id, rate: Math.round(w.rate * 10) / 10 })) : [];

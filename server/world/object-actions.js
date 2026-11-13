@@ -385,6 +385,7 @@ export function finishUse(world, c, token, p = null) {
   const o = reach(world, c, a.detail.objectId);
   const call = { name: 'use', arguments: { object: a.detail.objectId, intent: a.detail.intent } };
   if (!o) return stale(world, c, call, 'You turn back to it, but it is gone.');
+  world.body?.accidentCheck(c, { object: o, minutes: a.detail?.minutes ?? 3 });
   if (!p) p = { ...fallbackUse(world, o, a.detail.intent), source: 'fallback' };
   const type = O.type(o);
   // Re-check against the state NOW (it may have changed while the keeper thought).
@@ -434,7 +435,8 @@ export function finishTargetedDo(world, c, a) {
   const o = a.detail?.targetId ? reach(world, c, a.detail.targetId) : null;
   if (!o) return '';
   O.learn(c, o, { touched: true });
-  if (!k?.accept || !k.newState) return '';
+  const hurt = world.body?.accidentCheck(c, { object: o, minutes: a.detail?.minutes ?? 10 }) ?? ''; // step 7B: burns at the forge, cuts from tools
+  if (!k?.accept || !k.newState) return hurt;
   if (!(O.type(o).transitions[o.state] ?? []).includes(k.newState)) {
     world.logEvent('keeper', { actorId: c.id, location: c.location, objectId: o.id, verdict: 'stale', proposal: { newState: k.newState }, state: o.state });
     return '';
