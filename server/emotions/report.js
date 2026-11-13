@@ -126,10 +126,16 @@ export function parseFeeling(world, c, raw, people) {
   return { type, target, change, why: why.slice(0, 200) || null, ...(trust != null ? { trust } : {}) };
 }
 
-// The word to name in an emotion_unmapped event: the reported emotion, letters only.
+// The word to name in an emotion_unmapped event: only the emotion word the model reported
+// (the object's `emotion` field, or the legacy string's first token) — never the whole report.
 function feelingWord(raw) {
-  const s = typeof raw === 'object' ? String(raw.emotion ?? raw.type ?? '') : String(raw).trim().split(/:\s+|\s+—\s+|\s+-\s+|\s+because\s+/)[0];
-  return s.toLowerCase().replace(/[^a-z]/g, '') || null;
+  if (typeof raw === 'object') return letters(raw?.emotion ?? raw?.type);
+  const head = String(raw).trim().split(/:\s+|\s+—\s+|\s+-\s+|\s+because\s+/)[0].trim();
+  return letters(head.split(/\s+/)[0]); // the first token is the regex's m[1] when the string is well-formed
+}
+
+function letters(s) {
+  return String(s ?? '').toLowerCase().replace(/[^a-z]/g, '') || null;
 }
 
 function shortRaw(raw) {
@@ -145,7 +151,7 @@ export function applyFeeling(world, c, f, source = 'self') {
   // step 7A: a trust rule (suspicion, wariness, distrust) also dents trust — always with a reason.
   if (r && f.trust != null && f.target) {
     world.relationships.change(c.id, f.target, { trust: f.trust }, {
-      reason: f.why || 'something about them makes me uneasy', source: 'emotion',
+      reason: f.why || 'something about them makes me uneasy', source: 'feeling',
     });
   }
   return r;
