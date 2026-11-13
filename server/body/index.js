@@ -20,6 +20,7 @@ import { applyDamage, makeWound, rollVessel, depthFor } from './damage.js';
 import { ensureGarments, wornGarments, garmentsCovering, setBloodied } from './garments.js';
 import { killCitizen } from './death.js';
 import { collapse, revive } from '../world/actions.js';
+import { sizeFactor } from './bleeding.js';
 
 const SLOW_EVERY = 10; // game minutes
 const httpError = (status, message) => Object.assign(new Error(message), { status });
@@ -49,6 +50,7 @@ export class Body {
     this.content = loadBodyContent();
     this.conds = new Map();     // citizenId -> [condition] (active ones, in memory)
     this.dirty = new Set();     // conditions whose dynamic fields changed since the last flush
+    this.pending = new Map();   // citizenId -> [new conditions] (told to the patient and the room once, in afterChange)
     this.dying = new Set();
     this.rng = Math.random;     // tests can swap in a seeded one
     this.stmt = {
@@ -162,6 +164,11 @@ export class Body {
       actorId: c.id, location: c.location, action: 'add', conditionId: cond.id, type: cond.type, part: cond.partId, severity: r1(cond.severity),
       cause: cond.cause, ...(geometry.vessel ? { vessel: geometry.vessel, depth: geometry.depth, length: geometry.length_cm } : {}),
     });
+    if (!spec.quiet && !cond.permanent) {
+      if (!this.pending.has(c.id)) this.pending.set(c.id, []);
+      this.pending.get(c.id).push(cond);
+      c.body.lastCause = cond.cause;
+    }
     if (!spec.quiet) this.afterChange(c);
     return cond;
   }
@@ -398,7 +405,65 @@ export class Body {
   afterChange(c) {
     if (!c.alive) return;
     this.recompute(c);
+    this.#tellAboutNew(c);
     this.world.saveCitizen(c);
+  }
+
+  /** The new wounds, told once: to the patient as a sensation, to the room as what can be seen (with the feelings that follow). */
+  #tellAboutNew(c) {
+    const list = this.pending.get(c.id);
+    if (!list?.length) return;
+    this.pending.delete(c.id);
+    const W = this.world;
+    const fresh = list.filter((x) => x.resolvedAt == null).sort((a, b) => b.severity - a.severity);
+    if (!fresh.length) return;
+    const top = fresh.slice(0, 2);
+    const severity = top[0].severity;
+    W.perceive([c.id], {
+      kind: 'body', text: `${top.map((x) => this.woundText(x).feel).filter(Boolean).join(' ')}${fresh.length > 2 ? ' And more besides.' : ''}`.trim(),
+      importance: clamp(Math.round(3 + severity * 0.6), 4, 9), roomId: c.location, data: { injury: true },
+    });
+    const seen = fresh.filter((x) => x.visible && x.partId);
+    if (!seen.length || !c.location) return;
+    const worst = seen[0];
+    const text = `${ref(c)} is hurt: ${this.woundText(worst).look}${seen.length > 1 ? ` (and ${seen.length - 1} more)` : ''}.`;
+    const importance = clamp(Math.round(4 + worst.severity * 0.5), 5, 8);
+    const witnesses = citizensIn(W.citizens, c.location, { exceptId: c.id });
+    W.perceive(witnesses.map((o) => o.id), { kind: 'action', text, importance, sourceId: c.id, roomId: c.location, data: { injury: true } });
+    for (const o of witnesses) {
+      if (o.activity.type === 'sleeping' || o.activity.type === 'collapsed' || !W.emotions?.appraisal) continue;
+      const affinity = W.memory.rel(o.id, c.id)?.affinity ?? 0;
+      if (affinity >= 3) W.emotions.appraisal.fire(o, 'loved_one_hurt', { other: c.id });
+      else if (worst.severity >= 5 || worst.bleeding > 5) W.emotions.appraisal.fire(o, 'saw_blood', { other: c.id });
+    }
+  }
+
+  /** Moving on a healed-over wound can reopen it (legs when walking; anything when crawling). Keeping still prevents it. */
+  onMove(c, { crawl = false } = {}) {
+    if (!c.body) return;
+    const R = this.content.bleeding.rebleed;
+    for (const cond of this.active(c.id)) {
+      if (!cond.flags?.clotted || cond.geometry?.internal || !cond.geometry?.vessel) continue;
+      const limb = this.content.limbOf(cond.partId);
+      if (!(limb === 'leg' || crawl)) continue;
+      let p = R.perMove * (1 + sizeFactor(this.content.bleeding, cond) * R.sizeMult * 10);
+      if (cond.geometry.vessel.endsWith('arterial')) p *= R.arterialMult;
+      if (crawl) p *= 1.5;
+      if (this.rng() < p) {
+        cond.clot = Math.min(cond.clot, R.resetTo);
+        delete cond.flags.clotted;
+        this.#touch(cond);
+        this.world.logEvent('rebleed', { actorId: c.id, location: c.location, conditionId: cond.id, part: cond.partId });
+        this.world.perceive([c.id], { kind: 'body', text: `The wound in your ${this.content.partLabel(cond.partId)} has torn open again.`, importance: 6, roomId: c.location });
+      }
+    }
+  }
+
+  /** Did any of these citizens get hurt, treated or die since `since`? (reflection gating) */
+  involvedSince(ids, since) {
+    if (!ids?.length) return false;
+    const q = ids.map(() => '?').join(',');
+    return Boolean(this.db.prepare(`SELECT 1 FROM events WHERE game_time >= ? AND type IN ('injury', 'treatment', 'death') AND actor_id IN (${q}) LIMIT 1`).get(since ?? 0, ...ids));
   }
 
   knockOut(c, { reason = 'unconscious' } = {}) {
@@ -411,6 +476,8 @@ export class Body {
     const since = c.body.unconsciousSince ?? this.world.now;
     c.body.unconsciousSince = null;
     revive(this.world, c, { by: null, text: 'You come to. Your head swims; you remember nothing of the time that passed.', body: true });
+    // the memory gap (step 4): not a memory of what happened, a note that time was lost
+    this.world.memory.add(c.id, { kind: 'episodic', text: c.body.lastCause ? `I blacked out after ${c.body.lastCause}. The next thing I knew, I was coming round.` : 'I blacked out. The next thing I knew, I was coming round.', importance: 5, placeId: c.location, source: { self: true } });
     // a memory gap, not a memory (step 4): a short note so they know time was lost
     this.world.logEvent('wake_unconscious', { actorId: c.id, location: c.location, minutes: Math.round(this.world.now - since) });
   }

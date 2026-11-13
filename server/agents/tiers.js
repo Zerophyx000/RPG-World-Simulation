@@ -45,6 +45,7 @@ export function chooseTier(c, trigger, world) {
     return { ...decide(base === 'full' ? 'light' : 'none', `${fx.reason ?? 'intense emotion'} (param effects)`), params: fx.params };
   }
   if (trigger.purpose === 'plan') return decide('full', 'planning');
+  if (world.body?.criticalHere(c)) return decide('full', 'critical bleeding here'); // step 7B: the patient and everyone present
   if (addressed) return decide('full', 'addressed');
   if (maxImportance >= 8) return decide('full', `importance ${maxImportance}`);
   if (stimuli.some((s) => s.kind === 'director')) return decide('full', 'director event');

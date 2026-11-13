@@ -8,6 +8,7 @@ import { IMPORTANCE } from './perception.js';
 import { pronouns } from './citizens.js';
 import { learnPlace, placeLabel, findPath, routeHint, servicesText, knows } from './places.js';
 import { nowPhrase } from './time.js';
+import { CRAWL_FACTOR } from '../body/content.js';
 import { ref } from '../memory/index.js';
 import { endOfDay, revisePlan, planActive } from '../agents/plan.js';
 import {
@@ -21,9 +22,15 @@ const WOKE_EARLY_MINUTES = 20; // step A2: back down after this long if nothing 
 
 export function applyAction(world, c, call) {
   const args = call.arguments ?? {};
+  // step 7B: the body can forbid walking (also for plan steps, which call this too)
+  if ((call.name === 'move_to' || call.name === 'travel_to') && (c.body?.capacities?.moving ?? 1) < 0.35) {
+    return stale(world, c, call, c.body.capacities.moving < 0.05 ? "You can't move at all." : "You can't walk on those injuries; you could only crawl.");
+  }
   switch (call.name) {
     case 'move_to': return moveTo(world, c, call);
     case 'travel_to': return travelTo(world, c, call);
+    case 'crawl_to': return crawlTo(world, c, call);   // step 7B
+    case 'gesture': return gesture(world, c, call);    // step 7B (mute)
     case 'say': return say(world, c, call);
     case 'tell_about_place': return tellAboutPlace(world, c, call);
     case 'do': return doAction(world, c, call);
@@ -67,6 +74,37 @@ function moveTo(world, c, call) {
   return { ok: true };
 }
 
+/** step 7B: crawl_to: one adjacent place, slowly and painfully (only offered when walking is impossible). */
+function crawlTo(world, c, call) {
+  const room = world.rooms.get(c.location);
+  const dest = world.rooms.get(call.arguments.destination);
+  const why = cantGo(world, room, dest?.id);
+  if (why) return stale(world, c, call, why(placeLabel(c, dest)));
+  if ((c.body?.capacities?.moving ?? 1) < 0.05) return stale(world, c, call, "You try to drag yourself along, but your body will not move.");
+  logAction(world, c, call, { crawl: true });
+  if (c.body) c.body.vitality = Math.max(1, c.body.vitality - 1);
+  startLeg(world, c, dest.id, { slow: CRAWL_FACTOR, crawl: true });
+  remember(world, c, `You drag yourself out of ${room.name} towards ${placeLabel(c, dest)}.`);
+  return { ok: true };
+}
+
+/** step 7B: gesture (mute): the others who can see you read it; the one gestured to is addressed. */
+function gesture(world, c, call) {
+  const text = String(call.arguments.text ?? '').trim().replace(/[.!]+$/, '').slice(0, 80);
+  if (!text) return stale(world, c, call, 'You wave your hands, but you cannot think how to show what you mean.');
+  const present = citizensIn(world.citizens, c.location, { exceptId: c.id });
+  const to = call.arguments.to ? findPerson(world, c, present, call.arguments.to) : null;
+  logAction(world, c, call, { toId: to?.id ?? null });
+  const watchers = present.filter((o) => o.activity.type !== 'sleeping' && o.activity.type !== 'collapsed' && !(o.body?.status ?? []).includes('blind'));
+  world.perceive(watchers.map((o) => o.id), (o) => ({
+    kind: 'action', text: `${ref(c)} gestures${to ? ` to ${o.id === to.id ? 'you' : ref(to)}` : ''}: ${text}.`,
+    importance: to && o.id === to.id ? 6 : 4, sourceId: c.id, roomId: c.location, data: to && o.id === to.id ? { interrupt: true, addressed: true } : {},
+  }));
+  remember(world, c, `You gesture: ${text}.`);
+  world.setActivity(c, { type: 'waiting', until: world.now + 1, detail: { reason: 'gesturing', minutes: 1 } });
+  return { ok: true };
+}
+
 /** travel_to: code finds the route (BFS) and walks it room by room. */
 function travelTo(world, c, call) {
   const dest = world.rooms.get(call.arguments.destination);
@@ -94,6 +132,8 @@ function startLeg(world, c, toId, trip) {
   const room = world.rooms.get(c.location);
   const exit = exitTo(room, toId);
   const dest = world.rooms.get(toId);
+  const minutes = exit.travelMinutes * (trip?.slow ?? 1); // step 7B: crawling takes longer
+  world.body?.onMove(c, { crawl: Boolean(trip?.crawl) });
   if (c.conversationId) world.conversations.leave(c, { reason: 'moved' });
   world.objects.snapshotRoom(c, room.id); // the baseline for noticing changes next time
   for (const f of citizensIn(world.citizens, room.id, { exceptId: c.id })) {
@@ -107,9 +147,9 @@ function startLeg(world, c, toId, trip) {
   c.location = null;
   world.setActivity(c, {
     type: 'moving',
-    until: world.now + exit.travelMinutes,
+    until: world.now + minutes,
     // Stimuli already in the inbox don't count as "something happened on the way".
-    detail: { from: room.id, to: dest.id, travelMinutes: exit.travelMinutes, legStart: world.now, seen: c.inbox.map((s) => s.id), ...(trip ?? {}) },
+    detail: { from: room.id, to: dest.id, travelMinutes: minutes, legStart: world.now, seen: c.inbox.map((s) => s.id), ...(trip ?? {}) },
   });
 }
 
@@ -118,6 +158,7 @@ export function arrive(world, c) {
   const dest = world.rooms.get(d.to) ?? world.rooms.get(d.from) ?? world.rooms.values().next().value;
   const origin = world.rooms.get(d.from);
   c.location = dest.id;
+  if (d.crawl && c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 2 * 6.5 * ((d.travelMinutes ?? 0) / 60)); // crawling tires three times as fast
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now); // being there teaches everything
   world.setActivity(c, { type: 'idle' });
   // Objects: diff what they see against the last time they were here ("fewer flour sacks than this morning").

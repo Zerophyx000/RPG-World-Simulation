@@ -5,6 +5,7 @@
 // 'first_impression' relationship event (Δtrust = (5 − wariness) × 0.4). A citizen's attitude towards
 // strangers (data.strangerTrust, 0..1) LEARNS: a stranger who betrays them lowers it, good experiences
 // with people met as strangers slowly raise it.
+import { dynamicTags } from '../body/perceive.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_DIR } from '../world/scenarios.js';
@@ -43,7 +44,8 @@ export class Strangers {
     const p = pronounsOf(other);
     const fill = (s, thing = '') => String(s).replace(/\{subj\}/g, p.subj).replace(/\{obj\}/g, p.obj).replace(/\{poss\}/g, p.poss).replace(/\{thing\}/g, thing);
     const out = [];
-    for (const tag of other.persona?.appearanceTags ?? []) {
+    // step 7B: wounded / bloodied / ragged are dynamic now (from the body), on top of the content tags
+    for (const tag of [...new Set([...(other.persona?.appearanceTags ?? []), ...dynamicTags(this.world, other)])]) {
       const cue = this.cues.appearance[tag];
       if (cue) out.push({ key: `tag:${tag}`, weight: cue.weight, phrase: fill(cue.phrase) });
     }

@@ -17,6 +17,7 @@ import { Conversations } from './world/conversations.js';
 import { upsertRooms, seedCitizensIfEmpty, wipeCitizens, loadWorldText, activeScenario, loadScenario, listScenarios } from './world/scenarios.js';
 import { Needs, NEED_KINDS, UNAWARE } from './world/needs.js';
 import { Body } from './body/index.js';
+import { hearing } from './body/perceive.js';
 import { initialKnownPlaces, learnPlace } from './world/places.js';
 import { Quiet } from './world/quiet.js';
 import { directorEvent, expireDirectorState, EFFECT_TYPES } from './world/director.js';
@@ -321,7 +322,7 @@ export class World {
       if (!c || !c.alive) continue;
       const partial = typeof stimulusOrFn === 'function' ? stimulusOrFn(c) : stimulusOrFn;
       if (!partial) continue;
-      const s = makeStimulus(partial, this.now);
+      const s = hearing(c, makeStimulus(partial, this.now)); // step 7B: deaf / hard of hearing hear less
       // step A2: an emergency (>= 7) that gets through to someone counts, asleep or not.
       if (s.importance >= 7) c.lastUrgentAt = this.now;
       if (c.activity.type === 'collapsed') continue;

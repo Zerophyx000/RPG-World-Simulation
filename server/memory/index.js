@@ -200,6 +200,8 @@ export class Memory {
     // Step 6: what they feel when a memory is laid down colours it. The strongest feeling involving the same
     // people (or stirred up by the same event, i.e. within the last game minute) raises its importance by
     // up to 3 and tags it with that emotion.
+    // step 7B: a concussed head lays down weaker memories
+    if (this.world.citizens.get(citizenId)?.body?.status?.includes('concussed')) importance = (Number(importance) || 1) * 0.6;
     let emotion = null;
     let valence = null;
     const emo = this.world.emotions;

@@ -20,6 +20,7 @@ import { retrieve, memoryLine } from '../memory/retrieve.js';
 import { relationSentence } from '../memory/words.js';
 import { planBlock, yesterdayText } from './plan.js';
 import { carryingPhrase } from '../world/object-actions.js';
+import { ownBody, cuesFor, wearingLine, senses, dropsDetail } from '../body/perceive.js';
 import { SLOTS } from '../world/objects.js';
 import { relationLine } from '../social/describe.js';
 import { feelLines, moodFraming, whoIsHere, hereNotes, orderStimuli, instructionClause } from '../emotions/present.js';
@@ -93,8 +94,11 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   const feel = world.needs.describe(c);
   const blocks = [];
 
-  // Severe needs go first, so they are not buried under conversation noise.
-  if (feel.urgent) blocks.push(feel.urgent);
+  // Severe needs go first, so they are not buried under conversation noise. Step 7B: blood and wounds first of all.
+  const body = ownBody(world, c);
+  const sn = senses(c);
+  if (body.urgent) blocks.push(body.urgent);
+  else if (feel.urgent) blocks.push(feel.urgent);
 
   // RIGHT NOW
   // Step 6: mood colours the moment (one framing sentence; the room description itself is never rewritten).
@@ -126,14 +130,16 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {
-    const here = [...world.objects.whatsHere(c, { aliases: true }), ...emoNotes.whatsHere];
-    blocks.push(`# WHAT'S HERE\n${here.length ? here.join('\n') : 'Nothing worth mentioning.'}`);
+    let here = [...world.objects.whatsHere(c, { aliases: true }), ...emoNotes.whatsHere];
+    if (sn.concussed) here = here.filter((_l, i) => i < 2 || !dropsDetail(c, i, Math.floor(now / 30))); // a rattled head misses details
+    const blindNote = sn.blind ? "You can't see. What you know of this place comes from memory and touch:\n" : '';
+    blocks.push(`# WHAT'S HERE\n${blindNote}${here.length ? here.join('\n') : sn.blind ? 'Nothing that you can feel around you.' : 'Nothing worth mentioning.'}`);
   }
   blocks.push(`# YOU'RE CARRYING\n${carryingBlock(world, c)}`);
 
   // HOW YOU FEEL (only when something is off)
   const emoLines = feelLines(world, c); // step 6: body sensations, never numbers or labels
-  if (feel.any || emoLines.length) {
+  if (feel.any || emoLines.length || body.lines.length) {
     const hints = [];
     // step 7A: when a need bites, the nearest place they know that answers it (shortest route from here).
     const nearest = (service) => knownWith(c, service)
@@ -150,7 +156,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
       const word = state === 'broken' ? 'but the bed is broken' : state === 'usable' ? 'bed usable' : null;
       hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins ? `${bed.mins} min` : 'right here'}${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
     }
-    blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
+    blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...body.lines, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
   // YOUR PLAN
@@ -184,7 +190,10 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   // WHO IS HERE
   const others = room ? citizensIn(world.citizens, room.id, { exceptId: c.id }) : [];
   // Step 6: strong feelings focus attention (the target in detail, others compressed) and add what people show.
-  if (room) blocks.push(`# WHO IS HERE\n${others.length ? whoIsHere(world, c, others, (o, opts) => visibleLine(world, o, c, opts)).map((l) => `- ${l}`).join('\n') : 'Nobody else is here.'}`);
+  if (room) {
+    const lines = !others.length ? null : sn.blind ? blindWhoIsHere(world, c, others) : whoIsHere(world, c, others, (o, opts) => visibleLine(world, o, c, opts)).map((l) => `- ${l}`);
+    blocks.push(`# WHO IS HERE\n${lines ? lines.join('\n') : 'Nobody else is here.'}`);
+  }
 
   // YOU REMEMBER
   const picked = retrieve(world, c, { presentIds: others.map((o) => o.id), placeId: c.location }, 5);
@@ -207,7 +216,9 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // WHAT JUST HAPPENED
   const ordered = orderStimuli(world, c, [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime));
-  const stimuli = ordered.stimuli;
+  let stimuli = ordered.stimuli;
+  // in shock the world shrinks to the essentials
+  if (sn.shock && stimuli.length > 3) stimuli = [...stimuli].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0)).slice(0, 3).sort((a, b) => a.gameTime - b.gameTime);
   blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length || ordered.lead.length
     ? [...ordered.lead.map((l) => `- ${l}`), ...stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`)].join('\n')
     : 'Nothing new has caught your attention.'}`);
@@ -230,12 +241,27 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   return blocks.join('\n\n');
 }
 
+/** Blind: people are voices. Known and familiar → named by voice; otherwise only "someone". No looks, no expressions. */
+function blindWhoIsHere(world, c, others) {
+  const mem = world.memory;
+  return others.map((o) => {
+    const rel = mem.rel(c.id, o.id);
+    const known = rel?.nameKnown && rel.nameConfidence >= 0.5 && rel.familiarity >= 0.5;
+    const awake = o.activity.type !== 'sleeping' && o.activity.type !== 'collapsed';
+    if (!awake) return '- You can hear slow breathing, or nothing at all, from someone near you.';
+    return known ? `- ${o.name} (you know ${pronouns(o).poss} voice and step).` : '- Someone is here (you can hear them, but you cannot tell who).';
+  });
+}
+
 function carryingBlock(world, c) {
   const O = world.objects;
   const items = O.carriedBy(c.id);
-  if (!items.length) return 'Nothing. Your hands are free.';
+  const wearing = wearingLine(world, c); // step 7B: only when something worn is damaged or stained
+  const hands = O.handsOf(c.id);
+  if (!items.length) return `${hands === 0 ? "You can't use your hands." : hands === 1 ? 'You have one hand free.' : 'Nothing. Your hands are free.'}${wearing ? `\n${wearing}` : ''}`;
   const lines = items.map((o) => `- ${O.textFor(c, o)} [${O.alias(o)}]`);
-  if (O.slotsUsed(c.id) >= SLOTS) lines.push('Your hands are full.');
+  if (O.freeSlots(c.id) <= 0) lines.push('Your hands are full.');
+  if (wearing) lines.push(wearing);
   return lines.join('\n');
 }
 
@@ -338,7 +364,7 @@ function visibleLine(world, o, viewer, { short = false } = {}) {
     default: doing = `${Subj} ${be} not doing anything in particular.`;
   }
   const marks = (o.marks ?? []).filter((m) => m.until == null || m.until > world.now).map((m) => m.text);
-  const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : ''].join(' ');
+  const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : '', cuesFor(world, o)].join(' '); // step 7B: visible injuries and blood
   const carrying = carryingPhrase(world, viewer, o);
   const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
   // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.

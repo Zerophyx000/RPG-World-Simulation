@@ -82,4 +82,7 @@ export function bySeverity(table, sev) {
   return table.at(-1)[1];
 }
 
+/** Crawling takes this many times as long as walking (and tires three times as fast). */
+export const CRAWL_FACTOR = 6;
+
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

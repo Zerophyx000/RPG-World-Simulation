@@ -66,6 +66,8 @@ async function choosePath(world, conv, c, { reason, leaverId }) {
   // Step 5.5: talking with someone you recently caught at something is never small talk.
   if (others.some((o) => world.relationships.events(pid, o, 20).some((e) => e.source === 'signal' && world.now - e.gameTime <= 1440))) fullBecause.push('a warning sign about someone there');
   if (reason === 'cap') fullBecause.push('talked themselves out');
+  // Step 7B: someone in it was hurt, treated or died: never small talk
+  if (world.body?.involvedSince([pid, ...others], conv.startedAt)) fullBecause.push('someone was hurt, treated or died');
   // walked out on mid-exchange (a short greeting that simply ends is not that)
   if (leaverId && leaverId !== pid && lines.length > 3 && lines.slice(-2).some((l) => l.toId === pid)) fullBecause.push('was left mid-exchange');
   if ((flags.learned ?? []).includes(pid)) fullBecause.push('learned something concrete');

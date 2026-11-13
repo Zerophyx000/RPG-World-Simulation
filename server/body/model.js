@@ -102,7 +102,7 @@ export function computeBody(content, state) {
   const eyeAdj = (id) => (conds.some((c) => c.type === 'reduced_sight' && c.partId === id) ? 0.7 : 1);
   const sight = clamp(0.5 * frac('eye_left') * eyeAdj('eye_left') + 0.5 * frac('eye_right') * eyeAdj('eye_right'), 0, 1);
   const hearing = clamp(0.5 * frac('ear_left') + 0.5 * frac('ear_right'), 0, 1);
-  const speech = clamp(Math.min(frac('jaw'), 0.3 + 0.7 * frac('tongue')) * (cons < 0.5 ? cons * 2 : 1), 0, 1);
+  const speech = clamp(Math.min(frac('jaw'), frac('tongue')) * (cons < 0.5 ? cons * 2 : 1), 0, 1);
   const lungs = (frac('lung_left') + frac('lung_right')) / 2;
   const breathing = clamp(lungs * (0.6 + 0.4 * frac('chest')) * (0.5 + 0.5 * frac('neck')), 0, 1);
   const bloodPumping = frac('heart');

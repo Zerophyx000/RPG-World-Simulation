@@ -30,6 +30,13 @@
     "trust_broken_by_loved": [
       { "emotion": "sadness", "delta": 2, "target": "other", "cause": "{reason}" }
     ],
+    "saw_blood": [
+      { "emotion": "disgust", "delta": 1.5, "target": "other", "cause": "{other} is bleeding badly." },
+      { "emotion": "fear", "delta": 1.5, "target": "none", "cause": "I saw blood." }
+    ],
+    "loved_one_hurt": [
+      { "emotion": "fear", "delta": 4, "target": "other", "cause": "{other} is hurt." }
+    ],
     "gift_received": [
       { "emotion": "gratitude", "delta": 3, "target": "actor", "cause": "{actor} gave me {thing}." },
       { "emotion": "affection", "delta": 1, "target": "actor", "cause": "{actor} gave me {thing}." }

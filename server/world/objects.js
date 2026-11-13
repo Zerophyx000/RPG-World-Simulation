@@ -264,8 +264,15 @@ export class Objects {
     return this.carriedBy(citizenId).reduce((n, o) => n + (this.type(o)?.size ?? 1), 0);
   }
 
+  /** step 7B: how many hands they can use (0-2), from the body's manipulation capacities. */
+  handsOf(citizenId) {
+    const cap = this.world.citizens.get(citizenId)?.body?.capacities;
+    if (!cap) return SLOTS;
+    return (cap.manipulationLeft >= 0.2 ? 1 : 0) + (cap.manipulationRight >= 0.2 ? 1 : 0);
+  }
+
   freeSlots(citizenId) {
-    return Math.max(0, SLOTS - this.slotsUsed(citizenId));
+    return Math.max(0, this.handsOf(citizenId) - this.slotsUsed(citizenId));
   }
 
   /** Objects placed relative to this one (on / in / behind / under / beside it). */
@@ -355,7 +362,7 @@ export class Objects {
     next.updatedAt = this.world.now;
     assertLocation(next);
     if (next.holderId && next.placement?.relation !== 'worn' && (next.holderId !== o.holderId || o.placement?.relation === 'worn')) {
-      const cap = SLOTS - this.slotsUsed(next.holderId);
+      const cap = this.freeSlots(next.holderId);
       if ((type?.size ?? 1) > cap) throw httpError(400, `${this.world.citizens.get(next.holderId)?.name ?? next.holderId} has no free hands for that`);
       if (!type?.portable && actorId !== 'director') throw httpError(400, `${type?.name ?? 'that'} can't be carried`);
     }
@@ -572,8 +579,12 @@ export class Objects {
     if (!room) return { items: [], listed: [], overflow: 0, kind: '' };
     const visit = c.roomVisits?.[roomId] ?? 0;
     const items = [];
+    const st = c.body?.status ?? [];
+    const blind = st.includes('blind');
     for (const o of this.inRoom(roomId)) {
       const tier = this.surfaceTier(o);
+      // step 7B: a blind citizen only has what they remember or have touched in this room
+      if (blind && !(c.knownObjects?.[o.id] && c.knownObjects[o.id].roomId === roomId)) continue;
       if (!this.#perceives(c, o, tier, visit)) continue;
       const k = c.knownObjects?.[o.id];
       const must = o.ownerId === c.id || (k?.touchedAt != null && this.world.now - k.touchedAt <= RECENT_TOUCH_MINUTES);
@@ -591,8 +602,10 @@ export class Objects {
     if (tier === 'obvious') return true;
     if (tier === 'noticeable') {
       if (c.knownObjects?.[o.id]) return true;
+      const st = c.body?.status ?? [];
+      if (st.includes('concussed')) return false; // step 7B: a rattled head never notices the subtle
       if (visit >= FAMILIAR_VISITS) return true;
-      return hash01(`${c.id}|${o.id}|${visit}`) < NOTICE_CHANCE;
+      return hash01(`${c.id}|${o.id}|${visit}`) < NOTICE_CHANCE * (st.includes('half-blind') ? 0.7 : 1);
     }
     return this.knowsWhere(c, o);
   }

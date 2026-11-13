@@ -7,6 +7,7 @@ import { planActive, STEP_KINDS, PLAN_MAX_STEPS } from './plan.js';
 import { RELATIONS } from '../world/objects.js';
 import { frameTools } from '../emotions/present.js';
 import { feelingParam } from '../emotions/report.js';
+import { CRAWL_FACTOR } from '../body/content.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -41,16 +42,25 @@ export function buildTools(world, c) {
 
   // move_to: one step to an adjacent place
   const exits = openExits(room, now).filter((e) => world.rooms.has(e.to));
-  if (exits.length) {
+  // Step 7B (a physical exception, with the reason in HOW YOU FEEL): the body decides how they get around.
+  const bodyMoving = c.body?.capacities?.moving ?? 1;
+  const crawling = bodyMoving < 0.35;
+  if (exits.length && !crawling) {
     const list = exits.map((e) => `"${e.to}" = ${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes} min walk)`).join('; ');
     tools.push(fn('move_to', `Walk to a place right next to here: ${list}.`, {
+      destination: { type: 'string', enum: exits.map((e) => e.to), description: 'Where you go (one of the ids above).' },
+      inner_thought: INNER_THOUGHT,
+    }, ['destination']));
+  } else if (exits.length && bodyMoving >= 0.05) {
+    const list = exits.map((e) => `"${e.to}" = ${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes * CRAWL_FACTOR} min of crawling)`).join('; ');
+    tools.push(fn('crawl_to', `You can't walk. Drag yourself to a place right next to here, slowly and painfully, at a cost to your strength: ${list}.`, {
       destination: { type: 'string', enum: exits.map((e) => e.to), description: 'Where you go (one of the ids above).' },
       inner_thought: INNER_THOUGHT,
     }, ['destination']));
   }
 
   // travel_to: anywhere you know, the route is found for you
-  const known = Object.keys(c.knownPlaces ?? {}).filter((id) => id !== room.id && world.rooms.has(id));
+  const known = crawling ? [] : Object.keys(c.knownPlaces ?? {}).filter((id) => id !== room.id && world.rooms.has(id));
   if (known.length) {
     const list = known.map((id) => `"${id}" = ${world.rooms.get(id).name}`).join('; ');
     tools.push(fn('travel_to', `Go to a place you know, even if it is further away; you find the way there yourself. Places you know: ${list}.`, {
@@ -70,14 +80,23 @@ export function buildTools(world, c) {
     sayProps.to = { type: 'string', enum: awakeLabels, description: 'Who you are speaking to. Leave it out to speak to nobody in particular.' };
   }
   sayProps.inner_thought = INNER_THOUGHT;
-  tools.push(fn('say',
-    awake.length ? 'Say one or two sentences out loud. Everyone here can hear you.'
-      : 'Say one or two sentences out loud. Nobody here is awake to hear you, so you would be talking to yourself.',
-    sayProps, ['text']));
+  const mute = (c.body?.status ?? []).includes('mute');
+  if (mute) {
+    // Step 7B: no voice. Gestures only (a physical exception; the reason is in HOW YOU FEEL).
+    const gProps = { text: { type: 'string', description: 'What you gesture or mime, in a few words, e.g. "points frantically at the door".' } };
+    if (awake.length) gProps.to = { type: 'string', enum: awakeLabels, description: 'Who you gesture to. Leave it out to gesture to everyone.' };
+    gProps.inner_thought = INNER_THOUGHT;
+    tools.push(fn('gesture', "You can't speak. Show something with your hands and face instead.", gProps, ['text']));
+  } else {
+    tools.push(fn('say',
+      awake.length ? 'Say one or two sentences out loud. Everyone here can hear you.'
+        : 'Say one or two sentences out loud. Nobody here is awake to hear you, so you would be talking to yourself.',
+      sayProps, ['text']));
+  }
 
   // tell_about_place: the way to explain where something is (the listener will then know it)
   const tellable = Object.keys(c.knownPlaces ?? {}).filter((id) => world.rooms.has(id));
-  if (awake.length && tellable.length) {
+  if (awake.length && tellable.length && !mute) {
     const list = tellable.map((id) => `"${id}" = ${world.rooms.get(id).name}`).join('; ');
     tools.push(fn('tell_about_place',
       `Tell someone here about a place you know: what it is, what can be had there and how to get there. This is how you explain where to find something, so that they can go there afterwards. Places you know: ${list}.`, {
@@ -89,7 +108,7 @@ export function buildTools(world, c) {
   }
 
   // introduce_yourself: say your name (shy people rarely do otherwise)
-  if (awake.length) {
+  if (awake.length && !mute) {
     tools.push(fn('introduce_yourself', 'Tell people here your name.', {
       to: { type: 'string', enum: awakeLabels, description: 'Optional. Who you introduce yourself to.' },
       addition: { type: 'string', description: 'Optional. A few words more, e.g. where you are from or what you do.' },
@@ -119,11 +138,15 @@ export function buildTools(world, c) {
     `Spend a while doing something here: working, tidying, resting, anything that fits. Others here can see what you are doing.${exhausted ? ' You are too exhausted for anything long.' : ''}`,
     doProps, ['action', 'minutes']));
 
+  const hands = O.handsOf(c.id);
+  const blind = (c.body?.status ?? []).includes('blind');
   if (reachIds.length) {
-    tools.push(fn('examine', "Take a closer look at something here or something you're carrying (a minute or two).", {
-      object: { type: 'string', enum: reachIds, description: 'What you look at, by its [handle].' },
+    tools.push(fn('examine', blind ? "You can't see; feel the thing with your hands instead, slowly (a few minutes)." : "Take a closer look at something here or something you're carrying (a minute or two).", {
+      object: { type: 'string', enum: reachIds, description: blind ? 'What you feel, by its [handle].' : 'What you look at, by its [handle].' },
       inner_thought: INNER_THOUGHT,
     }, ['object']));
+  }
+  if (reachIds.length && hands > 0) {
     tools.push(fn('use', "Do something with a thing here or in your hands: light it, open it, lock it, tear it, pour it... Say what you try; whether it works depends on the thing.", {
       object: { type: 'string', enum: reachIds, description: 'What you use, by its [handle].' },
       intent: { type: 'string', maxLength: LIMITS.actionMax, description: "What you try to do with it, in a few words, e.g. 'light it' or 'lock the door'." },
@@ -138,7 +161,7 @@ export function buildTools(world, c) {
   const free = O.freeSlots(c.id);
   const takeable = here.filter((o) => O.type(o)?.portable && O.type(o).size <= free && !O.around(o.id, 'in').length).map((o) => O.alias(o));
   if (takeable.length) {
-    tools.push(fn('take', `Pick something up and carry it. You have two hands: ${free === 2 ? 'both are free' : 'one is free'}; big things need both.`, {
+    tools.push(fn('take', `Pick something up and carry it. ${hands === 2 ? `You have two hands: ${free === 2 ? 'both are free' : 'one is free'}; big things need both.` : 'You have only one usable hand.'}`, {
       object: { type: 'string', enum: takeable, description: 'What you pick up, by its [handle].' },
       inner_thought: INNER_THOUGHT,
     }, ['object']));
