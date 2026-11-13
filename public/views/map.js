@@ -115,7 +115,7 @@ export function mount(el) {
     const key = `${last.speakerId}|${last.text}|${conv.lines.length}`;
     if (seenLine.get(id) === key) return;
     seenLine.set(id, key);
-    S.bubbles.set(last.speakerId, { text: last.text, born: performance.now() });
+    S.bubbles.set(last.speakerId, { text: last.text, born: performance.now(), volume: last.volume ?? 'normal', toId: last.toId ?? null, conversationId: id }); // step 9: the animator reads volume and addressee
   }));
   // appearance changes slowly (wounds, bandages, expression, clothes): poll a small endpoint
   let looksTimer = null;
@@ -446,7 +446,7 @@ export function mount(el) {
     S.uiScale = dpr;
     S.rooms = store.rooms; S.citizens = store.citizens; S.objects = store.objects; // loadWorld() replaces these Maps on every resync
     S.faceOf = faces();
-    S.events = store.events; S.observer = store.observer; S.god = opt.god === 'god';
+    S.events = store.events; S.observer = store.observer; S.god = opt.god === 'god'; S.storylineFocus = store.storylineFocus;
     S.subjective = subjectiveOn && S.selectedId ? { id: S.selectedId, perception: perception?.citizenId === S.selectedId ? perception : null } : null;
     const view = { x: cam.x, y: cam.y, zoom: cam.zoom * dpr, w, h };
     const drawState = replay.active ? replay.stateAt(S, t) : S; // step 9: replay draws the past while the world runs on
