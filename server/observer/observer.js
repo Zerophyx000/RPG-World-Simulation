@@ -3,6 +3,8 @@
 // HARD RULE: its output is never shown to citizens and never used in their prompts or in world logic.
 // It's a camera, not a god. Nothing in server/agents/, server/world/ or server/memory/ may import from
 // this folder; it is wired up in main.js and read only by http.js.
+// Step 6: it also READS each citizen's current feelings (world.emotions.top) and the hourly emotion_log
+// samples, to tell what has lasted most of the day. Reading only — it never writes world state.
 //
 // Batched triggers (step 4) — a run starts when ANY of these holds AND at least
 // OBSERVER_MIN_INTERVAL_REAL_SECONDS passed since the last run started:
@@ -132,7 +134,7 @@ export class Observer {
     if (!lines.length && reason !== 'manual') return { skipped: 'no new events' };
 
     const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen')
-      .map((c) => ({ ...c, feels: this.world.emotions.top(c, 3, 4).map((e) => ({ type: e.type, target: e.target, targetName: this.world.citizens.get(e.target)?.name ?? null, band: ['slight', 'strong', 'intense', 'overwhelming'][this.world.emotions.band(e.intensity)] })), hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name) }));
+      .map((c) => ({ ...c, feels: this.world.emotions.top(c, 3, 4).map((e) => ({ type: e.type, target: e.target, targetName: this.world.citizens.get(e.target)?.name ?? null, band: ['slight', 'strong', 'intense', 'overwhelming'][this.world.emotions.band(e.intensity)] })), lasting: lastingFeelings(this.world, c), hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name) }));
     const ids = citizens.map((c) => c.id);
     const tools = [reportTool(ids)];
     const messages = buildMessages(prev, citizens, lines);
@@ -153,6 +155,68 @@ export class Observer {
 }
 
 // ---------- prompt ----------
+
+// step 6: lasting feelings — verbs used to phrase an emotion that has held for most of the day.
+// Aims follow content/emotions.json (aimed: required / optional / none).
+const LASTING_VERBS = {
+  anger: (t) => (t ? `seething at ${t}` : 'angry'),
+  fear: (t) => (t ? `afraid of ${t}` : 'frightened'),
+  sadness: (t) => (t ? `grieving over ${t}` : 'low'),
+  jealousy: (t, a) => (t ? (a ? `jealous of ${t} over ${a}` : `jealous of ${t}`) : 'jealous'),
+  envy: (t) => `envious of ${t}`,
+  disgust: (t) => `disgusted by ${t}`,
+  shame: () => 'ashamed',
+  guilt: (t) => (t ? `guilty towards ${t}` : 'guilty'),
+  joy: (t) => (t ? `happy because of ${t}` : 'happy'),
+  pride: (t) => (t ? `proud of ${t}` : 'proud'),
+  affection: (t) => `warm towards ${t}`,
+  gratitude: (t) => `grateful to ${t}`,
+};
+
+/**
+ * Which of this citizen's feelings have held (intensity >= 4) for most of the last game day,
+ * according to the hourly samples in the emotion_log. Read-only; returns short phrases.
+ */
+function lastingFeelings(world, c) {
+  let rows = [];
+  try {
+    rows = world.db.prepare("SELECT data FROM emotion_log WHERE citizen_id = ? AND kind = 'sample' AND game_time >= ?").all(c.id, world.now - 1440);
+  } catch {
+    return [];
+  }
+  if (rows.length < 6) return [];
+  const counts = new Map();
+  for (const r of rows) {
+    let data;
+    try {
+      data = JSON.parse(r.data);
+    } catch {
+      continue; // a bad row is not a sample
+    }
+    const seen = new Set();
+    for (const e of data?.entries ?? []) {
+      if (!e || (e.intensity ?? 0) < 4) continue;
+      const key = `${e.type}|${e.target ?? ''}|${e.about ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const half = rows.length / 2;
+  const name = (id) => world.citizens.get(id)?.name ?? id;
+  return [...counts.entries()]
+    .filter(([, n]) => n > half)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([key]) => {
+      const [type, target, about] = key.split('|');
+      const t = target ? name(target) : '';
+      const a = about ? name(about) : '';
+      const phrase = (LASTING_VERBS[type] ?? ((_t, _a, ty) => ty))(t, a, type);
+      return `${String(phrase).trim()} most of the day`;
+    });
+}
+
 function buildMessages(prev, citizens, lines) {
   const people = citizens.map((c) => {
     const p = c.persona;
@@ -163,7 +227,7 @@ function buildMessages(prev, citizens, lines) {
       ...(p.secretGoals ?? []).map((g) => `secret aim: ${g}`),
       ...(c.hiddenGroups ?? []).map((g) => `secretly of ${g}`),
     ];
-    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}${feels.length ? ` Feeling now: ${feels.join(', ')}.` : ''}${secret.length ? ` [hidden from the villagers: ${secret.join('; ')}]` : ''}`;
+    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}${feels.length ? ` Feeling now: ${feels.join(', ')}.` : ''}${c.lasting?.length ? ` Lasting: ${c.lasting.join('; ')}.` : ''}${secret.length ? ` [hidden from the villagers: ${secret.join('; ')}]` : ''}`;
   }).join('\n');
   const previous = prev
     ? JSON.stringify({ headline: prev.headline, relationships: prev.relationships, threads: prev.threads })
@@ -181,6 +245,7 @@ Rules:
 - Threads are storylines. Keep their ids stable: if a thread continues, reuse its id exactly. New threads get a short kebab-case id. Status: active, resolved or dormant. Include every thread whose summary or status changed.
 - keyMoments reference events by their number in square brackets, e.g. [#123].
 - Lines marked [ground truth] show what really happened to objects, even when nobody saw it. The villagers only know what they saw, noticed or were told: keep "what really happened" and "what they believe" apart.
+- "Feeling now" and "Lasting" describe the villagers' inner states as measured from outside; use them to explain behaviour and storylines, but don't claim a villager knows another's feelings unless they showed it.
 - The headline is one sentence: what is happening in the village right now.
 Answer by calling the report tool exactly once.`,
     },
