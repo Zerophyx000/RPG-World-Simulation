@@ -9,7 +9,7 @@ import { Clock } from './clock.js';
 import { LLM } from './llm.js';
 import { config } from './config.js';
 import { backup } from './db.js';
-import { loadRooms, citizensIn, danglingExits, saveRoom, activeEffects, activeServices } from './world/rooms.js';
+import { loadRooms, citizensIn, danglingExits, saveRoom, activeEffects, activeServices, serviceNames } from './world/rooms.js';
 import { createCitizenStore, citizenFromInput, citizenSummary, needsSummary } from './world/citizens.js';
 import { makeStimulus, pushToInbox, mergeInboxes, IMPORTANCE } from './world/perception.js';
 import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, die, finishMeal } from './world/actions.js';
@@ -19,7 +19,6 @@ import { Needs, NEED_KINDS } from './world/needs.js';
 import { initialKnownPlaces, learnPlace } from './world/places.js';
 import { Quiet } from './world/quiet.js';
 import { directorEvent, expireDirectorState, EFFECT_TYPES } from './world/director.js';
-import { serviceNames } from './world/rooms.js';
 import { Scheduler } from './agents/scheduler.js';
 import { Governor } from './agents/governor.js';
 import { validatePlan, startPlan, planActive, stepText } from './agents/plan.js';
@@ -46,6 +45,7 @@ const ERROR_WAIT_MINUTES = 10;
 const NO_ACTION_WAIT_MINUTES = 5;
 const NEEDS_FLUSH_MS = 5000;   // need values drift every tick; persist them at most this often
 const SLEEP_BUFFER_MAX = 8;
+const UNAWARE_ACT = new Set(['sleeping', 'collapsed', 'unconscious']); // step A2: bodies that don't notice things
 
 export class World {
   constructor(db) {
@@ -186,20 +186,61 @@ export class World {
         else collapse(this, c, { reason: c.needs.hunger >= this.needs.starvingAt ? 'starvation' : 'injury' });
         continue;
       }
-      if (f.forcedSleep) {
-        this.cancelThink(c);
-        startSleep(this, c, { quality: 'rough', untilRested: true, forced: true });
-        this.logEvent('forced_sleep', { actorId: c.id, location: c.location, fatigue: Math.round(c.needs.fatigue) });
+      // step A2: the collapse countdown starts the moment fatigue reaches the top level, and stops when
+      // the body recovers below it.
+      if (c.needs.collapsingSince == null && !UNAWARE_ACT.has(c.activity.type) && c.needs.fatigue >= this.needs.topFatigueMin) {
+        c.needs.collapsingSince = now;
+        this.saveCitizen(c);
+      } else if (c.needs.collapsingSince != null && c.needs.fatigue < this.needs.topFatigueMin) {
+        c.needs.collapsingSince = null;
+        this.saveCitizen(c);
+      }
+      // Forced sleep: fatigue 100, or still up after the collapse deadline — whichever comes first.
+      const collapseAt = this.needs.collapseAt(c, now);
+      if (f.forcedSleep || (collapseAt != null && now >= collapseAt)) {
+        this.#forcedSleep(c, { reason: f.forcedSleep ? 'fatigue_100' : 'collapse_deadline', fatigue: Math.round(c.needs.fatigue) });
       } else if (f.rested) {
         wake(this, c, { reason: 'rested' });
+      } else if (c.wokeEarly) {
+        const fatigueMin = this.needs.levelOf('fatigue', 'exhausted');
+        const exhaustion = this.needs.levelIndex('fatigue', c.needs) >= fatigueMin;
+        if (!exhaustion) {
+          c.wokeEarly = null; // slept it off after all
+          this.saveCitizen(c);
+        } else if (now >= c.wokeEarly.until && c.activity.type !== 'sleeping' && c.activity.type !== 'collapsed') {
+          if ((c.lastUrgentAt ?? -1) >= c.wokeEarly.at) {
+            c.wokeEarly = null; // something more important than sleep is going on
+            this.saveCitizen(c);
+          } else {
+            this.#forcedSleep(c, { reason: 'woken_early', fatigue: Math.round(c.needs.fatigue) });
+          }
+        }
       }
       for (const s of this.needs.checkLevels(c, now)) {
-        if (s.importance >= 5) {
+        if (s.importance >= 5 && !UNAWARE_ACT.has(c.activity.type)) {
           this.logEvent('body', { actorId: c.id, location: c.location, need: s.data.need, level: s.data.level, importance: s.importance, reminder: s.data.reminder, text: s.text });
         }
         this.perceive([c.id], s);
       }
     }
+  }
+
+  // step A2: the body takes over (a deliberate physical exception to "citizens decide"): stop whatever
+  // they were doing and thinking, drop them where they stand, and let them sleep it off.
+  #forcedSleep(c, { reason, fatigue }) {
+    this.cancelThink(c);
+    if (c.conversationId) {
+      const conv = this.conversations.get(c.conversationId);
+      this.conversations.leave(c, { reason: 'collapsed' });
+      // The room sees them go down (leave() only tells the remaining participants).
+      this.perceive(citizensIn(this.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
+        kind: 'action', text: `${c.name} sways and slumps down.`, importance: 6, sourceId: c.id, roomId: c.location,
+      });
+      if (conv) this.saveCitizen(c); // leave() may have ended the conversation and saved the others
+    }
+    c.needs.collapsingSince = null;
+    startSleep(this, c, { quality: 'rough', untilRested: true, forced: true });
+    this.logEvent('forced_sleep', { actorId: c.id, location: c.location, reason, fatigue });
   }
 
   #flushNeeds() {
@@ -279,12 +320,14 @@ export class World {
       const partial = typeof stimulusOrFn === 'function' ? stimulusOrFn(c) : stimulusOrFn;
       if (!partial) continue;
       const s = makeStimulus(partial, this.now);
+      // step A2: an emergency (>= 7) that gets through to someone counts, asleep or not.
+      if (s.importance >= 7) c.lastUrgentAt = this.now;
       if (c.activity.type === 'collapsed') continue;
       if (c.activity.type === 'sleeping') {
-        // The body speaks differently in sleep: tiredness never wakes you; hunger or pain only when severe.
+        // The body speaks differently in sleep: tiredness never wakes you; only a real emergency (>= 8,
+        // e.g. pain crossing to critical) gets through, and hunger can't (they'd only fall over again).
         if (s.kind === 'body' && (s.data?.need === 'fatigue' || s.importance < 8)) continue;
-        // Dropped from exhaustion and still spent: hunger can't wake them (they'd only fall over again,
-        // every reminder), and only a real emergency (>= 8) gets through.
+        // Dropped from exhaustion and still spent: only a real emergency (>= 8) gets through.
         const spent = c.activity.detail?.forced && c.needs.fatigue >= 60;
         if (spent && (s.kind === 'body' || s.importance < 8)) {
           if (s.importance >= 4 && s.kind !== 'body') {
@@ -305,13 +348,6 @@ export class World {
       }
       s.text = this.memory.resolveNames(c, s.text); // "Tomas" or "a broad and heavy-shouldered man", per viewer
       pushToInbox(c, s);
-      if (c.conversationId && s.importance >= 7 && s.kind !== 'speech' && s.kind !== 'body') {
-        const conv = this.conversations.get(c.conversationId);
-        if (conv) {
-          conv.flags ??= {};
-          conv.flags.high = [...new Set([...(conv.flags.high ?? []), c.id])];
-        }
-      }
       this.emotions.appraisal.onPerceived(c, s); // first, so the memory is laid down with the feeling
       this.memory.onPerceived(c, s);
       this.saveCitizen(c);

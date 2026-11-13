@@ -87,7 +87,17 @@ function defaultData() {
     mood: null,             // { valence, tension, history, outSince, outDir }; null = baseline on first use
     masks: [],              // hide_feelings: [{ type | null, until }]
     contagionLog: {},       // { type: [[time, delta]] } for the hourly contagion cap
+    // step A2: sleep bookkeeping
+    wokeEarly: null,        // { at, until } woken with fatigue still >= 80 within an hour of falling asleep
+    lastUrgentAt: null,     // game time of the last stimulus with importance >= 7 that reached them
   };
+}
+
+// step A2: woken too soon and still worn out — back down unless something urgent happens first.
+function normalizeWokeEarly(v) {
+  if (!v || typeof v !== 'object') return null;
+  const at = Number(v.at), until = Number(v.until);
+  return Number.isFinite(at) && Number.isFinite(until) ? { at, until } : null;
 }
 
 export function normalizeCitizen(row) {
@@ -137,6 +147,9 @@ export function normalizeCitizen(row) {
     masks: Array.isArray(d.masks) ? d.masks : [],
     contagionLog: obj(d.contagionLog),
     thinkCooldownUntil: Number(d.thinkCooldownUntil) || 0,
+    // step A2: sleep bookkeeping, defaulted so old rows load
+    wokeEarly: normalizeWokeEarly(d.wokeEarly),
+    lastUrgentAt: Number.isFinite(Number(d.lastUrgentAt)) ? Number(d.lastUrgentAt) : null,
   };
 }
 
@@ -149,6 +162,8 @@ function normalizeNeeds(n) {
   const out = { ...def, ...(n ?? {}) };
   out.levels = { ...def.levels, ...(n?.levels ?? {}) };
   out.lastReminderAt = { ...def.lastReminderAt, ...(n?.lastReminderAt ?? {}) };
+  // step A2: the collapse countdown is game time, or unset.
+  out.collapsingSince = Number.isFinite(Number(out.collapsingSince)) ? Number(out.collapsingSince) : null;
   for (const k of ['hunger', 'fatigue', 'hp', 'hpMax']) out[k] = Number.isFinite(Number(out[k])) ? Number(out[k]) : def[k];
   return out;
 }

@@ -17,6 +17,7 @@ import {
 
 const RECENT_ACTIONS = 6;
 const SLEEP_SAFETY_CAP_MINUTES = 14 * 60;
+const WOKE_EARLY_MINUTES = 20; // step A2: back down after this long if nothing urgent happens
 
 export function applyAction(world, c, call) {
   const args = call.arguments ?? {};
@@ -411,7 +412,11 @@ export function startSleep(world, c, { quality = 'rough', untilRested = true, ho
   landIfWalking(world, c);
   if (c.conversationId) world.conversations.leave(c, { reason: 'left' });
   const until = world.now + (hours ? hours * 60 : SLEEP_SAFETY_CAP_MINUTES);
-  world.setActivity(c, { type: 'sleeping', until, detail: { quality, untilRested, hours: hours ?? null, bed, forced } });
+  world.setActivity(c, { type: 'sleeping', until, detail: { quality, untilRested, hours: hours ?? null, bed, forced, startedAt: world.now } });
+  // step A2: no leftover "(still)" noise — pending body reminders die with sleep (a live need speaks again).
+  c.inbox = c.inbox.filter((s) => s.kind !== 'body');
+  c.wokeEarly = null;
+  world.saveCitizen(c);
   const text = forced
     ? `${ref(c)} sways and slumps to the ground, asleep.`
     : quality === 'rough' ? `${ref(c)} curls up on the ground and goes to sleep.` : `${ref(c)} lies down to sleep.`;
@@ -425,6 +430,7 @@ export function startSleep(world, c, { quality = 'rough', untilRested = true, ho
 export function wake(world, c, { reason = 'timer', cause = null } = {}) {
   if (c.activity.type !== 'sleeping') return;
   const slept = Math.round(world.now - c.activity.since);
+  const startedAt = c.activity.detail?.startedAt ?? c.activity.since; // step A2: when this sleep began
   const buffer = c.sleepBuffer ?? [];
   c.sleepBuffer = [];
   world.setActivity(c, { type: 'idle' });
@@ -434,15 +440,25 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
     timer: `You wake up. ${nowPhrase(world.now)}`,
     jolt: 'You jolt awake!',
     director: `You wake up with a start. ${nowPhrase(world.now)}`,
+    // step A2: woken far too soon while still worn out — their body is nowhere near ready.
+    woken_early: 'You were only asleep a moment; you can barely keep your eyes open.',
   }[reason] ?? `You wake up. ${nowPhrase(world.now)}`;
   const heard = buffer.length ? ` While you slept you vaguely heard: ${buffer.map((s) => s.text.replace(/[.!]+$/, '')).join('; ')}.` : '';
   const hour = (((world.now % 1440) + 1440) % 1440) / 60;
   if (hour >= 4 && hour < 11 && slept >= 180) endOfDay(world, c); // a real night's sleep: yesterday's plan is over
+  // step A2: woken before an hour of sleep with fatigue at 'exhausted' (80) or worse → flag it; unless
+  // something urgent (>= 7) arrives first, the body takes over again after 20 minutes (#updateBodies).
+  if (reason !== 'rested' && world.now - startedAt < 60 && c.needs.fatigue >= 80) {
+    c.wokeEarly = { at: world.now, until: world.now + WOKE_EARLY_MINUTES };
+    world.saveCitizen(c);
+  }
   world.perceive([c.id], { kind: 'timer', text: first + heard, importance: IMPORTANCE.timer, roomId: c.location, data: { wakeUp: true } });
   world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
     kind: 'action', text: `${ref(c)} wakes up.`, importance: 3, sourceId: c.id, roomId: c.location,
   });
   world.logEvent('wake', { actorId: c.id, location: c.location, reason, sleptMinutes: slept, cause: cause?.text?.slice(0, 120) ?? null });
+  // step A2: the actual sleep length (game minutes) for the log, whatever the old activity said.
+  if (c.wokeEarly) world.logEvent('wake', { actorId: c.id, location: c.location, reason: 'woke_early', sleptMinutes: Math.round(world.now - startedAt) });
 }
 
 /** hp reached 0 (non-lethal): unconscious until someone feeds them or the director revives them. */
