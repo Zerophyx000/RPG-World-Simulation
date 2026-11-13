@@ -268,7 +268,8 @@ export function startTreatment(world, treater, call, { stale, logAction }) {
     world.body.markDirty(cond);
     world.setActivity(treater, { type: 'doing', until: world.now + 30, detail: { kind: 'pressure', patientId: patient.id, conditionId: cond.id, description: `pressing on ${self ? 'their own' : `${patient.name}'s`} ${part}`, minutes: 30 } });
     announce(world, treater, patient, method, part, self);
-    world.logEvent('treatment', { actorId: treater.id, location: treater.location, patientId: patient.id, conditionId: cond.id, method, quality: 'improvised' });
+    cond.treatments.push({ method, by: treater.id, quality: 'improvised', at: world.now, effective: true });
+    world.logEvent('treatment', { actorId: treater.id, location: treater.location, patientId: patient.id, conditionId: cond.id, method, quality: 'improvised', effective: true });
     return { ok: true };
   }
 
