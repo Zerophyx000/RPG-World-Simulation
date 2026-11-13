@@ -4,7 +4,8 @@
 //   [system] world rules · common knowledge · WHO YOU ARE · WHAT YOU KNOW ABOUT YOURSELF (core memory;
 //            only changes at night, so the system prefix is identical all game day)
 //   [user]   (urgency line) · RIGHT NOW · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · YOUR PLAN · ON YOUR MIND · WHO IS HERE ·
-//            YOU REMEMBER · PLACES YOU KNOW · CONVERSATION · WHAT JUST HAPPENED · instruction
+//            YOU REMEMBER · PLACES YOU KNOW (with travel times and last known state, step 7A) · CONVERSATION ·
+//            WHAT JUST HAPPENED · instruction
 //
 // People are named only if this citizen knows the name; otherwise they are described by how they look.
 // Relationships appear in words, never numbers.
@@ -13,7 +14,7 @@ import { citizensIn, activeEffects, openExits } from '../world/rooms.js';
 import { pronouns } from '../world/citizens.js';
 import { isIngPhrase, ingOrQuote } from '../world/actions.js';
 import { SOFT_CAP_LINES, TRANSCRIPT_LINES } from '../world/conversations.js';
-import { placeLabel, knownWith, servicesText } from '../world/places.js';
+import { placeLabel, knownWith, servicesText, travelMinutes, knownRoomState, lastSeenPhrase } from '../world/places.js';
 import { clockTime, timeOfDay, relativeTime } from '../world/time.js';
 import { retrieve, memoryLine } from '../memory/retrieve.js';
 import { relationSentence } from '../memory/words.js';
@@ -134,8 +135,21 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   const emoLines = feelLines(world, c); // step 6: body sensations, never numbers or labels
   if (feel.any || emoLines.length) {
     const hints = [];
-    if (feel.idx.hunger >= 2 && !knownWith(c, 'food').length) hints.push("You don't know where to find food around here.");
-    if (feel.idx.fatigue >= 2 && !knownWith(c, 'bed').length) hints.push("You don't know anywhere you could sleep properly.");
+    // step 7A: when a need bites, the nearest place they know that answers it (shortest route from here).
+    const nearest = (service) => knownWith(c, service)
+      .map((id) => ({ id, mins: travelMinutes(world.rooms, c.location, id, now) }))
+      .filter((e) => e.mins != null)
+      .sort((a, b) => a.mins - b.mins)[0] ?? null;
+    if (feel.idx.hunger >= 2) {
+      const food = nearest('food');
+      hints.push(food ? `Nearest food you know: ${placeLabel(c, world.rooms.get(food.id))} (${food.mins} min).` : "You don't know where to find food around here.");
+    }
+    if (feel.idx.fatigue >= 2) {
+      const bed = nearest('bed');
+      const state = bed ? knownRoomState(world, c, bed.id).bed : null;
+      const word = state === 'broken' ? 'damaged but usable' : state === 'usable' ? 'usable' : null;
+      hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins} min${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
+    }
     blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
@@ -226,18 +240,38 @@ function carryingBlock(world, c) {
 }
 
 function placesBlock(world, c) {
-  const entries = Object.entries(c.knownPlaces ?? {}).filter(([id]) => world.rooms.has(id));
+  const now = world.now;
+  const home = c.home && world.rooms.has(c.home) && c.knownPlaces?.[c.home] ? c.home : null;
+  // step 7A: current room and home first, then by walking time from here.
+  const entries = Object.entries(c.knownPlaces ?? {}).filter(([id]) => world.rooms.has(id))
+    .map(([id, k]) => ({ id, k, mins: travelMinutes(world.rooms, c.location, id, now) }))
+    .sort((a, b) => {
+      const rank = (e) => (e.id === c.location ? 0 : e.id === home ? 1 : 2);
+      return rank(a) - rank(b) || (a.mins ?? 99) - (b.mins ?? 99) || a.id.localeCompare(b.id);
+    })
+    .slice(0, 12);
   if (!entries.length) return 'None yet.';
-  return entries.map(([id, k]) => {
-    const r = world.rooms.get(id);
-    const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
-    let src = '';
-    if (k.source === 'home') src = ' (your home)';
-    else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
-    else if (k.source === 'visited') src = ' (you have been there)';
-    const here = id === c.location ? ' (you are here)' : '';
-    return `- ${r.name}: ${what}${here || src}`;
-  }).join('\n');
+  return entries.map(({ id, k, mins }) => placeLine(world, c, id, k, mins)).join('\n');
+}
+
+// step 7A: one place, as this citizen last saw it: how far, what it offers, what has changed, when they looked.
+function placeLine(world, c, id, k, mins) {
+  const r = world.rooms.get(id);
+  const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
+  const state = knownRoomState(world, c, id);
+  const seen = lastSeenPhrase(world.now, state.seenAt);
+  // step 7A (review): the Last seen phrase carries the freshness; drop the redundant 'been there' tag,
+  // but keep 'your home' and who told them about it.
+  let src = '';
+  if (k.source === 'home') src = ' (your home)';
+  else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
+  else if (k.source === 'visited' && !seen) src = ' (you have been there)'; // only when there is no Last seen to show
+  const where = id === c.location ? ' (you are here)' : mins != null ? ` (${mins} min)` : '';
+  const bits = [];
+  if (state.parts.length) bits.push(state.parts.join('; '));
+  if (state.bed) bits.push(`bed ${state.bed}`);
+  const tail = `${src}${seen ? ` Last seen ${seen}.` : ''}`;
+  return `- ${r.name}${where}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}${tail}`;
 }
 
 function ownActivity(world, c) {
