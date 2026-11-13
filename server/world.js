@@ -10,6 +10,7 @@ import { LLM } from './llm.js';
 import { config } from './config.js';
 import { backup } from './db.js';
 import { loadRooms, citizensIn, danglingExits, saveRoom, activeEffects, activeServices, serviceNames } from './world/rooms.js';
+import { appearance } from './world/appearance.js';
 import { createCitizenStore, citizenFromInput, citizenSummary, needsSummary, bodySummary } from './world/citizens.js';
 import { makeStimulus, pushToInbox, mergeInboxes, IMPORTANCE } from './world/perception.js';
 import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, die, finishMeal } from './world/actions.js';
@@ -856,11 +857,16 @@ export class World {
       clock: this.clock.snapshot(),
       scenario: this.scenario,
       rooms: [...this.rooms.values()].map((r) => this.roomView(r)),
-      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), plan: this.planSummary(c), lastTier: c.lastTier ?? null, emotion: this.emotions.summary(c) })),
+      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), look: appearance(this, c), plan: this.planSummary(c), lastTier: c.lastTier ?? null, emotion: this.emotions.summary(c) })),
       conversations: this.conversations.list().map((cv) => this.conversations.view(cv)),
       objects: [...this.objects.byId.values()].map((o) => this.objects.view(o)),
       groups: this.groups.list(),
     };
+  }
+
+  /** Step 8: how everybody looks right now ({ id: appearance }), for the map view (polled; read-only). */
+  looks() {
+    return Object.fromEntries([...this.citizens.values()].map((c) => [c.id, appearance(this, c)]));
   }
 
   citizenDetail(id) {

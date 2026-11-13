@@ -6,6 +6,7 @@ import { colorOf } from './colors.js';
 import * as roster from './views/roster.js';
 import * as inspector from './views/inspector.js';
 import * as worldView from './views/world.js';
+import * as mapView from './views/map.js';
 import * as conversationsView from './views/conversations.js';
 import * as timelineView from './views/timeline.js';
 import * as relationshipsView from './views/relationships.js';
@@ -18,7 +19,8 @@ import * as groupsView from './views/groups.js';
 import { onObjectMessage, openObject } from './views/objects-ui.js';
 
 const VIEWS = [
-  { id: 'world', label: 'World', mod: worldView },
+  { id: 'map', label: 'Map', mod: mapView },          // step 8: the living map is the centre
+  { id: 'world', label: 'List', mod: worldView },        // the old room cards, kept as a list
   { id: 'conversations', label: 'Conversations', mod: conversationsView },
   { id: 'timeline', label: 'Timeline', mod: timelineView },
   { id: 'relationships', label: 'Relationships', mod: relationshipsView },
@@ -29,6 +31,8 @@ const VIEWS = [
   { id: 'director', label: 'Director', mod: directorView },
   { id: 'usage', label: 'Usage', mod: usageView },
 ];
+
+store.viewList = VIEWS; // the map view can dock any of them next to the canvas
 
 // ---------- header ----------
 function renderClock(c) {
@@ -245,7 +249,7 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
-show(VIEWS.some((v) => v.id === initial) ? initial : 'world');
+show(VIEWS.some((v) => v.id === initial) ? initial : 'map');
 connect();
 
 window.addEventListener('hashchange', () => {

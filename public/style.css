@@ -593,3 +593,24 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .bd-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
 .bd-fig .body-fig { width: 140px; }
 .bd-form .row { margin: 5px 0; }
+
+/* ---- step 8: the map view ---- */
+.view-map { padding: 0; overflow: hidden; }
+.mapview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.map-toolbar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.map-toolbar .spacer { flex: 1; }
+.map-toolbar .seg { display: inline-flex; }
+.map-toolbar .seg button { border-radius: 0; padding: 3px 8px; font-size: 12px; }
+.map-toolbar .seg button:first-child { border-radius: 6px 0 0 6px; }
+.map-toolbar .seg button:last-child { border-radius: 0 6px 6px 0; }
+.map-toolbar .seg button:only-child { border-radius: 6px; }
+.map-toolbar button.on { background: #3a3220; border-color: var(--accent); color: var(--accent); }
+.map-toolbar button, .map-toolbar select { padding: 3px 8px; font-size: 12px; }
+.map-body { flex: 1; min-height: 0; display: flex; }
+.map-stage { position: relative; flex: 1; min-width: 0; background: #101410; overflow: hidden; }
+.map-stage canvas#mp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; }
+.map-mini { position: absolute; right: 10px; bottom: 10px; width: 192px; height: 144px; image-rendering: pixelated; border: 2px solid #000a; border-radius: 4px; background: #000; cursor: crosshair; opacity: 0.92; }
+.map-tip { position: absolute; pointer-events: none; max-width: 230px; background: #14171dee; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; font-size: 12px; z-index: 3; }
+.map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.map-dock { width: 42%; min-width: 320px; max-width: 640px; border-left: 1px solid var(--line); overflow: auto; padding: 12px; background: var(--bg); }
+.map-dock.hidden { display: none; }

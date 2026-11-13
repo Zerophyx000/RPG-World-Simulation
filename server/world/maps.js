@@ -137,3 +137,14 @@ export class Maps {
     return { maps: this.maps };
   }
 }
+
+/** content/art: the palette and every object drawing recipe (for the renderer in the browser; read from disk each time, small). */
+export function artContent() {
+  const dir = path.join(CONTENT_DIR, 'art');
+  const palette = JSON.parse(fs.readFileSync(path.join(dir, 'palette.json'), 'utf8'));
+  const odir = path.join(dir, 'objects');
+  const recipes = fs.existsSync(odir)
+    ? fs.readdirSync(odir).filter((f) => f.endsWith('.json')).sort().flatMap((f) => JSON.parse(fs.readFileSync(path.join(odir, f), 'utf8')))
+    : [];
+  return { palette, recipes };
+}

@@ -1,7 +1,7 @@
 // Step 8: procedural tiles. Every ground, wall, door and fence tile is drawn by code from palette ramps with seeded
 // noise (stable per position), 4-neighbour autotiling (path edges, shores, walls) and 2-4 frame cycles for water.
 // `tile` is the one producer for tiles: replace it to swap in hand-made art.
-import { Img } from './pixels.js';
+import { Img, mix } from './pixels.js';
 import { mulberry, cellNoise } from './rand.js';
 import { TILE } from './mapdata.js';
 
@@ -131,28 +131,29 @@ export function makeTiles(pal) {
   // ----- walls: 3/4 view: a lighter top cap, and a front face when nothing continues below -----
   function wall(kind, v, southWall, mask) {
     const ramp = kind === 'stone_wall' ? 'stone' : 'wood';
+    const col = (r, t) => (kind === 'stone_wall' ? c(r, t) : mix(c(r, t), [24, 14, 8, 255], 0.42)); // timber walls: the floor's wood, darker
     const rng = mulberry(7000 + v + (southWall ? 50 : 0));
     const img = new Img(TILE, TILE);
     const cap = southWall ? TILE : 10;
-    img.rect(0, 0, TILE, cap, c(ramp, 2));
-    for (let x = 0; x < TILE; x++) { img.set(x, 0, c(ramp, 1)); if (!southWall) img.set(x, cap - 1, c(ramp, 1)); }
-    if (kind === 'stone_wall') for (let i = 0; i < 5; i++) img.set((rng() * 30) | 0, (rng() * (cap - 2)) | 0 + 1, c(ramp, 1));
-    else for (let y = 2; y < cap; y += 5) for (let x = 0; x < TILE; x++) img.set(x, y, c(ramp, 1));
+    img.rect(0, 0, TILE, cap, col(ramp, 2));
+    for (let x = 0; x < TILE; x++) { img.set(x, 0, col(ramp, 1)); if (!southWall) img.set(x, cap - 1, col(ramp, 1)); }
+    if (kind === 'stone_wall') for (let i = 0; i < 5; i++) img.set((rng() * 30) | 0, (rng() * (cap - 2)) | 0 + 1, col(ramp, 1));
+    else for (let y = 2; y < cap; y += 5) for (let x = 0; x < TILE; x++) img.set(x, y, col(ramp, 1));
     if (!southWall) {
-      img.rect(0, cap, TILE, TILE - cap, c(ramp, 1));
+      img.rect(0, cap, TILE, TILE - cap, col(ramp, 1));
       if (kind === 'stone_wall') {
         for (let r = 0; r < 3; r++) {
           const y = cap + r * 7; const off = r % 2 ? 6 : 0;
-          for (let x = 0; x < TILE; x++) img.set(x, y, c(ramp, 0));
-          for (let x = off; x < TILE; x += 12) for (let j = 1; j < 7; j++) img.set(x, y + j, c(ramp, 0));
-          for (let i = 0; i < 3; i++) img.set((rng() * 30) | 0, y + 2 + ((rng() * 4) | 0), c(ramp, i % 2 ? 2 : 0));
+          for (let x = 0; x < TILE; x++) img.set(x, y, col(ramp, 0));
+          for (let x = off; x < TILE; x += 12) for (let j = 1; j < 7; j++) img.set(x, y + j, col(ramp, 0));
+          for (let i = 0; i < 3; i++) img.set((rng() * 30) | 0, y + 2 + ((rng() * 4) | 0), col(ramp, i % 2 ? 2 : 0));
         }
       } else {
-        for (let x = 0; x < TILE; x += 8) for (let y = cap; y < TILE; y++) img.set(x, y, c(ramp, 0));
-        for (let x = 3; x < TILE; x += 8) for (let y = cap + 2; y < TILE - 4; y += 7) img.set(x, y, c(ramp, 2));
-        for (let i = 0; i < 4; i++) img.set((rng() * 30) | 0, cap + 2 + ((rng() * 16) | 0), c(ramp, 0));
+        for (let x = 0; x < TILE; x += 8) for (let y = cap; y < TILE; y++) img.set(x, y, col(ramp, 0));
+        for (let x = 3; x < TILE; x += 8) for (let y = cap + 2; y < TILE - 4; y += 7) img.set(x, y, col(ramp, 2));
+        for (let i = 0; i < 4; i++) img.set((rng() * 30) | 0, cap + 2 + ((rng() * 16) | 0), col(ramp, 0));
       }
-      for (let x = 0; x < TILE; x++) { img.set(x, TILE - 1, c(ramp, 0)); img.set(x, TILE - 2, c(ramp, 0)); } // the shadow where it meets the ground
+      for (let x = 0; x < TILE; x++) { img.set(x, TILE - 1, col(ramp, 0)); img.set(x, TILE - 2, col(ramp, 0)); } // the shadow where it meets the ground
     }
     // vertical edges where the wall ends sideways
     if (!(mask & W)) for (let y = 0; y < TILE; y++) img.set(0, y, pal.outline(ramp));

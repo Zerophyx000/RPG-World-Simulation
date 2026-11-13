@@ -6,6 +6,7 @@ import path from 'node:path';
 import { config } from './config.js';
 import { listEvents, getEvent, listConversations, getConversation, timeline, interactions, pairLines, usage, memoriesOf, consolidationsOf, beliefs } from './readmodels.js';
 import { loadDirectorPresets } from './world/scenarios.js';
+import { artContent } from './world/maps.js';
 import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
@@ -73,6 +74,9 @@ export function createServer(world, { observer = null } = {}) {
 
     // ---- World + citizens ----
     ['GET', /^\/api\/world$/, () => world.snapshot()],
+    ['GET', /^\/api\/looks$/, () => world.looks()],                 // step 8: appearances for the map
+    ['GET', /^\/api\/maps$/, () => world.maps.view()],              // step 8: map files (footprints, doors, spots)
+    ['GET', /^\/api\/art$/, () => artContent()],                    // step 8: palette + object recipes (content/art)
 
     ['GET', /^\/api\/citizens\/([\w-]+)$/, (_req, _body, [id]) => world.citizenDetail(id)],
 
