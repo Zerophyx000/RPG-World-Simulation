@@ -331,7 +331,7 @@ export function createScene({ pal, recipes = [], maps = [] }) {
         const n = 5;
         for (let i = 0; i < n; i++) {
           const h = hash32(`${ef.id}${i}`);
-          const wx = (r.x + 1 + (h % Math.max(1, r.w - 2))) * TILE + 10; const wy = (r.y + 1 + ((h >> 8) % Math.max(1, r.h - 2))) * TILE + 20;
+          const wx = (r.x + 1 + (h % Math.max(1, r.w - 2))) * TILE + 10; const wy = (r.y + 1 + ((h >>> 8) % Math.max(1, r.h - 2))) * TILE + 20;
           if (!inView(wx, wy)) continue;
           if (kind === 'rubble') {
             const s = objs.sprite('rock', {});

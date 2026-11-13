@@ -563,7 +563,8 @@ export class Body {
     const id = `stain-${c.id}`;
     room.effects = (room.effects ?? []).filter((e) => e.until == null || e.until > this.world.now);
     if (room.effects.some((e) => e.id === id)) return;
-    room.effects.push({ id, text: `A dark bloodstain has soaked into the floor where ${c.name} bled.`, until: this.world.now + 1440, source: 'body' });
+    // step 8: the map draws it (position = the spot where they bled) and fades it over the three days it lasts
+    room.effects.push({ id, text: `A dark bloodstain has soaked into the floor where ${c.name} bled.`, until: this.world.now + 4320, source: 'body', visual: { kind: 'bloodstain', spot: c.spot ?? null, at: this.world.now } });
     this.world.saveRoom(room);
     st.stain.lost = 0;
   }

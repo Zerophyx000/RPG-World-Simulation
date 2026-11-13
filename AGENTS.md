@@ -22,6 +22,9 @@ From README "Rules for future steps"; breaking them breaks invariants the code r
 - **Citizens never create objects.** `world.objects.change()` is the only write path for existing objects; the room keeper (`server/keeper/`) only *proposes*, code validates against `content/object-types.json` transitions.
 - **The observer (`server/observer/`) is wired up in `main.js` only.** Nothing in `server/world/` or `server/agents/` may import it — its output must never reach citizens.
 
+- **The art is code** (step 8): no image, sprite or font files anywhere; `public/art/` draws everything. Modules in `public/art/` must stay DOM-free (the server and Node scripts import them); browser-only code lives in `target.js` (CanvasTarget) and `public/views/`. Citizens never choose spots or tiles: spots are position state owned by World, walking is code.
+- Look at the map without a browser: `node scripts/map-shot.js --room bakery --zoom 2 --out shot.png` (a PNG from a running server).
+
 ## Persistence and content
 
 - Migrations are forward-only, numbered files in `server/migrations/`. **Never edit one that has already run** — add a new file; data transformations go in a `.js` migration exporting `up(db)`. A backup is written to `data/backups/` before pending migrations run.

@@ -26,7 +26,22 @@
       "speechStyle": "Short sentences, dry humor, never says please.",
       "practiced": [
         "hot"
-      ]
+      ],
+      "look": {
+        "build": "short",
+        "skin": "skin_light",
+        "hair": {
+          "style": "bun",
+          "color": "hair_brown"
+        },
+        "facial": "none",
+        "eyes": "grey",
+        "colors": {
+          "tunic": "ochre",
+          "skirt": "brown",
+          "cap": "linen"
+        }
+      }
     },
     "relationships": [
       {
@@ -109,7 +124,21 @@
       "practiced": [
         "hot",
         "tool"
-      ]
+      ],
+      "look": {
+        "build": "broad",
+        "skin": "skin_tan",
+        "hair": {
+          "style": "crop",
+          "color": "hair_grey"
+        },
+        "facial": "stubble",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "brown",
+          "trousers": "grey"
+        }
+      }
     },
     "relationships": [
       {
@@ -188,7 +217,22 @@
       "speechStyle": "Chatty and full of questions; now and then calls someone 'love'.",
       "practiced": [
         "tool"
-      ]
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_light",
+        "hair": {
+          "style": "long",
+          "color": "hair_brown"
+        },
+        "facial": "none",
+        "eyes": "green",
+        "colors": {
+          "tunic": "green",
+          "skirt": "brown",
+          "cloak": "red"
+        }
+      }
     },
     "relationships": [
       {
@@ -263,7 +307,22 @@
       "covets": [],
       "practiced": [
         "danger"
-      ]
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_pale",
+        "hair": {
+          "style": "bald",
+          "color": "hair_grey"
+        },
+        "facial": "beard",
+        "eyes": "grey",
+        "colors": {
+          "tunic": "grey",
+          "trousers": "brown",
+          "cloak": "grey"
+        }
+      }
     },
     "relationships": [
       {
@@ -351,7 +410,21 @@
       ],
       "practiced": [
         "tool"
-      ]
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_light",
+        "hair": {
+          "style": "curly",
+          "color": "hair_black"
+        },
+        "facial": "none",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "blue",
+          "trousers": "brown"
+        }
+      }
     },
     "relationships": [
       {
@@ -438,7 +511,23 @@
       "covets": [
         "valuable"
       ],
-      "speechStyle": "Friendly, unhurried, a little flattering. Turns questions about himself into questions about you."
+      "speechStyle": "Friendly, unhurried, a little flattering. Turns questions about himself into questions about you.",
+      "look": {
+        "build": "average",
+        "skin": "skin_tan",
+        "hair": {
+          "style": "short",
+          "color": "hair_black"
+        },
+        "facial": "mustache",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "grey",
+          "trousers": "grey",
+          "cloak": "grey",
+          "hood": "grey"
+        }
+      }
     },
     "relationships": [],
     "memories": [

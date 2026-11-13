@@ -76,6 +76,7 @@ export function mount(el) {
     uiScale: 1, names: true, icons: true, trueView: true, thoughts: opt.thoughts, roofMode: opt.roofs, rain: false, visibleObjectIds: null,
   };
   let hits = []; let lastEntries = [];
+  canvas.mapHits = () => hits.map((h) => ({ ...h, x: h.x / dpr, y: h.y / dpr, w: h.w / dpr, h: h.h / dpr })); // for tests and tools: pickable things in CSS pixels
   let clockAt = performance.now(); let clockMin = store.clock?.gameMinutes ?? 0;
 
   // ---------- state mirrors ----------
@@ -342,7 +343,7 @@ export function mount(el) {
   }
 
   // ---------- the frame ----------
-  let lastT = 0; let fpsAcc = 0; let fpsN = 0; let fpsShow = 0;
+  let lastT = 0; let fpsAcc = 0; let fpsN = 0; let fpsShow = 0; let costAcc = 0;
   function frame(t) {
     if (!sc) return;
     const dt = Math.min(0.1, (t - lastT) / 1000 || 0.016); lastT = t;
@@ -364,13 +365,16 @@ export function mount(el) {
     const clock = store.clock;
     S.now = clockMin + (clock?.running ? ((performance.now() - clockAt) / 1000) * (60 / (clock.realSecondsPerGameHour || 120)) : 0);
     S.uiScale = dpr;
+    S.rooms = store.rooms; S.citizens = store.citizens; S.objects = store.objects; // loadWorld() replaces these Maps on every resync
     S.faceOf = faces();
     const view = { x: cam.x, y: cam.y, zoom: cam.zoom * dpr, w, h };
+    const c0 = performance.now();
     const res = sc.draw(target, view, S, t);
+    costAcc += performance.now() - c0;
     hits = res.hits; lastEntries = res.entries;
     drawMini();
     fpsAcc += dt; fpsN++;
-    if (fpsAcc >= 1) { fpsShow = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; $('#mp-fps').textContent = `${fpsShow} fps`; }
+    if (fpsAcc >= 1) { fpsShow = Math.round(fpsN / fpsAcc); fpsAcc = 0; $('#mp-fps').textContent = `${fpsShow} fps · ${(costAcc / fpsN).toFixed(1)} ms`; costAcc = 0; fpsN = 0; }
   }
   function faces() {
     const m = new Map();

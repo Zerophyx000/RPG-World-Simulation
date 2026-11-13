@@ -48,7 +48,7 @@ export function createLayout(maps) {
     if (!t) return null;
     const h = hash32(`jit|${key}`);
     const [x, y] = tilePx(t[0], t[1]);
-    return { x: x + ((h % 9) - 4), y: y - ((h >> 4) % 5), tile: t };
+    return { x: x + ((h % 9) - 4), y: y - ((h >>> 4) % 5), tile: t };
   }
 
   /** Tile path between two tiles of the room's map (cached). */

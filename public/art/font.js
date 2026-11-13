@@ -32,7 +32,7 @@ export const CELL_H = 9;
 const ACCENTS = {
   'ä': ['a', 'uml'], 'ö': ['o', 'uml'], 'ü': ['u', 'uml'], 'Ä': ['A', 'uml'], 'Ö': ['O', 'uml'], 'Ü': ['U', 'uml'], 'ë': ['e', 'uml'], 'ï': ['i', 'uml'],
   'é': ['e', 'acute'], 'è': ['e', 'grave'], 'ê': ['e', 'circ'], 'à': ['a', 'grave'], 'â': ['a', 'circ'], 'ô': ['o', 'circ'], 'î': ['i', 'circ'], 'û': ['u', 'circ'],
-  'á': ['a', 'acute'], 'í': ['i', 'acute'], 'ó': ['o', 'acute'], 'ú': ['u', 'acute'], 'É': ['E', 'acute'], 'ç': ['c', 'cedilla'], 'ñ': ['n', 'tilde'],
+  'á': ['a', 'acute'], 'í': ['i', 'acute'], 'ó': ['o', 'acute'], 'ú': ['u', 'acute'], 'É': ['E', 'acute'], 'À': ['A', 'grave'], 'È': ['E', 'grave'], 'Ê': ['E', 'circ'], 'Â': ['A', 'circ'], 'Î': ['I', 'circ'], 'Ô': ['O', 'circ'], 'Û': ['U', 'circ'], 'Ë': ['E', 'uml'], 'Ï': ['I', 'uml'], 'Í': ['I', 'acute'], 'Ó': ['O', 'acute'], 'Ú': ['U', 'acute'], 'Á': ['A', 'acute'], 'Ñ': ['N', 'tilde'], 'Ç': ['C', 'cedilla'], 'ì': ['i', 'grave'], 'ò': ['o', 'grave'], 'ù': ['u', 'grave'], 'ç': ['c', 'cedilla'], 'ñ': ['n', 'tilde'],
 };
 const MARKS = {
   uml: [[1, 0], [3, 0]], acute: [[3, 0], [2, 1]], grave: [[1, 0], [2, 1]], circ: [[2, 0], [1, 1], [3, 1]], tilde: [[1, 1], [2, 0], [3, 1]], cedilla: [[2, 8]],

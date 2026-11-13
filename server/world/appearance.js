@@ -18,6 +18,8 @@ const hashOf = (s) => [...String(s)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0
 /** The colour ramp of a garment: content `data.color` wins, otherwise a stable pick by owner and type. */
 function garmentColor(g, c) {
   if (g.data?.color) return g.data.color;
+  const given = c.persona?.look?.colors?.[g.typeId]; // content: persona.look.colors { tunic: 'green', ... }
+  if (given) return given;
   if (g.typeId === 'boots' || g.typeId === 'gloves') return 'leather';
   if (g.typeId === 'cloak' || g.typeId === 'hood') return COLORS[3 + (hashOf(`${c.id}|cloak`) % 4)];
   return COLORS[hashOf(`${c.id}|${g.typeId}`) % COLORS.length];
