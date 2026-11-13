@@ -161,7 +161,7 @@ async function remember(world, conv, c, limits, path) {
     `# HOW YOU SEE THEM\n${relLines || '(nobody you know)'}`,
     onMind ? `# ON YOUR MIND\n${onMind}` : '',
     feelNow ? `# HOW YOU FEEL RIGHT NOW\n${feelNow}` : '',
-    `# WHAT NOW\nTake a private moment to take stock. What will you remember from this conversation, in your own words and from your own point of view? How do you feel about them now? Only what actually happened or was said; don't invent anything. If someone told you about something you don't remember yourself (including things you supposedly did), record it as what they said ("Greta says I promised…", firsthand: false), not as a fact.${limits.maxMemories === 1 ? ' Keep it to the one thing that matters most.' : ''} Under feelings, say what this conversation left you with (up to 3: a sting of envy, shame at an insult, warmth at a kindness…), if anything. Call remember exactly once.`,
+    `# WHAT NOW\nTake a private moment to take stock. What will you remember from this conversation, in your own words and from your own point of view? How do you feel about them now? Only what actually happened or was said; don't invent anything. If someone told you about something you don't remember yourself (including things you supposedly did), record it as what they said ("Greta says I promised…", firsthand: false), not as a fact.${limits.maxMemories === 1 ? ' Keep it to the one thing that matters most.' : ''} Under feelings, say what this conversation left you with (up to 3: a sting of envy, shame at an insult, warmth at a kindness…), if anything — emotion, who it is about, stronger or weaker, by how much (1–3), and why. Call remember exactly once.`,
   ].filter(Boolean).join('\n\n');
 
   const labelList = [...labels.keys()];

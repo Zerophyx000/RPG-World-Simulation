@@ -6,7 +6,7 @@ import { placeLabel } from '../world/places.js';
 import { planActive, STEP_KINDS, PLAN_MAX_STEPS } from './plan.js';
 import { RELATIONS } from '../world/objects.js';
 import { frameTools } from '../emotions/present.js';
-import { FEELING_PARAM } from '../emotions/report.js';
+import { feelingParam } from '../emotions/report.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -263,8 +263,14 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, []));
   }
-  // Every action may carry the optional `feeling` self-report (format explained once in the system prompt).
-  for (const t of tools) t.function.parameters.properties.feeling = FEELING_PARAM;
+  // Step 7A: every action may carry the optional `feeling` self-report (an object; the enums are per citizen).
+  const feeling = feelingParam(world, c);
+  for (const t of tools) t.function.parameters.properties.feeling = feeling;
+  // Step 7A (sleep): still due to wake, but up already — sleep first, so the model sees it before acting.
+  if (c.wokeEarly && world.now < c.wokeEarly.until) {
+    const i = tools.findIndex((t) => t.function.name === 'sleep');
+    if (i > 0) tools.unshift(...tools.splice(i, 1));
+  }
   // Emotion-congruent tools first, short notes on descriptions. The SET of tools never changes with emotions.
   return frameTools(world, c, tools);
 }
@@ -325,7 +331,8 @@ export function validateCall(tools, call) {
         }
         v = match;
       }
-      const max = schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key] ?? (key === 'feeling' ? LIMITS.sayMax : undefined);
+      // step 7A: `feeling` may be an object (or its JSON form) — parseFeeling clips its own why, so don't clip it here.
+      const max = key === 'feeling' ? undefined : schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key];
       if (max && v.length > max) {
         v = truncate(v, max);
         truncated.push(key);
