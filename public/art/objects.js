@@ -1,0 +1,157 @@
+// Step 8: object sprites. Every object type is drawn by a small RECIPE (content/art/objects/*.json): a list of shapes
+// in palette ramps. Shapes shade themselves (edge toward the top-left = highlight, toward the bottom-right = shadow),
+// the whole sprite gets a dark outline, and each object STATE adds or removes shapes on top of the base drawing
+// (lit fire, torn sack, broken wheel). Types without a recipe fall back to a drawing by tag (garment, tool, weapon,
+// valuable, supply, container ...); generic damage states (broken, smashed, wrecked) and "overturned" work for every type.
+// Fire and glow are not painted into the sprite: the sprite lists them (`flames`, `glows`) so the scene can animate them.
+// The same code runs in Node (gallery PNGs) and in the browser (the result is an Img, cached as a canvas by the renderer).
+import { Img, mix, rngFor } from './pixels.js';
+
+const PAD = 1; // room for the outline around the drawing box
+
+export function makeObjects(pal, recipes = []) {
+  const byType = new Map();
+  for (const r of recipes) byType.set(r.type, r);
+  const cache = new Map();
+
+  const tone = (ramp, t) => pal.color(ramp, t);
+  const dim = (c, f) => [Math.round(c[0] * f), Math.round(c[1] * f), Math.round(c[2] * f), c[3] ?? 255];
+
+  /** Paint a shape (given as a mask Img of its own pixels) onto the canvas with edge shading. */
+  function paintMask(canvas, mask, ramp, flatTone, shade) {
+    for (let y = 0; y < mask.h; y++) {
+      for (let x = 0; x < mask.w; x++) {
+        if (!mask.alphaAt(x, y)) continue;
+        let t = flatTone ?? 1;
+        if (flatTone == null && shade) {
+          if (!mask.alphaAt(x - 1, y) || !mask.alphaAt(x, y - 1)) t = 2;
+          else if (!mask.alphaAt(x + 1, y) || !mask.alphaAt(x, y + 1)) t = 0;
+        }
+        canvas.set(x, y, tone(ramp, t));
+      }
+    }
+  }
+
+  function applyOps(ctx, ops, color) {
+    const { canvas, w, h } = ctx;
+    const fix = (ramp) => (ramp === '$color' ? color : ramp);
+    for (const op of ops ?? []) {
+      switch (op.op) {
+        case 'rect': case 'ellipse': case 'poly': {
+          const mask = new Img(w, h); const m = [255, 255, 255, 255];
+          if (op.op === 'rect') mask.rect(op.x + PAD, op.y + PAD, op.w, op.h, m);
+          else if (op.op === 'ellipse') mask.ellipse(op.x + PAD, op.y + PAD, op.w, op.h, m);
+          else mask.poly(op.points.map(([x, y]) => [x + PAD, y + PAD]), m);
+          paintMask(canvas, mask, fix(op.ramp), op.tone ?? null, op.shade === 'auto' || (op.tone == null && op.shade !== null));
+          break;
+        }
+        case 'line':
+          canvas.line(op.x0 + PAD, op.y0 + PAD, op.x1 + PAD, op.y1 + PAD, tone(fix(op.ramp), op.tone ?? 1));
+          break;
+        case 'pixels': {
+          op.rows.forEach((row, j) => [...row].forEach((ch, i) => {
+            const m = op.map[ch]; if (m) canvas.set(op.x + i + PAD, op.y + j + PAD, tone(fix(m[0]), m[1]));
+          }));
+          break;
+        }
+        case 'clear':
+          for (let j = 0; j < op.h; j++) for (let i = 0; i < op.w; i++) canvas.data[((op.y + j + PAD) * w + (op.x + i + PAD)) * 4 + 3] = 0;
+          break;
+        case 'holes': {
+          const rng = rngFor(`holes${op.seed}`);
+          const vis = [];
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (canvas.alphaAt(x, y)) vis.push([x, y]);
+          for (let i = 0; i < op.count && vis.length; i++) {
+            const [x, y] = vis[(rng() * vis.length) | 0];
+            const wide = rng() < 0.5 ? 2 : 1;
+            for (let dx = 0; dx < wide; dx++) if (x + dx < w) canvas.data[(y * w + x + dx) * 4 + 3] = 0;
+          }
+          break;
+        }
+        case 'tint':
+          canvas.tint(op.color, op.amount ?? 0.3);
+          break;
+        case 'flame': ctx.flames.push({ x: op.x + PAD, y: op.y + PAD, w: op.w, h: op.h }); break;
+        case 'glow': ctx.glows.push({ x: op.x + PAD, y: op.y + PAD, radius: op.radius, ramp: op.ramp ?? 'fire' }); break;
+        default: break;
+      }
+    }
+  }
+
+  function rotateCW(img) {
+    const o = new Img(img.h, img.w);
+    for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) { const c = img.get(x, y); if (c && c[3]) o.set(img.h - 1 - y, x, c); }
+    return o;
+  }
+
+  const fallbackFor = (tags = []) => {
+    for (const t of ['garment', 'weapon', 'tool', 'valuable', 'supply', 'container', 'sack', 'crate']) {
+      if (tags.includes(t) && byType.has(`@${t}`)) return byType.get(`@${t}`);
+    }
+    return byType.get('@crate') ?? null;
+  };
+
+  const GENERIC_DAMAGE = new Set(['broken', 'smashed', 'wrecked', 'destroyed', 'shattered']);
+
+  /**
+   * The sprite of an object type in the given states.
+   * opts: { states: ['lit'], color: 'blue' (garment ramp), tags: [...] }
+   * → { img, ax, ay (anchor on the ground), flames: [{x,y,w,h}], glows: [{x,y,radius,ramp}] }
+   */
+  function sprite(type, opts = {}) {
+    const states = (opts.states ?? []).filter(Boolean);
+    const color = opts.color ?? 'linen';
+    const key = `${type}|${states.join(',')}|${color}`;
+    if (cache.has(key)) return cache.get(key);
+    const recipe = byType.get(type) ?? fallbackFor(opts.tags);
+    if (!recipe) return null;
+    const [bw, bh] = recipe.size;
+    const w = bw + PAD * 2; const h = bh + PAD * 2;
+    const ctx = { canvas: new Img(w, h), w, h, flames: [], glows: [] };
+    applyOps(ctx, recipe.draw, color);
+    let overturned = false; let damaged = false;
+    for (const s of states) {
+      if (recipe.states?.[s]) applyOps(ctx, recipe.states[s], color);
+      else if (s === 'overturned') overturned = true;
+      else if (GENERIC_DAMAGE.has(s)) damaged = true;
+    }
+    if (damaged) {
+      applyOps(ctx, [{ op: 'holes', seed: type.length * 7, count: Math.max(6, Math.round(bw * bh / 60)) }, { op: 'tint', color: [40, 36, 34], amount: 0.35 }], color);
+      ctx.flames = []; ctx.glows = [];
+    }
+    let img = ctx.canvas.outline((near) => dim(near, 0.5));
+    let ax = recipe.anchor[0] + PAD; let ay = recipe.anchor[1] + PAD;
+    if (overturned) { img = rotateCW(img); ax = Math.round(img.w / 2); ay = img.h - 1; ctx.flames = []; ctx.glows = []; }
+    const out = { img, ax, ay, flames: ctx.flames, glows: ctx.glows, w: img.w, h: img.h };
+    cache.set(key, out);
+    return out;
+  }
+
+  /** One frame (0..3) of a flame filling the box w × h: base wide, tip narrow, flickering. */
+  function flame(w, h, frame = 0) {
+    const key = `flame|${w}|${h}|${frame}`;
+    if (cache.has(key)) return cache.get(key);
+    const img = new Img(w, h);
+    const rng = rngFor(`${key}`);
+    const tongues = Math.max(2, Math.round(w / 5));
+    for (let t = 0; t < tongues; t++) {
+      const cx = ((t + 0.5) / tongues) * w;
+      const th = h * (0.55 + rng() * 0.45);
+      const bwid = (w / tongues) * (0.9 + rng() * 0.5);
+      for (let y = 0; y < th; y++) {
+        const f = y / th; // 0 at the base, 1 at the tip
+        const half = (bwid / 2) * (1 - f * 0.9);
+        const sway = Math.sin((frame + t) * 1.6 + f * 2) * f * 1.2;
+        for (let x = Math.round(cx - half + sway); x <= Math.round(cx + half + sway); x++) {
+          const c = f < 0.28 ? tone('fire', 2) : f < 0.65 ? tone('fire', 1) : tone('fire', 0);
+          const core = Math.abs(x - (cx + sway)) < half * 0.4 && f < 0.5;
+          img.set(x, h - 1 - y, core ? mix(c, [255, 240, 170, 255], 0.5) : c);
+        }
+      }
+    }
+    cache.set(key, img);
+    return img;
+  }
+
+  return { sprite, flame, has: (type) => byType.has(type), types: () => [...byType.keys()].filter((t) => !t.startsWith('@')), byType };
+}
