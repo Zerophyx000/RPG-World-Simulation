@@ -139,6 +139,9 @@ export const config = {
     criticalSlowdown: num('CRITICAL_SLOWDOWN', 1.0),      // < 1: the clock runs slower while a critical window is open
   },
 
+  // Step 8: spots. Walking between spots before an action that needs proximity (SPOT_WALKING=false: act from where you stand; tests).
+  spots: { walking: env('SPOT_WALKING', 'true') !== 'false' },
+
   // Token budget governor: output tokens per rolling real hour, per profile (0 = off).
   governor: {
     budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 500000),

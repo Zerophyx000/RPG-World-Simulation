@@ -3,6 +3,7 @@
 // so World stays the single owner of state.
 //
 // call = { name, arguments, innerThought?, truncated? }
+import { config } from '../config.js';
 import { exitTo, citizensIn, activeEffects, activeServices, serviceNames, blockedExit } from './rooms.js';
 import { IMPORTANCE } from './perception.js';
 import { pronouns } from './citizens.js';
@@ -23,6 +24,16 @@ const WOKE_EARLY_MINUTES = 20; // step A2: back down after this long if nothing 
 
 export function applyAction(world, c, call) {
   const args = call.arguments ?? {};
+  // step 8: before an action that needs proximity, code walks them there (the LLM never picks spots)
+  const prox = call.arrived || !config.spots.walking ? null : proximityTarget(world, c, call);
+  if (prox) {
+    const moving = c.body?.capacities?.moving ?? 1;
+    if (moving < 0.05) {
+      if (prox.must) return stale(world, c, call, "You can't get over there.");
+    } else {
+      return startWalk(world, c, call, prox);
+    }
+  }
   // step 7B: the body can forbid walking (also for plan steps, which call this too)
   if ((call.name === 'move_to' || call.name === 'travel_to') && (c.body?.capacities?.moving ?? 1) < 0.35) {
     return stale(world, c, call, c.body.capacities.moving < 0.05 ? "You can't move at all." : "You can't walk on those injuries; you could only crawl.");
@@ -39,6 +50,7 @@ export function applyAction(world, c, call) {
     case 'carry_person': return startCarry(world, c, call, { stale, logAction });
     case 'put_down_person': return putDownPerson(world, c, call, { stale, logAction });
     case 'wash_clothes': return washClothes(world, c, call, { stale, logAction });
+    case 'walk': return stale(world, c, call, 'You hesitate, unsure what you meant to do.');
     case 'say': return say(world, c, call);
     case 'tell_about_place': return tellAboutPlace(world, c, call);
     case 'do': return doAction(world, c, call);
@@ -154,12 +166,13 @@ function startLeg(world, c, toId, trip) {
     kind: 'depart', text: `${ref(c)} leaves for ${placeLabel(o, dest)}${carryingPhrase(world, o, c)}.`, importance: IMPORTANCE.arriveDepart,
     sourceId: c.id, roomId: room.id, data: { to: dest.id },
   }));
-  c.location = null;
+  const fromSpot = c.spot ?? null;
+  c.spot = null;
   world.setActivity(c, {
     type: 'moving',
     until: world.now + minutes,
     // Stimuli already in the inbox don't count as "something happened on the way".
-    detail: { from: room.id, to: dest.id, travelMinutes: minutes, legStart: world.now, seen: c.inbox.map((s) => s.id), ...(trip ?? {}) },
+    detail: { from: room.id, to: dest.id, travelMinutes: minutes, legStart: world.now, fromSpot, seen: c.inbox.map((s) => s.id), ...(trip ?? {}) },
   });
 }
 
@@ -168,6 +181,7 @@ export function arrive(world, c) {
   const dest = world.rooms.get(d.to) ?? world.rooms.get(d.from) ?? world.rooms.values().next().value;
   const origin = world.rooms.get(d.from);
   c.location = dest.id;
+  c.spot = world.maps.entrySpot(dest.id, origin?.id ?? null); // step 8: through the door they came by
   if (d.crawl && c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 2 * 6.5 * ((d.travelMinutes ?? 0) / 60)); // crawling tires three times as fast
   if (c.carryingPerson) {
     if (c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 6.5 * ((d.travelMinutes ?? 0) / 60)); // carrying someone doubles the effort
@@ -242,6 +256,7 @@ export function relocate(world, c, toId, { text = null } = {}) {
     kind: 'arrive', text: `${ref(c)} is suddenly here.`, importance: 5, sourceId: c.id, roomId: dest.id,
   });
   c.location = dest.id;
+  c.spot = world.maps.startSpot(dest.id); // step 8: a director move puts them at the room's default spot
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now);
   const notice = world.objects.arrive(c, dest.id);
   world.memory.seeRoom(dest.id);
@@ -287,11 +302,13 @@ function say(world, c, call, { released = false } = {}) {
     return { ok: true, held: true };
   }
 
-  const ev = logAction(world, c, call, { toId: addressee?.id ?? null });
-  const rec = speak(world, c, text, addressee, present, room, { thought: call.innerThought, eventId: ev.id });
-  // Names: listeners learn the speaker's name if they say it, and overhear the addressee's.
-  world.memory.hearSpeech(c, text, addressee, present.filter(canHear));
-  if (call.introduce) for (const o of present.filter(canHear)) world.memory.learnName(o.id, c.id, 1);
+  const volume = ['whisper', 'shout'].includes(args.volume) ? args.volume : 'normal';
+  const ev = logAction(world, c, call, { toId: addressee?.id ?? null, ...(volume !== 'normal' ? { volume } : {}) });
+  const rec = speak(world, c, text, addressee, present, room, { thought: call.innerThought, eventId: ev.id, volume });
+  // Names: listeners learn the speaker's name if they say it, and overhear the addressee's (only those who heard the words).
+  const hearers = present.filter((o) => canHear(o) && heardWords(world, c, o, volume, addressee));
+  world.memory.hearSpeech(c, text, addressee, hearers);
+  if (call.introduce) for (const o of hearers) world.memory.learnName(o.id, c.id, 1);
   if ((call.teach || call.introduce) && rec?.conv) {
     rec.conv.flags ??= {};
     const learners = call.teach ? (addressee ? [addressee.id] : []) : present.filter(canHear).map((o) => o.id);
@@ -349,12 +366,27 @@ function canHear(o) {
 }
 
 // Records the line in a conversation (if any) and makes everyone in the room perceive it.
-function speak(world, c, text, addressee, present, room, { thought = null, eventId = null } = {}) {
+/** Do the words reach this listener? (whispers only at the same spot; the addressee always hears) */
+function heardWords(world, c, o, volume, addressee) {
+  if (addressee && o.id === addressee.id) return true;
+  if (volume === 'whisper') return world.maps.distance(c.location, c.spot, o.spot) === 0;
+  return true;
+}
+
+function speak(world, c, text, addressee, present, room, { thought = null, eventId = null, volume = 'normal' } = {}) {
   const rec = world.conversations.recordLine(c, text, addressee, { thought, eventId });
   const toId = rec?.toId ?? null;
   const target = toId ? world.citizens.get(toId) : null;
   const cutIn = new Set(rec?.cutIn ?? []);
+  if (volume === 'shout') shoutNextDoor(world, c, text, room);
   world.perceive(present.map((o) => o.id), (o) => {
+    const cls = world.maps.distanceClass(room.id, c.spot, o.spot);
+    if (o.id !== toId && volume === 'whisper' && cls !== 'same') {
+      // too quiet to hear: they see it happen (near: that it was a whisper; across: only that they are talking)
+      return cls === 'near'
+        ? { kind: 'action', text: `${ref(c)} whispers something${target ? ` to ${ref(target)}` : ''}.`, importance: 3, sourceId: c.id, roomId: room.id, data: { whisper: true } }
+        : { kind: 'action', text: `${ref(c)} is talking quietly${target ? ` with ${ref(target)}` : ''}.`, importance: 2, sourceId: c.id, roomId: room.id, data: { whisper: true } };
+    }
     if (o.id === toId) {
       return {
         kind: 'speech', text: `${ref(c)} says to you: "${text}"`, importance: IMPORTANCE.spokenTo,
@@ -363,15 +395,90 @@ function speak(world, c, text, addressee, present, room, { thought = null, event
         data: { addressed: true, wake: true, interrupt: Boolean(addressee), conversationId: rec?.conv.id ?? null },
       };
     }
+    const verb = volume === 'shout' ? 'shouts' : volume === 'whisper' ? 'whispers' : 'says';
     return {
       kind: 'speech',
-      text: target ? `${ref(c)} says to ${ref(target)}: "${text}"` : `${ref(c)} says: "${text}"`,
-      importance: IMPORTANCE.speechInRoom,
+      text: target ? `${ref(c)} ${verb} to ${ref(target)}: "${text}"` : `${ref(c)} ${verb}: "${text}"`,
+      importance: Math.max(1, IMPORTANCE.speechInRoom - (volume === 'normal' && cls === 'across' ? 1 : 0)),
       sourceId: c.id, roomId: room.id,
       data: { addressed: false, wake: cutIn.has(o.id), conversationId: rec?.conv.id ?? null, toId },
     };
   });
   return rec;
+}
+
+/** A shout carries into the neighbouring rooms, as words from somewhere else. */
+function shoutNextDoor(world, c, text, room) {
+  for (const exit of room.exits ?? []) {
+    const next = world.rooms.get(exit.to);
+    if (!next) continue;
+    world.perceive(citizensIn(world.citizens, next.id).map((o) => o.id), {
+      kind: 'action', text: `${ref(c)} is shouting from ${room.name}: "${text}"`, importance: 7,
+      sourceId: c.id, roomId: next.id, data: { shout: true, fromRoom: room.id },
+    });
+  }
+}
+
+// ---------- spots: walking to what an action needs (step 8) ----------
+/** → { spot, must } | null: the spot an action has to be done at, when it is not where the citizen stands. */
+function proximityTarget(world, c, call) {
+  const a = call.arguments ?? {};
+  const room = c.location;
+  const M = world.maps;
+  if (!room || !M.has(room) || !c.spot || !M.spot(room, c.spot)) return null;
+  const here = citizensIn(world.citizens, room, { exceptId: c.id });
+  const person = (label) => (label ? findPerson(world, c, here, label) : null);
+  const obj = (token) => {
+    const o = token ? world.objects.resolve(token) : null;
+    return o && !o.holderId && o.roomId === room ? o : null;
+  };
+  let spot = null; let must = true;
+  switch (call.name) {
+    case 'say': case 'tell_about_place': case 'introduce_yourself': { const p = person(a.to); spot = p?.spot ?? null; must = false; break; }
+    case 'give': spot = person(a.to)?.spot ?? null; break;
+    case 'feed': spot = person(a.who)?.spot ?? null; break;
+    case 'examine_person': case 'carry_person': spot = person(a.person)?.spot ?? null; break;
+    case 'treat': {
+      const m = /\[w(\d+)\]/.exec(String(a.wound ?? ''));
+      const patient = m ? here.find((o) => world.body.conditionById(o.id, m[1])) : null;
+      spot = patient && patient !== c ? patient.spot : null;
+      break;
+    }
+    case 'take': case 'use': case 'examine': { const o = obj(a.object); spot = o ? M.objectSpot(o) : null; break; }
+    case 'search': { const o = obj(a.target); spot = o ? M.objectSpot(o) : null; break; }
+    case 'put': { const o = obj(a.anchor); spot = o ? M.objectSpot(o) : null; break; }
+    case 'do': case 'wait': {
+      const o = call.name === 'do' ? obj(a.target) : null;
+      spot = a.spot && M.spot(room, a.spot) ? a.spot : o ? M.objectSpot(o) : null;
+      must = false;
+      break;
+    }
+    case 'eat': spot = activeServices(world.rooms.get(room), world.now).food ? M.serviceSpot(room, 'food') : null; must = false; break;
+    case 'sleep': spot = activeServices(world.rooms.get(room), world.now).bed ? M.serviceSpot(room, 'bed') : null; must = false; break;
+    default: return null;
+  }
+  return spot && spot !== c.spot ? { spot, must } : null;
+}
+
+function startWalk(world, c, call, { spot }) {
+  const room = c.location;
+  const minutes = world.maps.walkMinutes(room, c.spot, spot, c.body?.capacities?.moving ?? 1);
+  const label = world.maps.label(room, spot) ?? 'there';
+  world.logEvent('walk', { actorId: c.id, location: room, from: c.spot, to: spot, minutes: Math.round(minutes * 100) / 100, for: call.name });
+  world.setActivity(c, {
+    type: 'doing', until: world.now + minutes,
+    detail: { kind: 'walk', description: `walking over to ${label}`, minutes, fromSpot: c.spot, toSpot: spot, call: { name: call.name, arguments: call.arguments, innerThought: call.innerThought, planned: call.planned, introduce: call.introduce, teach: call.teach, truncated: call.truncated } },
+  });
+  return { ok: true, walking: true };
+}
+
+function finishWalk(world, c, a) {
+  const d = a.detail;
+  c.spot = d.toSpot;
+  if (c.carryingPerson) { const p = world.citizens.get(c.carryingPerson); if (p) p.spot = d.toSpot; }
+  world.setActivity(c, { type: 'idle' });
+  // the action now happens, and re-validates as usual (the target may have moved meanwhile)
+  if (d.call) applyAction(world, c, { ...d.call, arrived: true });
 }
 
 // ---------- do / wait ----------
@@ -708,6 +815,7 @@ export function resolveTimers(world, now) {
       // step 5: object activities finish in their own modules
       if (a.detail?.kind === 'examine') { finishExamine(world, c, a); continue; }
       if (a.detail?.kind === 'search') { finishSearch(world, c, a); continue; }
+      if (a.detail?.kind === 'walk') { finishWalk(world, c, a); continue; }
       if (a.detail?.kind === 'treat') { finishTreatment(world, c, a); continue; }
       if (a.detail?.kind === 'examine_person') { finishExaminePerson(world, c, a); continue; }
       if (a.detail?.kind === 'use') { finishUse(world, c, a.detail.token, null); continue; }

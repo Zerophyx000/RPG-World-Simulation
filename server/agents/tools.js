@@ -81,6 +81,7 @@ export function buildTools(world, c) {
   if (awake.length) {
     sayProps.to = { type: 'string', enum: awakeLabels, description: 'Who you are speaking to. Leave it out to speak to nobody in particular.' };
   }
+  sayProps.volume = { type: 'string', enum: ['whisper', 'normal', 'shout'], description: 'Optional. A whisper is heard only right next to you; a shout carries into the next rooms. Default normal.' };
   sayProps.inner_thought = INNER_THOUGHT;
   const mute = (c.body?.status ?? []).includes('mute');
   if (mute) {
@@ -135,6 +136,9 @@ export function buildTools(world, c) {
     minutes: { type: 'integer', minimum: LIMITS.minMinutes, maximum: maxMinutes, description: 'Roughly how many minutes it takes.' },
   };
   if (reachIds.length) doProps.target = { type: 'string', enum: reachIds, description: 'Optional. The thing you are working on, by its [handle].' };
+  const spotIds = world.maps.spots(room.id).map((s) => s.id);
+  const spotHelp = world.maps.spots(room.id).map((s) => `"${s.id}" = ${s.label}`).join('; ');
+  if (spotIds.length > 1) doProps.spot = { type: 'string', enum: spotIds, description: `Optional. Where in the room you do it: ${spotHelp}. Leave it out to stay where you are (or go to what you work on).` };
   doProps.inner_thought = INNER_THOUGHT;
   tools.push(fn('do',
     `Spend a while doing something here: working, tidying, resting, anything that fits. Others here can see what you are doing.${exhausted ? ' You are too exhausted for anything long.' : ''}`,

@@ -17,6 +17,7 @@ import { Conversations } from './world/conversations.js';
 import { upsertRooms, seedCitizensIfEmpty, wipeCitizens, loadWorldText, activeScenario, loadScenario, listScenarios } from './world/scenarios.js';
 import { Needs, NEED_KINDS, UNAWARE } from './world/needs.js';
 import { Body } from './body/index.js';
+import { Maps } from './world/maps.js';
 import { hearing } from './body/perceive.js';
 import { initialKnownPlaces, learnPlace } from './world/places.js';
 import { Quiet } from './world/quiet.js';
@@ -72,6 +73,7 @@ export class World {
     this.scheduler = new Scheduler(this);
     this.needs = new Needs();
     this.body = new Body(this);           // step 7B: parts, conditions, blood, healing, death (the one writer)
+    this.maps = new Maps(this);           // step 8: footprints, doors and named spots per room (checked against the room graph)
     this.quiet = new Quiet(this);
     this.rooms = new Map();
     this.citizens = new Map();
@@ -103,6 +105,7 @@ export class World {
   #load() {
     upsertRooms(this.db); // rooms are content: every boot brings new services/appearances into a live world
     this.rooms = loadRooms(this.db);
+    this.maps.load(); // fails loudly if a room has no footprint or an exit no door
     for (const bad of danglingExits(this.rooms)) console.warn(`[world] exit to unknown room: ${bad}`);
 
     this.scenario = activeScenario(this.db, config.scenario);
@@ -184,6 +187,9 @@ export class World {
   #updateBodies(elapsed, now) {
     for (const c of this.citizens.values()) {
       if (!c.alive) continue;
+      // step 8: everyone in a room stands at one of its spots (old worlds, newcomers, director moves)
+      if (c.location && (!c.spot || !this.maps.spot(c.location, c.spot))) c.spot = this.maps.startSpot(c.location);
+      else if (!c.location && c.spot) c.spot = null;
       const f = this.needs.advance(c, elapsed);
       this.dirty.add(c.id);
       if (f.hpZero) {
@@ -264,7 +270,7 @@ export class World {
       id: c.id, name: c.name, kind: c.kind, alive: c.alive, location: c.location,
       activity: c.activity, conversationId: c.conversationId, inboxSize: c.inbox.length,
       lastInnerThought: c.lastInnerThought, lastDecisionAt: c.lastDecisionAt, hp: c.needs?.hp ?? 100,
-      needs: needsSummary(c), body: bodySummary(c), marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
+      needs: needsSummary(c), body: bodySummary(c), spot: c.spot ?? null, marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
     });
   }
 

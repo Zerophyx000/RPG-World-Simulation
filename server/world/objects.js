@@ -666,7 +666,10 @@ export class Objects {
       // Identical things share a group (so the line is already unambiguous); otherwise keep the description.
       const what = list.length > 1 ? this.plural(it.o, list.length) : it.o.typeId === 'corpse' ? this.corpseText(c, it.o) : this.surfaceText(it.o);
       const ids = aliases ? ` [${list.map((x) => this.alias(x.o)).join(', ')}]` : '';
-      lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${ids}`);
+      // step 8: where in the room it is, when that is not where they stand
+      const sp = this.world.maps?.objectSpot(it.o);
+      const where = sp && c.spot && sp !== c.spot && !place ? ` — ${this.world.maps.label(it.o.roomId, sp)}` : '';
+      lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${where}${ids}`);
     }
     if (overflow > 0) lines.push(`- …and the usual clutter of ${article(kind || 'place')}`);
     return lines;

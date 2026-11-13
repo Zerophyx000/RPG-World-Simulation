@@ -623,6 +623,7 @@ export function carryArrive(world, c) {
   const p = c.carryingPerson ? world.citizens.get(c.carryingPerson) : null;
   if (!p) return;
   p.location = c.location;
+  p.spot = c.spot;
   p.carryDest = null;
   world.saveCitizen(p);
 }

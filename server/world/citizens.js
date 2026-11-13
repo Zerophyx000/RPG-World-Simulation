@@ -60,6 +60,7 @@ function defaultData() {
     knownPlaces: null,      // { roomId: { services: [], source, learnedAt } }; null = never set (World fills it in)
     marks: [],              // visible changes to appearance from director effects: [{ id, text, until }]
     sleepBuffer: [],        // importance 4–6 stimuli perceived while asleep, told on waking
+    spot: null,             // step 8: a spot id in the current room (null while walking between rooms)
     body: null,             // step 7B: { vitality, blood, parts, capacities, status, pain, regen, … } (world.body fills it in)
     // step 4: memory
     coreMemory: '',         // first person, ≤ ~250 words; rewritten at nightly consolidation
@@ -133,6 +134,7 @@ export function normalizeCitizen(row) {
     marks: Array.isArray(d.marks) ? d.marks : [],
     sleepBuffer: Array.isArray(d.sleepBuffer) ? d.sleepBuffer : [],
     body: d.body && typeof d.body === 'object' && !Array.isArray(d.body) ? d.body : null,
+    spot: typeof d.spot === 'string' ? d.spot : null, // step 8: the named spot in their room
     onMyMind: Array.isArray(d.onMyMind) ? d.onMyMind : [],
     coreMemory: typeof d.coreMemory === 'string' ? d.coreMemory : '',
     carrying: Array.isArray(d.carrying) ? d.carrying : [],
@@ -308,6 +310,7 @@ export function citizenSummary(c) {
     lastDecisionAt: c.lastDecisionAt,
     hp: c.needs?.hp ?? 100,
     body: bodySummary(c),
+    spot: c.spot ?? null,
     needs: needsSummary(c),
     marks: c.marks,
   };

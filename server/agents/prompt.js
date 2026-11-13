@@ -373,8 +373,20 @@ function visibleLine(world, o, viewer, { short = false } = {}) {
   const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
   // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.
   const line = relationLine(world, viewer, o);
-  if (short) return `${who}${line.tags}. ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
-  return `${who}${line.tags}. ${line.text} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+  const where = spotPhrase(world, viewer, o); // step 8: one short phrase about where they stand
+  if (short) return `${who}${line.tags}${where}. ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
+  return `${who}${line.tags}${where}. ${line.text} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+}
+
+/** ", by the oven, across the room from you" / ", right next to you" ('' when positions are unknown). */
+function spotPhrase(world, viewer, o) {
+  const M = world.maps;
+  const room = viewer.location;
+  if (!room || !viewer.spot || !o.spot || !M.has(room)) return '';
+  const cls = M.distanceClass(room, viewer.spot, o.spot);
+  if (cls === 'same') return ', right next to you';
+  const label = M.label(room, o.spot);
+  return cls === 'near' ? `, ${label}, close by` : `, ${label}, across the room from you`;
 }
 
 function conversationBlock(world, conv, c) {
