@@ -628,6 +628,15 @@ export class Objects {
     return { here: listed, carried: this.carriedBy(c.id) };
   }
 
+  /** step 7B: a body, named only for people who know who it was. */
+  corpseText(viewer, o) {
+    const id = o.data?.citizenId;
+    const who = id ? this.world.citizens.get(id) : null;
+    const rel = who ? this.world.memory.rel(viewer.id, who.id) : null;
+    const known = who && rel?.nameKnown && rel.nameConfidence >= 0.5;
+    return known ? `${who.name}'s body, lying where ${who.persona?.sex === 'female' ? 'she' : who.persona?.sex === 'male' ? 'he' : 'they'} fell` : 'a body lying where it fell';
+  }
+
   /** A thing named in plain words ("the flour sacks") among what c can act on here; their own first. */
   match(c, text) {
     const t = ` ${String(text ?? '').toLowerCase().replace(/[^a-z' ]+/g, ' ')} `;
@@ -655,7 +664,7 @@ export class Objects {
       const own = this.ownerTag(c, it.o);
       const place = this.placementPhrase(it.o, c);
       // Identical things share a group (so the line is already unambiguous); otherwise keep the description.
-      const what = list.length > 1 ? this.plural(it.o, list.length) : this.surfaceText(it.o);
+      const what = list.length > 1 ? this.plural(it.o, list.length) : it.o.typeId === 'corpse' ? this.corpseText(c, it.o) : this.surfaceText(it.o);
       const ids = aliases ? ` [${list.map((x) => this.alias(x.o)).join(', ')}]` : '';
       lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${ids}`);
     }
@@ -811,7 +820,7 @@ export class Objects {
       for (const it of items) {
         if (old.objects[it.o.id] || it.tier !== 'obvious') continue;
         if ((it.o.data?.arrivedAt ?? -Infinity) <= old.at) continue;
-        changes.push({ o: it.o, kind: 'new', text: `There is ${this.textFor(c, it.o, { withPlace: true })} that wasn't here before.`, importance: 3 });
+        changes.push({ o: it.o, kind: 'new', text: it.o.typeId === 'corpse' ? `${this.corpseText(c, it.o)} lies here, and it wasn't here before.`.replace(/^(\w)/, (m) => m.toUpperCase()) : `There is ${this.textFor(c, it.o, { withPlace: true })} that wasn't here before.`, importance: it.o.typeId === 'corpse' ? 8 : 3 });
       }
     }
 

@@ -159,8 +159,9 @@ export class Memory {
     if (!other) return start ? 'Someone' : 'someone';
     if (vId === otherId) return start ? 'You' : 'you';
     const r = this.rel(vId, otherId);
-    if (r?.nameKnown && r.nameConfidence >= 0.5) return other.name;
-    if (r?.nameKnown && r.nameConfidence >= 0.2) return `${other.name} (or so you think)`;
+    const dead = other.alive === false ? ' (dead)' : '';
+    if (r?.nameKnown && r.nameConfidence >= 0.5) return other.name + dead;
+    if (r?.nameKnown && r.nameConfidence >= 0.2) return `${other.name} (or so you think)${dead}`;
     const look = shortLook(other);
     return start ? look[0].toUpperCase() + look.slice(1) : look;
   }

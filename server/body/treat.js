@@ -320,6 +320,11 @@ export function finishTreatment(world, treater, a) {
   world.logEvent('treatment', { actorId: treater.id, location: treater.location, patientId: patient.id, conditionId: cond.id, method: d.method, quality: word, qualityValue: Math.round(q * 100) / 100, effective: result.effective });
 
   world.perceive([treater.id], { kind: 'timer', text: result.text.replaceAll('{who}', who), importance: 5, roomId: treater.location });
+  // treatments are remembered by both people (step 4)
+  if (result.effective || result.text) {
+    world.memory.add(treater.id, { kind: 'episodic', text: self ? `I ${methodName.replace(/_/g, ' ')} my own ${part}.` : `I ${PAST[methodName] ?? 'treated'} ${ref(patient)}'s ${part}.`, importance: 4, about: self ? [] : [patient.id], placeId: treater.location, source: { self: true } });
+    if (!self && result.effective) world.memory.add(patient.id, { kind: 'episodic', text: `${ref(treater)} ${PAST[methodName] ?? 'treated'} my ${part}.`, importance: 5, about: [treater.id], placeId: patient.location, source: { self: false } });
+  }
   if (!self) {
     if (!['sleeping', 'collapsed'].includes(patient.activity.type)) {
       world.perceive([patient.id], { kind: 'action', text: `${ref(treater)} ${PAST[methodName] ?? 'treated'} your ${part}.${result.effective ? '' : ' It does not seem to help.'}`, importance: 5, sourceId: treater.id, roomId: patient.location });

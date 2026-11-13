@@ -448,6 +448,9 @@ export class Body {
       kind: 'body', text: `${top.map((x) => this.woundText(x).feel).filter(Boolean).join(' ')}${fresh.length > 2 ? ' And more besides.' : ''}`.trim(),
       importance: clamp(Math.round(3 + severity * 0.6), 4, 9), roomId: c.location, data: { injury: true },
     });
+    if (fresh[0].partId || fresh[0].type) {
+      W.memory.add(c.id, { kind: 'episodic', text: `I was hurt: ${fresh[0].cause}. ${this.woundText(fresh[0]).feel}`.trim(), importance: clamp(Math.round(3 + severity * 0.5), 4, 8), placeId: c.location, source: { self: true } });
+    }
     const seen = fresh.filter((x) => x.visible && x.partId);
     if (!seen.length || !c.location) return;
     const worst = seen[0];
@@ -458,7 +461,7 @@ export class Body {
     for (const o of witnesses) {
       if (o.activity.type === 'sleeping' || o.activity.type === 'collapsed' || !W.emotions?.appraisal) continue;
       const affinity = W.memory.rel(o.id, c.id)?.affinity ?? 0;
-      if (affinity >= 3) W.emotions.appraisal.fire(o, 'loved_one_hurt', { other: c.id });
+      if (affinity >= 3 || W.groups.shared(o.id, c.id, ['party', 'family', 'household']).length) W.emotions.appraisal.fire(o, 'loved_one_hurt', { other: c.id });
       else if (worst.severity >= 5 || worst.bleeding > 5) W.emotions.appraisal.fire(o, 'saw_blood', { other: c.id });
     }
   }
@@ -517,6 +520,7 @@ export class Body {
   // ---------- the clock ----------
   tick(elapsed, now) {
     const needs = this.world.needs;
+    this.#criticalSlowdown();
     if (now - (this.lastRestock ?? -Infinity) >= SLOW_EVERY) { this.lastRestock = now; restock(this.world, now); } // supplies come back on a timer
     if (now - (this.lastExposure ?? now) >= SLOW_EVERY) { // out in the cold and wet (healthy people too)
       const minutes = now - this.lastExposure;
@@ -531,6 +535,37 @@ export class Body {
       if (!conds.length && st.blood >= 100 && st.vitality >= 100 && !st.critical && (c.needs?.hunger ?? 0) < needs.starvingAt && !st.regenUntil) continue;
       this.#step(c, conds, elapsed, now);
     }
+  }
+
+  /** CRITICAL_SLOWDOWN (default 1 = off): slower game time while a critical window is open and someone conscious is present. */
+  #criticalSlowdown() {
+    const k = config.body.criticalSlowdown;
+    let want = 1;
+    if (k < 1) {
+      for (const c of this.world.citizens.values()) {
+        if (!c.alive || !c.body?.critical) continue;
+        const aware = (x) => x.alive && !['sleeping', 'collapsed'].includes(x.activity.type);
+        if (aware(c) || citizensIn(this.world.citizens, c.location, { exceptId: c.id }).some(aware)) { want = k; break; }
+      }
+    }
+    this.world.clock.setBodyMultiplier(want);
+  }
+
+  /** Heavy bleeding in a room leaves a bloodstain that later arrivals see. */
+  #bloodstain(c, drain) {
+    const st = c.body;
+    if (!c.location || drain <= 0) return;
+    st.stain = st.stain?.room === c.location ? st.stain : { room: c.location, lost: 0 };
+    st.stain.lost += drain;
+    if (st.stain.lost < 6) return;
+    const room = this.world.rooms.get(c.location);
+    if (!room) return;
+    const id = `stain-${c.id}`;
+    room.effects = (room.effects ?? []).filter((e) => e.until == null || e.until > this.world.now);
+    if (room.effects.some((e) => e.id === id)) return;
+    room.effects.push({ id, text: `A dark bloodstain has soaked into the floor where ${c.name} bled.`, until: this.world.now + 1440, source: 'body' });
+    this.world.saveRoom(room);
+    st.stain.lost = 0;
   }
 
   #activityMult(c) {
@@ -569,7 +604,9 @@ export class Body {
       const res = stepWounds(this.content, conds, ctx, dt);
       last = res;
       const drain = this.#criticalWindow(c, res, now, dt);
-      st.blood = clamp(st.blood - appliedDrain(res.total, dt, drain), 0, 100);
+      const lost = appliedDrain(res.total, dt, drain);
+      st.blood = clamp(st.blood - lost, 0, 100);
+      if (lost > 0) this.#bloodstain(c, lost);
       if (res.total < 0.2 && st.blood < 100) {
         const fed = (c.needs?.hunger ?? 0) < 50 && ['sleeping', 'waiting', 'idle', 'collapsed'].includes(c.activity.type);
         st.blood = Math.min(100, st.blood + ((fed ? B.regen.restingFed : B.regen.other) * st.regen * dt) / 60);
@@ -725,6 +762,7 @@ export class Body {
       moved: act === 'moving', infectedParts: infected,
     };
     const healed = healTick(this.content, conds, ctx, minutes);
+    for (const cond of healed.worsened) this.world.perceive([c.id], { kind: 'body', text: `The pain in your ${this.content.partLabel(cond.partId)} gets worse; you should not be walking on it.`, importance: 5, roomId: c.location });
     for (const cond of healed.resolved) this.resolve(c, cond, 'healed');
     for (const cond of this.active(c.id)) this.#touch(cond);
 

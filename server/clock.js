@@ -22,6 +22,7 @@ export class Clock {
     this.running = saved.running;
     this.speed = saved.speed;
     this.quietMultiplier = 1;  // automatic quiet-time speed-up (world/quiet.js), never persisted
+    this.bodyMultiplier = 1;   // step 7B: CRITICAL_SLOWDOWN while a critical bleed has someone to act (never persisted)
     this.horizonFn = null;     // () => next scheduled game time; a tick never jumps past it
 
     this.handlers = [];
@@ -51,7 +52,7 @@ export class Clock {
     this.lastReal = now;
 
     if (this.running) {
-      let elapsed = realSeconds * this.baseRate * this.speed * this.quietMultiplier;
+      let elapsed = realSeconds * this.baseRate * this.speed * this.quietMultiplier * this.bodyMultiplier;
       // Never jump past the next scheduled event (a timer, a need crossing): land just after it.
       const horizon = this.horizonFn?.();
       if (horizon != null && this.gameMinutes + elapsed > horizon) elapsed = Math.max(0, horizon - this.gameMinutes) + 1e-6;
@@ -94,6 +95,12 @@ export class Clock {
     this.bus.emit('clock', this.snapshot());
   }
 
+  setBodyMultiplier(m) {
+    if (m === this.bodyMultiplier) return;
+    this.bodyMultiplier = m;
+    this.bus.emit('clock', this.snapshot());
+  }
+
   setQuietMultiplier(m) {
     if (m === this.quietMultiplier) return;
     this.quietMultiplier = m;
@@ -112,7 +119,7 @@ export class Clock {
       running: this.running,
       speed: this.speed,
       quietMultiplier: this.quietMultiplier,
-      effectiveSpeed: this.speed * this.quietMultiplier,
+      effectiveSpeed: this.speed * this.quietMultiplier * this.bodyMultiplier,
       realSecondsPerGameHour: 60 / (this.baseRate * this.speed * this.quietMultiplier),
     };
   }

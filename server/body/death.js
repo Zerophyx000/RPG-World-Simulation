@@ -42,7 +42,7 @@ export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {
     if (roomId && !w.objects.get(id)) {
       w.objects.create({
         id, type: 'corpse', room: roomId, name: `${c.name}'s body`, state: 'still', visibility: 'obvious',
-        surfaceText: `${c.name}'s body, lying where ${pronouns(c).subj} fell`,
+        surfaceText: 'a body lying where it fell',
         trueText: `${c.name} died of ${cause}.${worn.length ? ` Still wearing: ${worn.map((o) => w.objects.short(o)).join(', ')}.` : ''}`,
         data: { citizenId: c.id, diedAt: w.now, short: `${c.name}'s body` },
       }, { actorId: 'code', origin: 'code' });

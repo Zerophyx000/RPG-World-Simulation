@@ -90,6 +90,7 @@ export function ownBody(world, c) {
     const g = garmentsCovering(world, c.id, w.cond.partId)[0];
     lines.push(g && w.rate < 30 ? `Blood is soaking through your ${world.objects.type(g)?.name ?? 'clothes'}; it isn't stopping.` : `Blood is running from your ${label(B, w.cond.partId)}; it isn't stopping.`);
   }
+  if ((st.bleedTotal ?? 0) >= 10) lines.push("You're losing a lot of blood; your hands are cold and shaking.");
   // the urgency line
   const crit = st.critical ? B.active(c.id).find((x) => x.flags?.critical) : null;
   if (st.critical) urgent = `Blood is ${crit && crit.bleeding >= 100 ? 'pumping' : 'pouring'} out of your ${crit ? label(B, crit.partId) : 'body'}. You have minutes.`;

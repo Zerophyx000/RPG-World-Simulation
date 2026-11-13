@@ -106,7 +106,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   const emoNotes = hereNotes(world, c, room);
   const right = [...(framing ? [framing] : []), `It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
   if (room) {
-    right.push(`You are in ${room.name}. ${room.description}`.trim());
+    right.push(sn.blind ? `You are in ${room.name}. You can't see it; you know it by memory, by sound and by touch.` : `You are in ${room.name}. ${room.description}`.trim());
     const effects = activeEffects(room, now).map((e) => e.text);
     if (effects.length) right.push(`You notice: ${effects.join(' ')}`);
     if (room.affordances.length) right.push(`Things people do here: ${room.affordances.join(', ')}.`);
