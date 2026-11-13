@@ -58,6 +58,31 @@ function others(world, c) {
   return citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id);
 }
 
+// ---------- A3: their own memory of where their things went ----------
+/** "the bakery": the room's plain name for "…in the bakery." */
+function roomName(world, c) {
+  return world.rooms.get(c.location)?.name ?? 'a place I can\'t name';
+}
+
+/** "my hammer": what this object is called in the citizen's own words. */
+function mineName(O, o) {
+  return `my ${o.data?.short ?? O.type(o)?.name ?? 'thing'}`;
+}
+
+/**
+ * step A3: after taking, putting or giving their own thing (or any tool / valuable), the actor keeps an
+ * episodic memory saying where it went. That is what "last you saw…" is built from later, and it keeps
+ * them from suspecting the household when the thing has simply been moved on.
+ */
+function ownPlacementMemory(world, c, o, text) {
+  const tags = [...(world.objects.type(o)?.tags ?? []), ...(o.data?.tags ?? [])];
+  if (o.ownerId !== c.id && !tags.includes('tool') && !tags.includes('valuable')) return;
+  world.memory.add(c.id, {
+    kind: 'episodic', text, importance: tags.includes('valuable') ? 4 : 3,
+    placeId: c.location, source: { self: true },
+  });
+}
+
 function listJoin(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
@@ -91,6 +116,8 @@ export function take(world, c, call) {
   world.emotions.onOwnActSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? [], 'take');
   world.signals.onTheftSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 6: bystanders lose trust in a thief
   remember(world, c, `You picked up ${O.textFor(c, o)}.`);
+  // step A3: their own tools and valuables they remember by place, so a later "not where it belongs" reads kindly.
+  ownPlacementMemory(world, c, o, `I took ${mineName(O, o)} from ${roomName(world, c)}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -120,6 +147,8 @@ export function put(world, c, call) {
     perceive: (v) => `${ref(c)} puts ${O.textFor(v, o)} ${relPhrase(world, relation, anchor)}.`,
   });
   remember(world, c, `You put ${O.textFor(c, o)} ${relPhrase(world, relation, anchor)}.`);
+  // step A3: where they left their own hammer / sack: "I left my hammer on the bakery counter."
+  ownPlacementMemory(world, c, o, `I left ${mineName(O, o)} ${relPhrase(world, relation, anchor)} in ${roomName(world, c)}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -144,6 +173,8 @@ export function give(world, c, call) {
       : `${ref(c)} hands ${O.textFor(v, o)} to ${ref(to)}.`),
   });
   remember(world, c, `You gave ${O.textFor(c, o)} to ${ref(to)}.`);
+  // step A3: giving their own hammer away: "I gave my hammer to Jonas."
+  ownPlacementMemory(world, c, o, `I gave ${mineName(O, o)} to ${to.name}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -194,6 +225,8 @@ export function finishConceal(world, c, token, p = null) {
   if (seenBy.length) world.signals.onConceal(c, c.location, seenBy, o);
   world.emotions?.onOwnActSeen?.(c, o, seenBy, 'conceal');
   remember(world, c, `You hid ${O.textFor(c, o)} ${where}.`);
+  // step A3: a concealment is a `put` too — the hider above all must remember where it went.
+  ownPlacementMemory(world, c, o, `I hid ${mineName(O, o)} ${where} in ${roomName(world, c)}.`);
   settle(world, c);
   return view;
 }
