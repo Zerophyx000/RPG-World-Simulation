@@ -119,8 +119,8 @@ function checkBody(a, label) {
     else a.pick.forEach((alt, i) => problems.push(...checkBody(alt, `${label}.pick[${i + 1}]`)));
     return problems; // a pick has no operation of its own
   }
-  if (typeof a.type !== 'string' || !TYPES.has(a.type)) {
-    return [`${label}: unknown type "${a.type}" (have: ${TYPES.join(', ')})`];
+  if (typeof a.type !== 'string' || !Object.hasOwn(TYPES, a.type)) {
+    return [`${label}: unknown type "${a.type}" (have: ${Object.keys(TYPES).join(', ')})`];
   }
   return typeProblems(a).map((p) => `${label}: ${p}`);
 }

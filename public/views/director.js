@@ -291,6 +291,7 @@ export function mount(el) {
   renderEffects();
   renderReach();
   renderNeeds();
+  renderRoomChanges();
   return () => {
     off();
     clearTimeout(tdTimer);
