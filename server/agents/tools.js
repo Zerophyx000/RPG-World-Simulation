@@ -222,7 +222,7 @@ export function buildTools(world, c) {
   // Step 7B: tending wounds, looking people over, consent, carrying, washing.
   const treat = treatOptions(world, c, present);
   if (treat) {
-    const list = treat.methods.map((id) => `"${id}" = ${world.body.content.treatments.methods[id].label}`).join('; ');
+    const list = treat.methods.map((id) => { const m = world.body.content.treatments.methods[id]; return `"${id}" = ${m.hint ?? m.label}`; }).join('; ');
     tools.push(fn('treat', `Tend to one wound, yours or someone else's here. Pick the wound and what you do for it (${list}). Improvised care is limited; real supplies and the right method do more.`, {
       wound: { type: 'string', enum: treat.wounds.map((w) => w.key), description: 'Whose wound, and which one (the most dangerous first if you can).' },
       method: { type: 'string', enum: treat.methods, description: 'What you do about it.' },

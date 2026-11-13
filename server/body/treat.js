@@ -139,7 +139,30 @@ function woundLabel(world, treater, patient, k) {
   const who = patient.id === treater.id ? 'You' : world.memory.nameFor(treater, patient.id, { start: true });
   const base = k.vague ? `something wrong${k.cond.partId ? ` around the ${B.content.partLabel(k.cond.partId)}` : ''} (${k.hint ?? 'not clear what'})` : B.woundText(k.cond).look || B.content.typeDef(k.cond.type)?.label;
   const bleed = !k.vague && k.cond.bleeding > 0.3 ? ` (${B.woundText(k.cond).bleed})` : '';
-  return `${who}: ${base}${bleed}`.slice(0, 140);
+  const f = k.cond.flags ?? {};
+  const care = ['cleaned', 'wrapped', 'bandaged', 'packed', 'stitched', 'cauterized', 'splinted', 'herbal'].filter((x) => f[x]).concat(f.set ? ['set'] : []);
+  return `${who}: ${base}${bleed}${care.length ? ` — ${care.join(', ')}` : ''} [w${k.cond.id}]`.slice(0, 160);
+}
+
+/** Care that has already been given and would just be repeated. */
+function redundant(world, patient, cond, id) {
+  const f = cond.flags ?? {};
+  switch (id) {
+    case 'rinse': return Boolean(f.cleaned);
+    case 'clean_with_spirits': return Boolean(f.spirits);
+    case 'bandage': return Boolean(f.bandaged) && world.now - (f.bandagedAt ?? 0) < 24 * 60;
+    case 'wrap_with_cloth': return Boolean(f.wrapped || f.bandaged);
+    case 'splint': return Boolean(f.splinted);
+    case 'set_bone': return f.set === true;
+    case 'stitch': return Boolean(f.stitched);
+    case 'cauterize': return Boolean(f.cauterized);
+    case 'pack_wound': return Boolean(f.packed);
+    case 'apply_pressure': return Boolean(f.pressure);
+    case 'herbal_remedy': return Boolean(f.herbal);
+    case 'keep_still': return Boolean(f.rested) && patient.activity.type === 'waiting';
+    case 'tourniquet': return (patient.body?.tourniquets ?? []).some((t) => t.part === cond.partId || world.body.content.descendants(t.part).includes(cond.partId));
+    default: return false;
+  }
 }
 
 // ---------- which methods are possible right now ----------
@@ -150,6 +173,7 @@ export function methodsFor(world, treater, patient, cond) {
   const self = treater.id === patient.id;
   for (const [id, m] of Object.entries(M)) {
     if (self && m.selfOk === false) continue;
+    if (redundant(world, patient, cond, id)) continue;
     const n = m.needs ?? {};
     const sup = n.supply ? supplyFor(world, treater, n.supply) : null;
     if (n.hands && !(freeHands(world, treater, sup) >= n.hands)) continue;
@@ -220,7 +244,8 @@ function bestQuality(a, b) {
 export function startTreatment(world, treater, call, { stale, logAction }) {
   const present = citizensIn(world.citizens, treater.location, { exceptId: treater.id });
   const opts = treatOptions(world, treater, present);
-  const wound = opts?.wounds.find((w) => w.key === call.arguments.wound);
+  const arg = String(call.arguments.wound ?? '');
+  const wound = opts?.wounds.find((w) => w.key === arg) ?? opts?.wounds.find((w) => arg.includes(`[w${w.condId}]`)); // the bleeding word may have changed since the prompt
   const method = call.arguments.method;
   const M = T(world).methods[method];
   if (!wound || !M) return stale(world, treater, call, 'You look at the wound, but cannot work out what to do for it just now.');
