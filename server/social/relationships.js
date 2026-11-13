@@ -16,7 +16,7 @@
 import { pronounsOf } from '../memory/words.js';
 import { toSecond } from '../emotions/present.js';
 
-export const SOURCES = ['reflection', 'witness', 'signal', 'first_impression', 'group', 'director', 'seed', 'consolidation', 'emotion'];
+export const SOURCES = ['reflection', 'witness', 'signal', 'first_impression', 'group', 'director', 'seed', 'consolidation', 'emotion', 'feeling'];
 const MIN_STRENGTH = 0.3;
 const ON_MIND_TRUST = 2;
 const ENCOUNTER_KEEP_DAYS = 30;

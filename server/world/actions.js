@@ -435,7 +435,7 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
   c.sleepBuffer = [];
   world.setActivity(c, { type: 'idle' });
   world.hooks.onWake(c, slept);
-  const first = {
+  let first = {
     rested: `You wake up rested. ${nowPhrase(world.now)}`,
     timer: `You wake up. ${nowPhrase(world.now)}`,
     jolt: 'You jolt awake!',
@@ -450,6 +450,7 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
   // something urgent (>= 7) arrives first, the body takes over again after 20 minutes (#updateBodies).
   if (reason !== 'rested' && world.now - startedAt < 60 && c.needs.fatigue >= 80) {
     c.wokeEarly = { at: world.now, until: world.now + WOKE_EARLY_MINUTES };
+    first = `${reason === 'jolt' ? 'You jolt awake! ' : ''}You were only asleep a moment; you can barely keep your eyes open.`;
     world.saveCitizen(c);
   }
   world.perceive([c.id], { kind: 'timer', text: first + heard, importance: IMPORTANCE.timer, roomId: c.location, data: { wakeUp: true } });

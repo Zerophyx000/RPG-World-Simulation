@@ -56,7 +56,7 @@ export class Clock {
       const horizon = this.horizonFn?.();
       if (horizon != null && this.gameMinutes + elapsed > horizon) elapsed = Math.max(0, horizon - this.gameMinutes) + 1e-6;
       this.gameMinutes += elapsed;
-      for (const fn of this.handlers) {
+      for (const fn of [...this.handlers]) { // a copy: a handler may unregister itself (test days)
         try {
           fn(elapsed, this.gameMinutes);
         } catch (err) {

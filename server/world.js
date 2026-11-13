@@ -15,7 +15,7 @@ import { makeStimulus, pushToInbox, mergeInboxes, IMPORTANCE } from './world/per
 import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, die, finishMeal } from './world/actions.js';
 import { Conversations } from './world/conversations.js';
 import { upsertRooms, seedCitizensIfEmpty, wipeCitizens, loadWorldText, activeScenario, loadScenario, listScenarios } from './world/scenarios.js';
-import { Needs, NEED_KINDS } from './world/needs.js';
+import { Needs, NEED_KINDS, UNAWARE } from './world/needs.js';
 import { initialKnownPlaces, learnPlace } from './world/places.js';
 import { Quiet } from './world/quiet.js';
 import { directorEvent, expireDirectorState, EFFECT_TYPES } from './world/director.js';
@@ -45,7 +45,7 @@ const ERROR_WAIT_MINUTES = 10;
 const NO_ACTION_WAIT_MINUTES = 5;
 const NEEDS_FLUSH_MS = 5000;   // need values drift every tick; persist them at most this often
 const SLEEP_BUFFER_MAX = 8;
-const UNAWARE_ACT = new Set(['sleeping', 'collapsed', 'unconscious']); // step A2: bodies that don't notice things
+const UNAWARE_ACT = UNAWARE; // step A2: bodies that don't notice things (one list, in needs.js)
 
 export class World {
   constructor(db) {
@@ -208,7 +208,7 @@ export class World {
           c.wokeEarly = null; // slept it off after all
           this.saveCitizen(c);
         } else if (now >= c.wokeEarly.until && c.activity.type !== 'sleeping' && c.activity.type !== 'collapsed') {
-          if ((c.lastUrgentAt ?? -1) >= c.wokeEarly.at) {
+          if ((c.lastUrgentAt ?? -1) > c.wokeEarly.at) { // after the wake-up itself (whatever woke them doesn't count)
             c.wokeEarly = null; // something more important than sleep is going on
             this.saveCitizen(c);
           } else {

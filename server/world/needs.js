@@ -13,7 +13,7 @@ export const NEED_KINDS = ['hunger', 'fatigue', 'hp'];
 
 // step A2: activity types during which the body's own noise is switched off ('unconscious' is kept in
 // case a later step introduces it).
-const UNAWARE = new Set(['sleeping', 'collapsed', 'unconscious']);
+export const UNAWARE = new Set(['sleeping', 'collapsed', 'unconscious']);
 const COLLAPSE_DEADLINE_MINUTES = 30; // 'collapsing' and still awake this long → World forces sleep
 
 export class Needs {
@@ -160,7 +160,8 @@ export class Needs {
   /** Absolute game time when fatigue reaches 100 at the current rate (now if it is already there). */
   fatigue100At(c, now) {
     const fr = this.rate('fatigue', this.rateKey(c));
-    return fr < 0 ? now + ((100 - (c.needs.fatigue ?? 0)) / fr) * 60 : now;
+    if ((c.needs.fatigue ?? 0) >= 100) return now;
+    return fr > 0 ? now + ((100 - c.needs.fatigue) / fr) * 60 : Infinity; // resting: never
   }
 
   /** The value at which the top fatigue level ('collapsing') starts. */

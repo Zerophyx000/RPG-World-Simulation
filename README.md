@@ -105,6 +105,17 @@ Every citizen is always in one activity: `idle`, `thinking`, `moving`, `doing`, 
 
 **UI.** Roster (left, always on: latest inner thought per citizen; click = inspector, shift-click = filter), inspector drawer (right), and views: World (map with effects and walkers), Conversations (live chat panels with each speaker's thought under their line; past conversations with transcripts), Timeline (SVG swimlanes; wheel = zoom, drag = pan), Relationships (SVG graph + time slider), Story (observer storylines), Events (readable sentences, filter chips), LLM, Director. Keys: space = pause/resume, 1–8 = views, Esc = close.
 
+## Step 7A in short (fixes from the day-2/3 test logs)
+
+- **Structured feelings.** The optional `feeling` on every tool is an object, not text to parse: `{ emotion (enum of the 12), target (people here or felt about, or "none"), direction: stronger|weaker, amount: 1|2|3, why }`. Reflection `feelings` and consolidation `lingering` use the same fields. Words outside the list go through `content/emotion-synonyms.json` (anxiety → fear, curiosity → joy at half strength, suspicion → fear at the target plus a −0.5 trust event with the why as reason; body states like tiredness are ignored). Anything still unknown is logged as `emotion_unmapped`, not as an error.
+- **Sleep and collapse.** No body reminders while sleeping or collapsed (only pain crossing to critical gets through). At the top fatigue level a citizen falls asleep where they stand within 30 game minutes ("Tomas sways and slumps down.", their conversation ends). Woken within an hour while still exhausted: "You were only asleep a moment…", `sleep` is listed first, and they nod off again after 20 minutes unless something important (≥ 7) happens after the wake-up. A deliberate physical exception to "citizens decide".
+- **Your own things.** Taking, putting or giving something you own (or any tool or valuable) leaves a first-person memory ("I left my hammer on the counter in the bakery."). An owned thing missing from its place gives "Your hammer isn't here. Last you saw, you left it …" (importance 3, no anger or suspicion) when the citizen knows where it went; only when they don't is it the old importance-7 alarm. Forgetting through memory decay still allows the false-accusation story.
+- **Distinct names.** Several objects of one type in a room are told apart by state, then placement, then owner, then an ordinal ("the second full flour sack"); next to one of its own kind it is "beside the other flour sack". A content `name` is used verbatim.
+- **Event log.** One line per object action (the result, with the inner thought); a same-minute set-off and arrival read "Kael goes to the bakery". "show raw" in the Events view shows every event as stored.
+- **Reasoning and cut-offs.** The inspector shows the full reasoning of the last decision from `llm_calls` (the roster's trimmed text is marked as shortened). `llm_calls.finish_reason` (migration 009) is stored for every call; the Usage tab shows the cut-off rate per tier (red above 5 %), addressed speech decided below full (`tier_violation`, a console warning too with `DEBUG_TIER_CHECK=true`) and cut-off retries. Default caps: full 3,000, light 1,000, none 300 tokens (`LLM_MAX_TOKENS_FULL/LIGHT/NONE`). A decision that runs out of tokens without a tool call is retried once at the next cap up (none → light → full → full × 1.5, `retry_cutoff` event) instead of falling back to instinct.
+- **Clearer context.** YOUR PLAN shows today's steps with clock times (✓ 07:00–11:00 baked…, → now: …). PLACES YOU KNOW shows walking minutes, room damage the citizen has actually seen, notable known objects (a broken bed) and when they last looked. When tired or hungry, HOW YOU FEEL names the nearest bed or food they know.
+- **Test days.** `content/test-days/*.json` are timed director scripts (`at`: minutes after start or "HH:MM"; the director operations as action types; `chance` / `pick` resolved by a seeded PRNG). Director → Test days runs one with a seed; reseed the scenario first and reuse the seed to replay a day across model or prompt changes. `calm-day` is the baseline, `chaos-day` the busy one. Alternate them when tuning.
+
 ## Step 6 in short
 
 ### The emotion model
@@ -387,7 +398,11 @@ Check your school's docs for the exact flag if that doesn't work.
 | GET | `/api/citizens/:id/consolidations` | the nights |
 | GET | `/api/citizens/:id/beliefs` | that citizen's relationship rows |
 | GET | `/api/llm/profiles` | profile health |
-| GET | `/api/llm/usage` | `?minutes=180&bucket=10`: tokens per bucket/purpose/profile, reflection paths, governor |
+| GET | `/api/llm/usage` | `?minutes=180&bucket=10`: tokens per bucket/purpose/profile, reflection paths, governor; step 7A: `cutoffs` per tier, `addressedBelowFull`, `retryCutoff` |
+| GET | `/api/director/test-days` | test-day scripts `[{name, description, actions}]` |
+| POST | `/api/director/test-days/run` | `{name, seed?}`: run a test day (seed returned; one run at a time) |
+| POST | `/api/director/test-days/stop` | stop the running test day |
+| GET | `/api/director/test-days/status` | `{running, name, seed, startedAt, done, total, next}` |
 | GET/POST | `/api/governor` | state / `{budgetPerHour}` |
 | POST | `/api/director/apply` | `{effects, roomId?, radius?}`: effects without a perceived event |
 | GET | `/api/director/effect-types` | the effect types the server knows |
@@ -421,7 +436,7 @@ Check your school's docs for the exact flag if that doesn't work.
 | GET | `/api/observer/:id` | one full report |
 | POST | `/api/observer/run` | run the observer now |
 | POST | `/api/llm/test` | `{"prompt":"..."}` → `{reasoning, content, toolCalls}` |
-| GET | `/api/llm/calls` | recent LLM calls |
+| GET | `/api/llm/calls` | recent LLM calls; `?citizenId=&purpose=&limit=` filter; rows carry `finish_reason`, `has_reasoning` |
 | GET | `/api/llm/calls/:id` | full call incl. prompt and thinking |
 
 ## Rules for future steps

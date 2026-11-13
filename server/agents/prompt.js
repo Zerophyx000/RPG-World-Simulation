@@ -142,13 +142,13 @@ function situationPrompt(world, c, { tier, mode, collect }) {
       .sort((a, b) => a.mins - b.mins)[0] ?? null;
     if (feel.idx.hunger >= 2) {
       const food = nearest('food');
-      hints.push(food ? `Nearest food you know: ${placeLabel(c, world.rooms.get(food.id))} (${food.mins} min).` : "You don't know where to find food around here.");
+      hints.push(food ? `Nearest food you know: ${placeLabel(c, world.rooms.get(food.id))} (${food.mins ? `${food.mins} min` : 'right here'}).` : "You don't know where to find food around here.");
     }
     if (feel.idx.fatigue >= 2) {
       const bed = nearest('bed');
       const state = bed ? knownRoomState(world, c, bed.id).bed : null;
-      const word = state === 'broken' ? 'damaged but usable' : state === 'usable' ? 'usable' : null;
-      hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins} min${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
+      const word = state === 'broken' ? 'but the bed is broken' : state === 'usable' ? 'bed usable' : null;
+      hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins ? `${bed.mins} min` : 'right here'}${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
     }
     blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
@@ -259,19 +259,17 @@ function placeLine(world, c, id, k, mins) {
   const r = world.rooms.get(id);
   const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
   const state = knownRoomState(world, c, id);
-  const seen = lastSeenPhrase(world.now, state.seenAt);
-  // step 7A (review): the Last seen phrase carries the freshness; drop the redundant 'been there' tag,
-  // but keep 'your home' and who told them about it.
-  let src = '';
-  if (k.source === 'home') src = ' (your home)';
-  else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
-  else if (k.source === 'visited' && !seen) src = ' (you have been there)'; // only when there is no Last seen to show
-  const where = id === c.location ? ' (you are here)' : mins != null ? ` (${mins} min)` : '';
-  const bits = [];
-  if (state.parts.length) bits.push(state.parts.join('; '));
-  if (state.bed) bits.push(`bed ${state.bed}`);
-  const tail = `${src}${seen ? ` Last seen ${seen}.` : ''}`;
-  return `- ${r.name}${where}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}${tail}`;
+  const here = id === c.location;
+  const seen = here ? null : lastSeenPhrase(world.now, state.seenAt);
+  // Tags in one bracket: where it is from here, then how they know it ('been there' only when no Last seen).
+  const tags = [here ? 'you are here' : mins != null ? `${mins} min` : null];
+  if (k.source === 'home') tags.push('your home');
+  else if (k.source?.startsWith('told:')) tags.push(`${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it`);
+  else if (k.source === 'visited' && !seen && !here) tags.push('you have been there');
+  const bits = [...state.parts];
+  if (state.bed && !bits.some((b) => /^bed /.test(b))) bits.push(`bed ${state.bed}`);
+  const tagText = tags.filter(Boolean).join(', ');
+  return `- ${r.name}${tagText ? ` (${tagText})` : ''}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}.${seen ? ` Last seen ${seen}.` : ''}`;
 }
 
 function ownActivity(world, c) {

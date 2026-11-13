@@ -674,13 +674,19 @@ export class Objects {
    * an ordinal by id. peers = the same-type objects perceived in the same room.
    */
   distinctName(viewer, o, peers = null, roomId = null) {
-    if (o.name || o.data?.short) return this.short(o);             // content override: as-is, no qualifiers
-    const same = peers ?? this.#sameTypePeers(viewer, o, roomId);
-    const base = this.short(o);
+    if (o.name) return o.name;                                       // content override: as-is, no qualifiers
+    if (o.data?.short) return this.short(o);
+    let same = peers ?? this.#sameTypePeers(viewer, o, roomId);
+    let base = this.short(o);
     if (!same.length) return base;
+    // A state word sets it apart only from peers in another state; among peers in the same state
+    // ("three full sacks, one half-full") it narrows the group and the next qualifier decides.
     const state = this.stateName(o);
-    const states = same.map((x) => this.stateName(x));
-    if (state && states.some((s) => s !== state)) return `the ${state}`;
+    if (state) {
+      const alike = same.filter((x) => this.stateName(x) === state);
+      if (!alike.length) return `the ${state}`;
+      if (alike.length < same.length) { same = alike; base = `the ${state}`; }
+    }
     const place = this.placementPhrase(o, viewer);
     if (place && !same.some((x) => this.placementPhrase(x, viewer) === place)) return `${base} ${place}`;
     const own = viewer ? this.ownerTag(viewer, o) : '';
@@ -798,9 +804,11 @@ export class Objects {
       const elsewhere = Boolean(k) && (kRoom !== roomId || (k.holderId && k.holderId !== c.id));
       const what = o.data?.short ?? this.type(o)?.name ?? 'thing';
       if (elsewhere) {
-        const seen = k.holderId
-          ? `Last you saw, ${this.world.citizens.get(k.holderId)?.name ?? 'someone'} had it.`
-          : `Last you saw, you left it ${this.placementFromKnown(k) || `in ${this.world.rooms.get(kRoom)?.name ?? kRoom ?? 'another room'}`}.`;
+        const roomName = this.world.rooms.get(kRoom)?.name ?? null;
+        const spot = this.placementFromKnown(k);
+        const seen = k.holderId === c.id ? 'Last you saw, you had it with you.'
+          : k.holderId ? `Last you saw, {{c:${k.holderId}}} had it.`
+            : `Last you saw, you left it ${spot ? `${spot}${roomName ? ` in ${roomName}` : ''}` : `in ${roomName ?? 'another room'}`}.`;
         changes.push({ o, kind: 'misplaced', text: `Your ${what} isn't here. ${seen}`, importance: 3, knownElsewhere: true });
       } else {
         changes.push({ o, kind: 'missing', text: `Your ${what} is not where it belongs.`, importance: 7 });

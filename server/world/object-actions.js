@@ -174,7 +174,7 @@ export function give(world, c, call) {
   });
   remember(world, c, `You gave ${O.textFor(c, o)} to ${ref(to)}.`);
   // step A3: giving their own hammer away: "I gave my hammer to Jonas."
-  ownPlacementMemory(world, c, o, `I gave ${mineName(O, o)} to ${to.name}.`);
+  ownPlacementMemory(world, c, o, `I gave ${mineName(O, o)} to ${ref(to)}.`);
   settle(world, c);
   return { ok: true };
 }

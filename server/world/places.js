@@ -151,7 +151,8 @@ export function knownRoomState(world, c, roomId) {
   const k = c.knownPlaces?.[roomId];
   if (!k) return { seenAt: null, parts: [], bed: null };
   const room = world.rooms.get(roomId);
-  const seenAt = c.roomSnapshots?.[roomId]?.at ?? k.learnedAt ?? null;
+  // Only an actual look counts (a place they merely know of has no "last seen").
+  const seenAt = c.roomSnapshots?.[roomId]?.at ?? null;
   // step 7A (review): no knowledge leaks. A lasting effect is only shown where they could have seen it
   // happen: they are in the room now, or their last look at it came after the effect started.
   // (Room effects carry no start time; their source director event's game_time is when it began.)
