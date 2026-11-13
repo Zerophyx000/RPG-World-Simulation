@@ -36,7 +36,11 @@ export function mount(el) {
   const refresh = debounce(load, 250);
   subscribe('citizen', (id) => id === store.selectedId && refresh());
   subscribe('conversation', (id) => data?.conversationId === id && refresh());
-  subscribe('llm', (call) => call?.citizenId === store.selectedId && refresh());
+  subscribe('llm', (call) => {
+    if (call?.citizenId !== store.selectedId) return;
+    refresh();
+    if (call.purpose === 'decide') loadReasoning(call.citizenId, true); // step A6: the new call may hold the full reasoning
+  });
   subscribe('clock', updateCountdown);
   const refreshMem = debounce(loadMemories, 800);
   subscribe('memory', (m) => m?.citizenId === store.selectedId && refreshMem());
@@ -94,6 +98,7 @@ async function load() {
     data = d;
     if (!mems) loadMemories();
     loadEmotionHistory(id);
+    loadReasoning(id); // step A6: the full text behind the trimmed lastThought
   } catch (err) {
     root.innerHTML = `<button class="close" data-close>✕</button><p class="bad">${esc(err.message)}</p>`;
     return;
@@ -215,7 +220,7 @@ function render() {
     ${c.lastInnerThought ? `<div class="inner-thought" style="border-color:${color}">“${esc(c.lastInnerThought)}”</div>` : '<div class="inner-thought none">No inner thought yet.</div>'}
     ${c.lastDecisionAt != null ? `<p class="muted">Last decision ${esc(gameTime(c.lastDecisionAt))}</p>` : ''}
 
-    ${details('reasoning', 'Model reasoning', `<pre class="detail">${esc(c.lastThought ?? '(none)')}</pre>`)}
+    ${details('reasoning', 'Model reasoning', reasoningHtml(c) + reasoningFinishHtml(c))}
 
     ${details('plan', `Plan${c.planView ? ` · ${Math.min(c.planView.cursor, c.planView.steps.length)}/${c.planView.steps.length}` : ''}`, planHtml(c))}
 
@@ -267,6 +272,70 @@ function render() {
         <span class="${k.status === 'ok' ? '' : 'bad'}">${esc(k.status)} · ${k.duration_ms ?? '–'} ms · ${esc(gameTime(k.game_time))}</span></li>`).join('')}</ul>`
       : '<p class="muted">None yet.</p>'}`;
   root.scrollTop = scroll;
+}
+
+// ---------- full model reasoning (step A6) ----------
+// The server trims c.lastThought to ~2000 chars; the full text lives in llm_calls.reasoning of the citizen's
+// latest decide call. Cached per citizen; the cache is keyed by call id, so we only refetch the detail when
+// the latest decide call changes — signalled by the citizen's lastDecisionAt or a new 'llm' event for them —
+// and never more often than REASONING_EVERY_MS.
+const REASONING_EVERY_MS = 4000;
+const reasoningCache = new Map();   // citizenId -> { callId, reasoning, finishReason, decisionAt, fetchedAt }
+let reasoningLoading = null;        // citizen whose full reasoning is being fetched right now
+
+function isTrimmed(t) {
+  t = String(t ?? '');
+  return t.endsWith('…') && t.length >= 1900;
+}
+
+/** 'shortened — open the inspector' note for any trimmed thought shown outside the inspector. */
+export function trimmedNote(t) {
+  return isTrimmed(t) ? '<span class="muted-note">shortened — open the inspector</span>' : '';
+}
+
+async function loadReasoning(id, force = false) {
+  if (!id || reasoningLoading === id) return;
+  const cache = reasoningCache.get(id);
+  if (!force) {
+    if (Date.now() - (cache?.fetchedAt ?? 0) < REASONING_EVERY_MS) return;          // asked again within a few seconds
+    const c = store.citizens.get(id);
+    if (cache && (c?.lastDecisionAt ?? null) === (cache.decisionAt ?? null)) return; // no newer decide call
+  }
+  reasoningLoading = id;
+  try {
+    const [top] = await api.get(`/api/llm/calls?citizenId=${encodeURIComponent(id)}&purpose=decide&limit=1`);
+    if (id !== store.selectedId) return;
+    if (!top) { // no decide call yet: remember it, so every load() doesn't ask again
+      reasoningCache.set(id, { decisionAt: store.citizens.get(id)?.lastDecisionAt ?? null, fetchedAt: Date.now() });
+      return;
+    }
+    if (reasoningCache.get(id)?.callId === top.id) return;   // already have this call's full text
+    const full = await api.get(`/api/llm/calls/${top.id}`);
+    if (id !== store.selectedId) return;
+    reasoningCache.set(id, {
+      callId: top.id, reasoning: full.reasoning ?? null, finishReason: full.finish_reason ?? null,
+      decisionAt: store.citizens.get(id)?.lastDecisionAt ?? null, fetchedAt: Date.now(),
+    });
+    if (id === store.selectedId) render();
+  } catch { /* older server or network trouble: the inspector keeps the trimmed fallback */ }
+  finally {
+    if (reasoningLoading === id) reasoningLoading = null;
+  }
+}
+
+// Full reasoning once fetched, the trimmed lastThought as fallback while loading or on failure.
+function reasoningHtml(c) {
+  const full = reasoningCache.get(c.id);
+  if (!full?.callId || full.reasoning == null || full.reasoning === '') {
+    return `<pre class="detail">${esc(c.lastThought ?? '(none)')}</pre>${trimmedNote(c.lastThought)}`;
+  }
+  return `<pre class="detail">${esc(full.reasoning)}</pre>`;
+}
+
+function reasoningFinishHtml(c) {
+  const full = reasoningCache.get(c.id);
+  if (!full?.finishReason) return '';
+  return `<p class="muted">finish_reason: <b>${esc(full.finishReason)}</b>${full.finishReason === 'length' ? ' <span class="warn-red">cut off by the token cap</span>' : ''}</p>`;
 }
 
 // ---------- strangers (step 5.5) ----------
