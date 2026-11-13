@@ -5,6 +5,8 @@ import { citizensIn, openExits, activeServices } from '../world/rooms.js';
 import { placeLabel } from '../world/places.js';
 import { planActive, STEP_KINDS, PLAN_MAX_STEPS } from './plan.js';
 import { RELATIONS } from '../world/objects.js';
+import { frameTools } from '../emotions/present.js';
+import { FEELING_PARAM } from '../emotions/report.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -252,7 +254,19 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, []));
   }
-  return tools;
+
+  // Step 6: hide_feelings, when something strong is showing and someone could see it.
+  const strong = world.emotions.of(c).filter((e) => e.intensity >= 5);
+  if (strong.length && awake.length) {
+    tools.push(fn('hide_feelings', 'Keep what you feel off your face for a while. It does not change the feeling, and people who know you well may still notice.', {
+      emotion: { type: 'string', enum: [...new Set(strong.map((e) => e.type))], description: 'Optional. Which feeling; leave it out to hide them all.' },
+      inner_thought: INNER_THOUGHT,
+    }, []));
+  }
+  // Every action may carry the optional `feeling` self-report (format explained once in the system prompt).
+  for (const t of tools) t.function.parameters.properties.feeling = FEELING_PARAM;
+  // Emotion-congruent tools first, short notes on descriptions. The SET of tools never changes with emotions.
+  return frameTools(world, c, tools);
 }
 
 function fn(name, description, properties, required) {
@@ -311,7 +325,7 @@ export function validateCall(tools, call) {
         }
         v = match;
       }
-      const max = schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key];
+      const max = schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key] ?? (key === 'feeling' ? LIMITS.sayMax : undefined);
       if (max && v.length > max) {
         v = truncate(v, max);
         truncated.push(key);

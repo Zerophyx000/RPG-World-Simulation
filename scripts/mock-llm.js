@@ -50,6 +50,7 @@ const PHRASES = {
   // step 5.5: parties; step 6: feelings
   purpose: ['look around the old mine', 'fetch water together', 'keep an eye on the square'],
   why: ['It stung more than I expected.', 'That was kind of them.', 'I do not like how this is going.'],
+  feeling: ['anger +1: nothing goes right today', 'joy +1: a quiet moment to myself', 'sadness +1: the day drags', 'fear +1: something feels off', 'pride +1: a job done well', 'anger -1: it is not worth it'],
   cause: ['It stung more than I expected.'],
   default: ['hmm'],
 };
@@ -85,6 +86,7 @@ function genArgs(tool) {
   const { properties = {}, required = [] } = tool.function.parameters ?? {};
   const args = {};
   for (const [key, schema] of Object.entries(properties)) {
+    if (key === 'feeling' && Math.random() > 0.2) continue; // step 6: only now and then a self-report
     if (required.includes(key) || Math.random() < 0.7) args[key] = genValue(key, schema);
   }
   return args;

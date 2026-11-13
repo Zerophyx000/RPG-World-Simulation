@@ -59,6 +59,8 @@ export class Strangers {
         if (cue && cue.weight) out.push({ key: `obj:${o.id}:${tag}`, weight: cue.weight, phrase: fill(cue.phrase, `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`) });
       }
     }
+    // Step 6: open anger makes strangers warier of you
+    if ((this.world.emotions?.expressedOf(other, 'anger') ?? 0) >= 5) out.push({ key: 'emotion:anger', weight: 1, phrase: fill('{subj} looks angry') });
     // public group marks carry the group's reputation
     for (const m of this.world.groups.knownMemberships(viewer, other)) {
       const w = Number(m.group.data?.wariness) || 0;

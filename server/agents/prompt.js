@@ -21,6 +21,8 @@ import { planBlock, yesterdayText } from './plan.js';
 import { carryingPhrase } from '../world/object-actions.js';
 import { SLOTS } from '../world/objects.js';
 import { relationLine } from '../social/describe.js';
+import { feelLines, moodFraming, whoIsHere, hereNotes, orderStimuli, instructionClause } from '../emotions/present.js';
+import { FEELING_RULE } from '../emotions/report.js';
 
 export { clockTime, timeOfDay, relativeTime };
 
@@ -40,6 +42,7 @@ How your world works:
 - Your speech habits are flavor, not a script. Use pet names, catchphrases and verbal tics rarely, the way real people do; most sentences have none.
 - You can only touch, take or use things listed under what's here or what you're carrying. You can't produce objects that aren't there. You may suspect hidden things — searching is how you find out.
 - You cannot control other people or decide what they do, say or feel.
+${FEELING_RULE}
 - It is fine to do nothing special, keep to yourself, refuse, lie, or walk away, if that is what your character would do.`;
 
 /**
@@ -93,7 +96,10 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   if (feel.urgent) blocks.push(feel.urgent);
 
   // RIGHT NOW
-  const right = [`It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
+  // Step 6: mood colours the moment (one framing sentence; the room description itself is never rewritten).
+  const framing = moodFraming(world, c);
+  const emoNotes = hereNotes(world, c, room);
+  const right = [...(framing ? [framing] : []), `It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
   if (room) {
     right.push(`You are in ${room.name}. ${room.description}`.trim());
     const effects = activeEffects(room, now).map((e) => e.text);
@@ -102,6 +108,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
     const exits = openExits(room, now).filter((e) => world.rooms.has(e.to))
       .map((e) => `${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes} min)`);
     if (exits.length) right.push(`From here you can walk to:\n${exits.map((x) => `- ${x}`).join('\n')}`);
+    right.push(...emoNotes.rightNow);
     const blocked = (room.blockedExits ?? []).filter((b) => b.until == null || b.until > now)
       .map((b) => `the way to ${placeLabel(c, world.rooms.get(b.to))} is blocked${b.reason ? ` (${b.reason})` : ''}`);
     if (blocked.length) right.push(`Right now ${blocked.join('; ')}.`);
@@ -118,17 +125,18 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {
-    const here = world.objects.whatsHere(c, { aliases: true });
+    const here = [...world.objects.whatsHere(c, { aliases: true }), ...emoNotes.whatsHere];
     blocks.push(`# WHAT'S HERE\n${here.length ? here.join('\n') : 'Nothing worth mentioning.'}`);
   }
   blocks.push(`# YOU'RE CARRYING\n${carryingBlock(world, c)}`);
 
   // HOW YOU FEEL (only when something is off)
-  if (feel.any) {
+  const emoLines = feelLines(world, c); // step 6: body sensations, never numbers or labels
+  if (feel.any || emoLines.length) {
     const hints = [];
     if (feel.idx.hunger >= 2 && !knownWith(c, 'food').length) hints.push("You don't know where to find food around here.");
     if (feel.idx.fatigue >= 2 && !knownWith(c, 'bed').length) hints.push("You don't know anywhere you could sleep properly.");
-    blocks.push(`# HOW YOU FEEL\n${[feel.text, ...hints].join('\n')}`);
+    blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
   // YOUR PLAN
@@ -161,7 +169,8 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // WHO IS HERE
   const others = room ? citizensIn(world.citizens, room.id, { exceptId: c.id }) : [];
-  if (room) blocks.push(`# WHO IS HERE\n${others.length ? others.map((o) => `- ${visibleLine(world, o, c)}`).join('\n') : 'Nobody else is here.'}`);
+  // Step 6: strong feelings focus attention (the target in detail, others compressed) and add what people show.
+  if (room) blocks.push(`# WHO IS HERE\n${others.length ? whoIsHere(world, c, others, (o, opts) => visibleLine(world, o, c, opts)).map((l) => `- ${l}`).join('\n') : 'Nobody else is here.'}`);
 
   // YOU REMEMBER
   const picked = retrieve(world, c, { presentIds: others.map((o) => o.id), placeId: c.location }, 5);
@@ -183,22 +192,24 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   if (conv) blocks.push(`# CONVERSATION\n${conversationBlock(world, conv, c)}`);
 
   // WHAT JUST HAPPENED
-  const stimuli = [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime);
-  blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length
-    ? stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`).join('\n')
+  const ordered = orderStimuli(world, c, [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime));
+  const stimuli = ordered.stimuli;
+  blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length || ordered.lead.length
+    ? [...ordered.lead.map((l) => `- ${l}`), ...stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`)].join('\n')
     : 'Nothing new has caught your attention.'}`);
 
-  // Instruction
+  // Instruction (step 6: at intense levels the feeling colours it, e.g. "Your heart is pounding.")
+  const clause = instructionClause(world, c);
   if (mode === 'plan') {
     blocks.push('# WHAT NOW\nPlan your day: what you intend to do, roughly when, and where. Think about what you need (food, rest), what you want, and who you need to see. Only use places you know and people you know. Call make_plan exactly once.');
   } else if (tier === 'none') {
-    blocks.push('# WHAT NOW\nAct on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.');
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}Act on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.`);
   } else {
     if (conv) {
       // Honest forgetting: GLM tends to accept whatever others claim about the shared past.
       blocks.push("# REMEMBER\nIf someone brings up something you supposedly did, said or promised, it is only true for you if it is under YOU REMEMBER or ON YOUR MIND. If it is not there, you don't remember it: say so, ask, or bluff knowingly — don't just agree.");
     }
-    blocks.push('# WHAT NOW\nDecide what you do next. Call exactly one tool. You may include a short inner thought.\n'
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}Decide what you do next. Call exactly one tool. You may include a short inner thought.\n`
       + 'If you speak: one or two short sentences, like a real turn in a conversation. Say it in your own words; '
       + "don't reach for your usual pet names or sayings.");
   }
@@ -260,7 +271,7 @@ function ownActivity(world, c) {
 }
 
 // How another citizen appears to this viewer: name (if known) or look, the relationship in words, what they do.
-function visibleLine(world, o, viewer) {
+function visibleLine(world, o, viewer, { short = false } = {}) {
   const mem = world.memory;
   const rel = mem.rel(viewer.id, o.id);
   const p = o.persona;
@@ -300,6 +311,7 @@ function visibleLine(world, o, viewer) {
   const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
   // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.
   const line = relationLine(world, viewer, o);
+  if (short) return `${who}${line.tags}. ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
   return `${who}${line.tags}. ${line.text} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
 }
 

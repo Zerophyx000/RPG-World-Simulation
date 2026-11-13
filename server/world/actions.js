@@ -47,6 +47,8 @@ export function applyAction(world, c, call) {
     case 'accept_invitation': return acceptInvitation(world, c, call);
     case 'decline_invitation': return declineInvitation(world, c, call);
     case 'leave_group': return leaveGroup(world, c, call);
+    // step 6
+    case 'hide_feelings': return hideFeelings(world, c, call);
     default:
       return stale(world, c, { name: call.name, arguments: args }, 'You hesitate, unsure what you meant to do.');
   }
@@ -123,6 +125,7 @@ export function arrive(world, c) {
   // Step 5.5: first impressions of whoever is here, and warning signs (followed, intruder, your property).
   world.memory.seeRoom(dest.id);
   world.signals.onArrive(c, dest.id);
+  world.emotions.appraisal.onArrive(c, dest.id); // jealousy (two people alone together), envy (what people carry)
 
   const others = citizensIn(world.citizens, dest.id, { exceptId: c.id });
   world.perceive(others.map((o) => o.id), (o) => ({
@@ -450,7 +453,7 @@ export function collapse(world, c, { reason = 'hp' } = {}) {
   world.setActivity(c, { type: 'collapsed', detail: { reason } });
   world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
     kind: 'action', text: `${ref(c)} collapses and lies still.`, importance: 8, sourceId: c.id, roomId: c.location,
-    data: { interrupt: true },
+    data: { interrupt: true, collapse: true },
   });
   world.logEvent('collapse', { actorId: c.id, location: c.location, reason, hp: Math.round(c.needs.hp), hunger: Math.round(c.needs.hunger) });
 }
@@ -532,6 +535,16 @@ function abandonPlan(world, c, call) {
   if (planActive(c)) c.plan.status = 'abandoned';
   world.setActivity(c, { type: 'idle' });
   remember(world, c, 'You gave up on your plan for today.');
+  return { ok: true };
+}
+
+// ---------- hide_feelings (step 6) ----------
+function hideFeelings(world, c, call) {
+  const type = call.arguments.emotion || null;
+  logAction(world, c, call);
+  world.emotions.hide(c, type);
+  remember(world, c, type ? 'You schooled your face, so that nobody would see how you feel.' : 'You schooled your face and gave nothing away.');
+  world.setActivity(c, c.conversationId && world.conversations.get(c.conversationId) ? { type: 'talking', detail: { conversationId: c.conversationId } } : { type: 'idle' });
   return { ok: true };
 }
 

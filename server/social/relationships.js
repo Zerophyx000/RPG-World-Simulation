@@ -14,6 +14,7 @@
 // strength >= 0.3 is left the prompt says so honestly: "…though you couldn't say exactly why anymore."
 // Several faded reasons are summarised into one 'consolidation' event ("He's let me down more than once.").
 import { pronounsOf } from '../memory/words.js';
+import { toSecond } from '../emotions/present.js';
 
 export const SOURCES = ['reflection', 'witness', 'signal', 'first_impression', 'group', 'director', 'seed', 'consolidation', 'emotion'];
 const MIN_STRENGTH = 0.3;
@@ -137,7 +138,7 @@ export class Relationships {
     if (!rel) return { text: '', faded: false };
     const mem = this.world.memory;
     const rs = this.reasons(viewer.id, other.id, 2, { exclude: rel.summary });
-    if (rs.length) return { text: rs.map((e) => sentence(mem.resolveNames(viewer, e.reason))).join(' '), faded: false, reasons: rs };
+    if (rs.length) return { text: rs.map((e) => sentence(toSecond(mem.resolveNames(viewer, e.reason)))).join(' '), faded: false, reasons: rs };
     const clear = Math.abs(rel.trust) >= 2 || Math.abs(rel.affinity) >= 2;
     if (clear && !this.hasNameableReason(viewer.id, other.id)) {
       const p = pronounsOf(other);

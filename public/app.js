@@ -227,6 +227,7 @@ function connect() {
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
   es.addEventListener('group', () => emit('groups'));
+  es.addEventListener('emotion_room', (m) => emit('emotion_room', JSON.parse(m.data)));
   es.addEventListener('relationship', (m) => emit('relationship', JSON.parse(m.data)));
   es.addEventListener('llm', (m) => emit('llm', JSON.parse(m.data)));
 }

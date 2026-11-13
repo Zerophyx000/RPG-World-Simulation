@@ -133,6 +133,8 @@ export const EVENT_CATEGORY = {
   examine: () => 'object',
   keeper: () => 'object',
   notice: () => 'object',
+  emotion: () => 'emotion',
+  feeling: () => 'emotion',
   relationship: () => 'social',
   signal: () => 'social',
   group: () => 'social',
@@ -228,6 +230,7 @@ export function eventHtml(e) {
         case 'feed': return `${who(actor)} feeds ${who(d.targetId)}${thought}`;
         case 'take': case 'put': case 'give': case 'examine': case 'search': case 'use':
           return `${who(actor)} <span class="dim">${esc(d.tool)}${d.conceal || args.conceal ? ' (hide)' : ''}</span> ${objName(d.objectId ?? d.targetId)}${args.intent ? `: “${esc(args.intent)}”` : ''}${d.toId ? ` → ${who(d.toId)}` : ''}${d.anchorId ? ` <span class="dim">${esc(args.relation ?? 'on')}</span> ${objName(d.anchorId)}` : ''}${thought}`;
+        case 'hide_feelings': return `${who(actor)} <span class="dim">🎭 hides ${args.emotion ? esc(args.emotion) : 'what they feel'}</span>${thought}`;
         case 'propose_party': return `${who(actor)} <span class="dim">proposes a party to</span> ${(d.invited ?? []).map((x) => who(x)).join(', ')}: ${esc(args.purpose)}${thought}`;
         case 'accept_invitation': return `${who(actor)} <span class="good">accepts</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
         case 'decline_invitation': return `${who(actor)} <span class="bad">declines</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
@@ -238,6 +241,10 @@ export function eventHtml(e) {
       }
     }
     case 'arrive': return `${who(actor)} arrives at ${esc(roomName(e.location))}`;
+    case 'emotion': return d.contagion
+      ? `${who(actor)} <span class="dim">catches the</span> <b>${esc(d.emotion)}</b> <span class="dim">spreading at ${esc(roomName(e.location))}${d.otherId ? ' (aimed at ' : ''}</span>${d.otherId ? `${who(d.otherId)}<span class="dim">)</span>` : ''} <span class="dim">→ ${esc(d.intensity)}</span>`
+      : `${who(actor)} <span class="dim">is gripped by</span> <b>${esc(d.emotion)}</b> <span class="dim">of</span> ${who(d.otherId)}${d.about && store.citizens.has(d.about) ? ` <span class="dim">over</span> ${who(d.about)}` : ''} <span class="dim">(${esc(d.intensity)})</span>${d.cause ? `: <span class="ithought">${esc(detok(d.cause))}</span>` : ''}`;
+    case 'feeling': return `${who(actor)} <span class="dim">feels:</span> ${d.parsed ? `<b>${esc(d.parsed.type)} ${d.parsed.change > 0 ? '+' : ''}${esc(d.parsed.change)}</b>${d.parsed.target ? ` → ${who(d.parsed.target)}` : ''}${d.parsed.why ? ` <span class="ithought">${esc(d.parsed.why)}</span>` : ''}` : `<span class="dim">(not understood) ${esc(d.raw)}</span>`}`;
     case 'relationship': return `${who(actor)} <span class="dim">now sees</span> ${who(d.otherId)} <span class="dim">differently</span> ${d.dTrust ? `<span class="${d.dTrust > 0 ? 'good' : 'bad'}">trust ${d.dTrust > 0 ? '+' : ''}${esc(d.dTrust)}</span>` : ''} ${d.dAffinity ? `<span class="${d.dAffinity > 0 ? 'good' : 'bad'}">liking ${d.dAffinity > 0 ? '+' : ''}${esc(d.dAffinity)}</span>` : ''} <span class="dim">(${esc(d.source)})</span>: “${esc(detok(d.reason))}”`;
     case 'signal': return `${who(actor)} <span class="bad">⚠ warning sign</span> about ${who(d.otherId)}: <b>${esc(d.sign)}</b>${d.text ? ` <span class="dim">“${esc(detok(d.text))}”</span>` : ''}${d.dTrust ? ` <span class="bad">trust ${esc(d.dTrust)}</span>` : ''}`;
     case 'group': return groupEventHtml(d, actor);

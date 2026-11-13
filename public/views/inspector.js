@@ -11,6 +11,10 @@ import { actPanelHtml, bindActPanels } from './act.js';
 import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml, planHtml } from './memories.js';
 import { showEvent } from '../util.js';
 import { openReasons, warinessHtml, groupChip } from './social-ui.js';
+import { emotionsPanelHtml, emotionTypes } from './emotions-ui.js';
+
+let emoHistory = null; // GET /api/citizens/:id/emotions/history (last game days)
+let emoFor = null;
 
 let root = null;
 let data = null;
@@ -89,11 +93,28 @@ async function load() {
     if (id !== store.selectedId) return;
     data = d;
     if (!mems) loadMemories();
+    loadEmotionHistory(id);
   } catch (err) {
     root.innerHTML = `<button class="close" data-close>✕</button><p class="bad">${esc(err.message)}</p>`;
     return;
   }
   render();
+}
+
+// The mood line needs the hourly samples; refetched at most every few seconds.
+let emoLoadedAt = 0;
+async function loadEmotionHistory(id) {
+  if (emoFor === id && Date.now() - emoLoadedAt < 8000) return;
+  emoFor = id;
+  emoLoadedAt = Date.now();
+  await emotionTypes();
+  const now = store.clock?.gameMinutes ?? 0;
+  try {
+    const h = await api.get(`/api/citizens/${encodeURIComponent(id)}/emotions/history?from=${Math.floor(now - 5 * 1440)}&limit=1500`);
+    if (id !== store.selectedId) return;
+    emoHistory = h;
+    render();
+  } catch { /* panel shows without the mood line */ }
 }
 
 async function loadMemories() {
@@ -186,6 +207,9 @@ function render() {
     ${(p.secretGoals ?? []).length ? `<div class="secret-goals" title="Only in their own prompt">🔒 ${p.secretGoals.map(esc).join(' · ')}</div>` : ''}
     ${needBars(c)}
     ${(c.marks ?? []).length ? `<div class="marks">${c.marks.map((m) => `<span class="mark">${esc(m.text)}</span>`).join('')}</div>` : ''}
+
+    <h3>Emotions</h3>
+    <div class="emo-panel">${emotionsPanelHtml(c.emotionsView, emoFor === c.id ? emoHistory : null)}</div>
 
     <h3>Inner thought</h3>
     ${c.lastInnerThought ? `<div class="inner-thought" style="border-color:${color}">“${esc(c.lastInnerThought)}”</div>` : '<div class="inner-thought none">No inner thought yet.</div>'}

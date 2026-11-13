@@ -3,6 +3,7 @@
 // director markers, red ticks for interrupts/rethinks. Wheel = zoom, drag = pan, "follow live".
 import { store, subscribe, subscribeMany, select } from '../store.js';
 import { api, esc, gameTime, clockOnly, citizenName, truncate, navigate, showEvent, debounce, prefs } from '../util.js';
+import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const LABEL_W = 96;
@@ -187,6 +188,26 @@ function render(provisional = false) {
     const yy = y(c.id);
     out.push(`<g data-cit="${esc(c.id)}"${dimmed(c.id)}><rect class="lane" x="0" y="${yy}" width="${W}" height="${LANE_H - 4}"/>
       <text class="lane-label" x="8" y="${yy + LANE_H / 2 + 2}" fill="${colorOf(c.id)}">${esc(truncate(c.name, 12))}</text></g>`);
+  }
+
+  // Step 6: lanes tinted by the dominant emotion of each hourly sample; bumps of 3+ as small diamonds.
+  const emo = data.emotions ?? { samples: {}, bumps: [] };
+  for (const c of citizens) {
+    const list = emo.samples[c.id] ?? [];
+    for (let i = 0; i < list.length; i++) {
+      const [t, type, intensity] = list[i];
+      const end = Math.min(list[i + 1]?.[0] ?? t + 60, t + 90);
+      if (!type || intensity < 2 || end < from || t > to) continue;
+      const x1 = clampX(t);
+      const x2 = clampX(end);
+      out.push(`<rect class="emo-tint" x="${x1}" y="${y(c.id)}" width="${Math.max(1, x2 - x1)}" height="${LANE_H - 4}" fill="${EMO_COLOR[type] ?? '#888'}" fill-opacity="${Math.min(0.42, 0.06 + intensity * 0.035)}"${dimmed(c.id)}><title>${esc(`${c.name}: ${type} ${intensity}`)}</title></rect>`);
+    }
+  }
+  for (const b of emo.bumps) {
+    if (!lane.has(b.citizenId) || b.t < from || b.t > to) continue;
+    const px = x(b.t);
+    const py = y(b.citizenId) + 5;
+    out.push(`<path class="emo-bump" d="M${px},${py - 4} l4,4 l-4,4 l-4,-4 z" fill="${EMO_COLOR[b.type] ?? '#888'}"${dimmed(b.citizenId)}><title>${esc(`${b.type} ${b.delta > 0 ? '+' : ''}${b.delta}${b.target ? ` at ${store.citizens.get(b.target)?.name ?? b.target}` : ''} (${b.source})\n${b.cause ?? ''}`)}</title></path>`);
   }
 
   // conversation bands (behind activity blocks)

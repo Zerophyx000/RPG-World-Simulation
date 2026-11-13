@@ -5,6 +5,7 @@ import { store, subscribeMany } from '../store.js';
 import { api, esc, citizenName, roomName, gameTime, who, effectHtml } from '../util.js';
 import { colorOf } from '../colors.js';
 import { objectTypes, objectsIn } from './objects-ui.js';
+import { emotionTypes, appraisalRowsHtml } from './emotions-ui.js';
 
 let root = null;
 let presets = [];
@@ -118,6 +119,23 @@ export function mount(el) {
         <div id="fx-list"></div>
       </div>
 
+      <div class="card" id="emotion-card">
+        <h3>Emotions and mood</h3>
+        <p class="muted">Raise or lower a feeling, or set the slow mood. Code never acts for them: this only changes what they are shown.</p>
+        <div class="row"><select id="emo-citizen"></select><select id="emo-type"></select><span class="dim">at</span><select id="emo-target"></select></div>
+        <div class="emo-sliders">
+          <label>change <input id="emo-delta" type="range" min="-6" max="8" step="0.5" value="4"><span id="emo-delta-v">+4</span></label>
+        </div>
+        <div class="row"><input id="emo-cause" placeholder="cause, first person: He laughed at me in front of everyone." style="flex:1"><button type="button" id="emo-apply">Apply</button></div>
+        <div class="emo-sliders">
+          <label>valence <input id="mood-valence" type="range" min="-5" max="5" step="0.5" value="0"><span id="mood-valence-v">0</span></label>
+          <label>tension <input id="mood-tension" type="range" min="0" max="10" step="0.5" value="3"><span id="mood-tension-v">3</span></label>
+        </div>
+        <div class="row"><label class="check"><input type="checkbox" id="emo-contagion" checked> contagion (feelings spread in a room)</label><button type="button" id="mood-apply">Set mood</button></div>
+        <div class="result" id="emo-result"></div>
+        <details id="appr-details"><summary>Appraisal log (which rule caused what)</summary><div class="appr-log" id="appr-log"></div></details>
+      </div>
+
       <div class="card" id="social-card">
         <h3>People, groups and strangers</h3>
         <div class="soc-row" id="soc-inactive"></div>
@@ -215,6 +233,7 @@ export function mount(el) {
   el.querySelector('#f-create').addEventListener('submit', createCitizen);
   el.querySelector('#f-object').addEventListener('submit', createObject);
   bindSocial(el);
+  bindEmotions(el);
   for (const id of ['#ob-type', '#ob-where']) el.querySelector(id).addEventListener('change', fillObjectForm);
   objectTypes().then((t) => {
     types = t;
@@ -246,6 +265,7 @@ export function mount(el) {
   const off = subscribeMany(['rooms', 'citizens', 'objects'], () => {
     fillSelects();
     fillSocial();
+    fillEmotions();
     fillObjectForm();
     renderRoomChanges();
     renderReach();
@@ -253,6 +273,7 @@ export function mount(el) {
   });
   fillSelects();
   fillSocial();
+  fillEmotions();
   renderEffects();
   renderRoomChanges();
   renderReach();
@@ -265,6 +286,61 @@ export function mount(el) {
 
 const val = (id) => root.querySelector(id).value;
 const setVal = (id, v) => { root.querySelector(id).value = v ?? ''; };
+
+// ---------- emotions and mood (step 6) ----------
+function bindEmotions(el) {
+  const say = (ok, t) => result('#emo-result', ok, t);
+  for (const id of ['emo-delta', 'mood-valence', 'mood-tension']) {
+    el.querySelector(`#${id}`).addEventListener('input', (e) => { el.querySelector(`#${id}-v`).textContent = `${id === 'emo-delta' && e.target.value > 0 ? '+' : ''}${e.target.value}`; });
+  }
+  emotionTypes().then((t) => {
+    el.querySelector('#emo-type').innerHTML = Object.keys(t.types ?? {}).map((k) => `<option>${k}</option>`).join('');
+    el.querySelector('#emo-contagion').checked = t.contagion !== false;
+  });
+  el.querySelector('#emo-apply').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/emotion', { citizenId: val('#emo-citizen'), type: val('#emo-type'), target: val('#emo-target') || null, delta: Number(val('#emo-delta')), cause: val('#emo-cause') || null });
+      say(true, `${citizenName(val('#emo-citizen'))}: ${r.entries.map((e) => `${e.type} ${e.intensity}${e.targetName ? ` at ${e.targetName}` : ''}`).join(', ') || 'calm'}`);
+      loadAppraisals();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#mood-apply').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/mood', { citizenId: val('#emo-citizen'), valence: Number(val('#mood-valence')), tension: Number(val('#mood-tension')) });
+      say(true, `${citizenName(val('#emo-citizen'))}: mood ${r.mood.valence.toFixed(1)} / tension ${r.mood.tension.toFixed(1)}`);
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#emo-contagion').addEventListener('change', async (e) => {
+    const r = await api.post('/api/director/contagion', { enabled: e.target.checked }).catch(() => null);
+    say(Boolean(r), r ? `Contagion ${r.contagion ? 'on' : 'off'}.` : 'Could not change it.');
+  });
+  el.querySelector('#appr-details').addEventListener('toggle', (e) => e.target.open && loadAppraisals());
+}
+
+async function loadAppraisals() {
+  if (!root?.querySelector('#appr-details')?.open) return;
+  const rows = await api.get('/api/emotions/appraisals?limit=80').catch(() => []);
+  root.querySelector('#appr-log').innerHTML = appraisalRowsHtml(rows);
+}
+
+function fillEmotions() {
+  if (!root) return;
+  const people = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  const a = root.querySelector('#emo-citizen');
+  const b = root.querySelector('#emo-target');
+  if (a.dataset.opts !== people) {
+    const [va, vb] = [a.value, b.value];
+    a.innerHTML = people;
+    b.innerHTML = `<option value="">— nobody —</option>${people}`;
+    a.dataset.opts = people;
+    if (va) a.value = va;
+    if (vb) b.value = vb;
+  }
+}
 
 // ---------- people, groups, strangers (step 5.5) ----------
 let groupList = [];

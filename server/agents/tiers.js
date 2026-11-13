@@ -6,7 +6,11 @@
 //                                      with |affinity| >= 3; timers that end a plan; plan snags / visits
 //   none  (thinking off, 300 tokens)   routine: an activity finished, minor timers, low-importance stimuli
 //
+// Step 6: an intense emotion (>= 7) relevant to what triggered the think RAISES the tier to full. Emotions never
+// lower a tier unless EMOTION_PARAM_EFFECTS=true (experiments only, off by default).
+//
 // One pure function, so the rules are easy to tune. The governor may lower the result.
+import { tierEffect } from '../emotions/present.js';
 
 /**
  * @param {object} c        citizen
@@ -24,12 +28,19 @@ export function chooseTier(c, trigger, world) {
     return { tier: adj.tier, maxTokens: adj.maxTokens, reason: adj.tier === tier ? reason : `${reason} (governor: ${tier}→${adj.tier})`, addressed, maxImportance };
   };
 
+  const fx = world.emotions ? tierEffect(world, c, stimuli) : { raise: false, lower: false };
+  if (fx.lower && trigger.purpose !== 'plan') {
+    // experiment switch: overwhelming anger or fear makes for a hastier decision
+    const base = addressed || maxImportance >= 8 ? 'full' : 'light';
+    return { ...decide(base === 'full' ? 'light' : 'none', `${fx.reason ?? 'intense emotion'} (param effects)`), params: fx.params };
+  }
   if (trigger.purpose === 'plan') return decide('full', 'planning');
   if (addressed) return decide('full', 'addressed');
   if (maxImportance >= 8) return decide('full', `importance ${maxImportance}`);
   if (stimuli.some((s) => s.kind === 'director')) return decide('full', 'director event');
   if (stimuli.some((s) => s.data?.wakeUp)) return decide('full', 'first decision after waking');
   if (needLevel >= 3) return decide('full', `need at level ${needLevel}`);
+  if (fx.raise) return decide('full', fx.reason);
 
   if (stimuli.some((s) => s.kind === 'speech' && (s.data?.addressed || s.data?.conversationId))) return decide('light', 'conversation turn');
   const strong = stimuli.some((s) => (s.kind === 'arrive' || s.kind === 'depart') && s.sourceId

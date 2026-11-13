@@ -248,6 +248,9 @@ export class Groups {
       this.world.relationships.change(o.id, citizenId, d, { source: 'group', reason: groupReason(g, c, role), evidence: { groupId }, meta: known });
     }
     this.world.logEvent('group', { action: 'join', actorId: citizenId, groupId, name: g.name, kind: g.kind, role, secret });
+    // Step 6: a party forming without you (jealousy), a coveted role going to someone else (envy).
+    if (g.kind === 'party') this.world.emotions?.appraisal.onPartyJoin(g, citizenId);
+    this.world.emotions?.appraisal.onGroupRole(g, citizenId, role);
     this.#emit(g);
     return true;
   }

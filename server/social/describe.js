@@ -2,6 +2,7 @@
 // group tags, and wariness towards strangers. Used by the decision prompt and by reflections.
 import { relationSentence, familiarityWord } from '../memory/words.js';
 import { STRANGER_FAMILIARITY } from './strangers.js';
+import { toSecond } from '../emotions/present.js';
 
 /**
  * → { tags: "(your household; from the village)" | '', text: "Someone you know well; … He told you the east passage was safe." }
@@ -16,7 +17,7 @@ export function relationLine(world, viewer, other) {
     // Low familiarity: what they look like to you matters more than a relationship you don't have yet.
     const head = rel ? `${cap(familiarityWord(rel.familiarity))}.` : 'A stranger to you.';
     const reasons = rel ? world.relationships.reasons(viewer.id, other.id, 2).filter((e) => e.source !== 'first_impression')
-      .map((e) => sentence(world.memory.resolveNames(viewer, e.reason))).join(' ') : '';
+      .map((e) => sentence(toSecond(world.memory.resolveNames(viewer, e.reason)))).join(' ') : '';
     return { tags, text: [head, world.strangers.line(viewer, other), reasons].filter(Boolean).join(' '), stranger: true };
   }
   const why = world.relationships.reasonsText(viewer, other, rel);

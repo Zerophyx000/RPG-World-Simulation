@@ -23,8 +23,8 @@ export class Memory {
     this.famGain = new Map(); // `${a}>${b}` -> { day, gained }
     this.overheard = new Set(); // "citizenId|conversationId": bystanders remember a conversation once
     this.stmt = {
-      insert: this.db.prepare(`INSERT INTO memories (citizen_id, game_time, kind, text, importance, strength, about, place_id, source, status, is_gist)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`),
+      insert: this.db.prepare(`INSERT INTO memories (citizen_id, game_time, kind, text, importance, strength, about, place_id, source, status, is_gist, emotion, valence)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`),
       upsertRel: this.db.prepare(`INSERT INTO relationships (citizen_id, other_id, affinity, trust, familiarity, name_known, name_confidence,
                                     last_seen_at, last_seen_place, summary, updated_at)
                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -103,6 +103,9 @@ export class Memory {
     const r = this.rel(a, b);
     const patch = { lastSeenAt: this.world.now, lastSeenPlace: placeId ?? null };
     if (r?.nameKnown && r.nameConfidence < 1) patch.nameConfidence = Math.min(1, r.nameConfidence + 0.2);
+    // Step 6: seeing the person a grudge or a fear is about stirs it up again.
+    const viewer = this.world.citizens.get(a);
+    if (viewer?.emotions?.length) this.world.emotions?.ruminate(viewer, b, 'encounter');
     this.upsertRel(a, b, patch);
     this.addFamiliarity(a, b, 0.05);
   }
@@ -193,8 +196,23 @@ export class Memory {
 
   // ---------- memories ----------
   add(citizenId, { kind = 'episodic', text, importance, about = [], placeId = null, source = {}, gameTime = null, strength = 1, isGist = false }) {
+    // Step 6: what they feel when a memory is laid down colours it. The strongest feeling involving the same
+    // people (or stirred up by the same event, i.e. within the last game minute) raises its importance by
+    // up to 3 and tags it with that emotion.
+    let emotion = null;
+    let valence = null;
+    const emo = this.world.emotions;
+    const who = this.world.citizens.get(citizenId);
+    if (emo && who && kind !== 'seed' && (gameTime == null || this.world.now - gameTime < 60)) {
+      const e = emo.strongestAbout(who, about) ?? emo.of(who).filter((x) => this.world.now - x.lastBumped <= 1).sort((x, y) => y.intensity - x.intensity)[0];
+      if (e && e.intensity >= 2) {
+        importance = (Number(importance) || 1) + Math.min(3, e.intensity / 3);
+        emotion = e.type;
+        valence = Math.round(emo.valenceOf(e.type) * Math.min(1, e.intensity / 10) * 100) / 100;
+      }
+    }
     const info = this.stmt.insert.run(citizenId, gameTime ?? this.world.now, kind, String(text).slice(0, 600),
-      clamp(Number(importance) || 1, 1, 10), clamp(strength, 0, 1), JSON.stringify(about), placeId, JSON.stringify(source), isGist ? 1 : 0);
+      clamp(Number(importance) || 1, 1, 10), clamp(strength, 0, 1), JSON.stringify(about), placeId, JSON.stringify(source), isGist ? 1 : 0, emotion, valence);
     const id = Number(info.lastInsertRowid);
     this.world.bus.emit('memory', { citizenId, id, kind, importance });
     return id;
@@ -263,7 +281,7 @@ export function memFromDb(r) {
   return {
     id: r.id, citizenId: r.citizen_id, gameTime: r.game_time, kind: r.kind, text: r.text, importance: r.importance,
     strength: r.strength, about: safeJson(r.about, []), placeId: r.place_id, source: safeJson(r.source, {}),
-    status: r.status, mergedInto: r.merged_into, isGist: Boolean(r.is_gist),
+    status: r.status, mergedInto: r.merged_into, isGist: Boolean(r.is_gist), emotion: r.emotion ?? null, valence: r.valence ?? null,
   };
 }
 

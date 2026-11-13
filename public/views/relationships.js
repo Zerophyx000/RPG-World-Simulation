@@ -8,6 +8,7 @@
 import { store, subscribe, subscribeMany, select } from '../store.js';
 import { api, esc, gameTime, citizenName, who, debounce } from '../util.js';
 import { SOURCE_ICON, openReasons } from './social-ui.js';
+import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const VW = 820;
@@ -39,6 +40,7 @@ export function mount(el) {
         <option value="1440">last 24 h</option>
       </select>
       <label class="check"><input type="checkbox" id="rel-spring"> spring layout</label>
+      <label class="check" title="Aimed emotions as arcs: anger red, fear orange, affection pink, gratitude gold, envy green, jealousy purple (the dot on a jealousy arc is who it is about)"><input type="checkbox" id="rel-emotions"> emotions</label>
       <label class="check" title="Highlight pairs where warning signs (followed, carrying your property, intruder…) cost trust"><input type="checkbox" id="rel-signals"> signal-driven distrust</label>
       <button id="rel-refresh">Refresh observer</button>
       <span class="dim" id="rel-status"></span>
@@ -71,6 +73,11 @@ export function mount(el) {
     render();
   });
   el.querySelector('#rel-refresh').addEventListener('click', refreshObserver);
+  el.querySelector('#rel-emotions').addEventListener('change', async (e) => {
+    emoOverlay = e.target.checked;
+    if (emoOverlay) await loadAimed();
+    render();
+  });
   el.querySelector('#rel-signals').addEventListener('change', async (e) => {
     signalFilter = e.target.checked;
     if (signalFilter) signalPairs = await api.get('/api/relationships/signals').catch(() => []);
@@ -268,6 +275,39 @@ function diffColor(d) {
 const dashFor = (t) => (!t ? '' : `${Math.max(2, 11 - t * 1.8)} ${1 + t}`);
 const widthFor = (n) => Math.min(12, 1.2 + 1.6 * Math.sqrt(n || 0));
 
+let emoOverlay = false;
+let aimed = [];
+async function loadAimed() {
+  aimed = await api.get('/api/emotions/aimed').catch(() => []);
+}
+
+// Thin animated arcs for aimed emotions, bowed further out than the relationship edges.
+function emotionArcs(pos) {
+  const out = [];
+  const seen = new Map();
+  for (const e of aimed) {
+    const p1 = pos.get(e.from);
+    const p2 = pos.get(e.to);
+    if (!p1 || !p2) continue;
+    const k = `${e.from}>${e.to}`;
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const off = len * (0.3 + n * 0.09);
+    const cx = (p1.x + p2.x) / 2 - (dy / len) * off;
+    const cy = (p1.y + p2.y) / 2 + (dx / len) * off;
+    const color = EMO_COLOR[e.type] ?? e.color ?? '#aaa';
+    const title = `${citizenName(e.from)} → ${citizenName(e.to)}: ${e.type} ${e.intensity}${e.about ? ` (about ${store.citizens.get(e.about)?.name ?? e.about})` : ''}${e.cause ? `\n${e.cause.replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => citizenName(id))}` : ''}`;
+    out.push(`<g class="emo-arc"><title>${esc(title)}</title>
+      <path d="M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}" fill="none" stroke="${color}" stroke-width="${1 + e.intensity * 0.22}" stroke-opacity="${0.35 + e.intensity * 0.06}" stroke-dasharray="7 6"/>
+      <text x="${(p1.x + 2 * cx + p2.x) / 4}" y="${(p1.y + 2 * cy + p2.y) / 4 - 5}" text-anchor="middle" class="emo-arc-label" fill="${color}">${esc(e.type)}</text>
+      ${e.type === 'jealousy' && e.about && store.citizens.has(e.about) ? `<circle cx="${(p1.x + 2 * cx + p2.x) / 4}" cy="${(p1.y + 2 * cy + p2.y) / 4 + 6}" r="5" fill="${colorOf(e.about)}" stroke="#111"/>` : ''}</g>`);
+  }
+  return out;
+}
+
 let signalFilter = false;
 let signalPairs = [];
 let pairReasons = null; // { ab: [...], ba: [...] } for the selected edge
@@ -319,6 +359,7 @@ function render() {
       if (ba || nba) out.push(edgeSvg(pb, pa, { rel: ba, n: nba, a: b, b: a, curve: 1, arrow: true, selected, extra: dim([a, b]) }));
     }
   }
+  if (emoOverlay) out.push(...emotionArcs(pos));
   for (const c of list) {
     const p = pos.get(c.id);
     out.push(`<g class="rnode" data-node="${esc(c.id)}"${dim([c.id])}>

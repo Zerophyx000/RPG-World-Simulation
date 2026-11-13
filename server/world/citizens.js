@@ -82,7 +82,11 @@ function defaultData() {
     strangerLog: [],        // [{ at, value, why }]
     metStrangers: {},       // { otherId: gameTime of the first impression }
     signalNotes: {},
-    // STEP 6: emotions
+    // step 6: emotions (see emotions/index.js)
+    emotions: [],           // [{ id, type, target, about, intensity, cause, since, lastBumped, source }]
+    mood: null,             // { valence, tension, history, outSince, outDir }; null = baseline on first use
+    masks: [],              // hide_feelings: [{ type | null, until }]
+    contagionLog: {},       // { type: [[time, delta]] } for the hourly contagion cap
   };
 }
 
@@ -129,6 +133,9 @@ export function normalizeCitizen(row) {
     strangerLog: Array.isArray(d.strangerLog) ? d.strangerLog : [],
     metStrangers: obj(d.metStrangers),
     signalNotes: obj(d.signalNotes),
+    emotions: Array.isArray(d.emotions) ? d.emotions : [],
+    masks: Array.isArray(d.masks) ? d.masks : [],
+    contagionLog: obj(d.contagionLog),
     thinkCooldownUntil: Number(d.thinkCooldownUntil) || 0,
   };
 }

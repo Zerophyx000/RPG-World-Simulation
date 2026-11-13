@@ -1,0 +1,71 @@
+{
+  "_comment": "Step 6. Code appraisal: world events → emotion bumps. All numbers here are for tuning. target: actor | other | suspect | owner | none. cause may use {actor} {other} {thing} {place}.",
+  "rules": {
+    "own_object_missing": [
+      { "emotion": "anger", "delta": 3, "target": "suspect", "cause": "My {thing} is gone." },
+      { "emotion": "sadness", "delta": 1, "target": "none", "cause": "My {thing} is gone." }
+    ],
+    "own_object_taken_seen": [
+      { "emotion": "anger", "delta": 5, "target": "actor", "cause": "{actor} took my {thing} right in front of me." }
+    ],
+    "own_object_hidden_seen": [
+      { "emotion": "anger", "delta": 5, "target": "actor", "cause": "I saw {actor} hide my {thing}." }
+    ],
+    "followed": [
+      { "emotion": "fear", "delta": 2, "target": "other", "cause": "{other} keeps turning up wherever I go." }
+    ],
+    "wary_stranger_present": [
+      { "emotion": "fear", "delta": 1, "target": "other", "cap": 4, "cause": "Something about {other} is wrong." }
+    ],
+    "intruder": [
+      { "emotion": "anger", "delta": 3, "target": "other", "cause": "{other} was in my house." },
+      { "emotion": "fear", "delta": 2, "target": "other", "cause": "{other} was in my house." }
+    ],
+    "property": [
+      { "emotion": "anger", "delta": 3, "target": "other", "cause": "{other} was carrying my {thing}." }
+    ],
+    "trust_broken": [
+      { "emotion": "anger", "delta": 2, "target": "other", "cause": "{reason}" }
+    ],
+    "trust_broken_by_loved": [
+      { "emotion": "sadness", "delta": 2, "target": "other", "cause": "{reason}" }
+    ],
+    "gift_received": [
+      { "emotion": "gratitude", "delta": 3, "target": "actor", "cause": "{actor} gave me {thing}." },
+      { "emotion": "affection", "delta": 1, "target": "actor", "cause": "{actor} gave me {thing}." }
+    ],
+    "own_act_witnessed": [
+      { "emotion": "shame", "delta": 4, "target": "none", "cause": "I was seen with {thing} that isn't mine." }
+    ],
+    "own_act_witnessed_guilt": [
+      { "emotion": "guilt", "delta": 3, "target": "owner", "cause": "I took what is {owner}'s." }
+    ],
+    "close_one_hurt": [
+      { "emotion": "fear", "delta": 5, "target": "other", "cause": "{other} is hurt." },
+      { "emotion": "sadness", "delta": 2, "target": "other", "cause": "{other} is hurt." }
+    ],
+    "director_event_here": [
+      { "emotion": "fear", "deltaFromImportance": -5, "target": "none", "cause": "{text}" }
+    ],
+    "plan_finished": [
+      { "emotion": "joy", "delta": 1, "target": "none", "cause": "I did what I set out to do today." },
+      { "emotion": "pride", "delta": 1, "target": "none", "cause": "I did what I set out to do today." }
+    ],
+    "need_severe_hourly": [
+      { "emotion": "sadness", "delta": 0.5, "target": "none", "cause": "My body is wearing me down." }
+    ]
+  },
+  "irritability": { "needLevel": 3, "angerFactor": 1.5 },
+  "personality": {
+    "negative": { "base": 0.7, "neuroticism": 0.6 },
+    "fear": { "base": 1.2, "openness": -0.4 },
+    "anger": { "base": 1.3, "agreeableness": -0.6 },
+    "guilt": { "base": 0.6, "conscientiousness": 0.8 },
+    "shame": { "base": 0.6, "conscientiousness": 0.8 },
+    "joy": { "base": 0.7, "extraversion": 0.6 }
+  },
+  "relationship": { "angerPerAffinity": 0.08 },
+  "envy": { "base": 2, "agreeableness": 2, "perRecentBump": 0.5, "recentDays": 3, "cooldownMinutes": 60 },
+  "jealousy": { "base": 2, "neuroticism": 3, "trust": -0.3, "visibleAffection": 1, "attachmentAffinity": 4, "conversationLines": 6, "secondhandFactor": 0.5, "cooldownMinutes": 60 },
+  "lasting": { "minIntensity": 5, "shareOfDay": 0.5, "dAffinity": -1 }
+}

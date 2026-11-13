@@ -11,6 +11,8 @@ import { relationSentence } from './words.js';
 import { systemPrompt } from '../agents/prompt.js';
 import { chatForTool } from '../llm.js';
 import { relationLine } from '../social/describe.js';
+import { emotionsSummary } from '../emotions/present.js';
+import { parseFeeling, applyFeeling, feelingItemSchema } from '../emotions/report.js';
 
 const FULL = { maxMemories: 3, clamp: 3 };
 const LIGHT = { maxMemories: 1, clamp: 1 };
@@ -59,6 +61,8 @@ async function choosePath(world, conv, c, { reason, leaverId }) {
     return r && (Math.abs(r.affinity) >= 3 || Math.abs(r.trust) >= 3);
   })) fullBecause.push('strong feelings about someone there');
   if (addressed >= 4) fullBecause.push(`addressed ${addressed} times`);
+  // Step 6: a strong feeling (>= 6) about someone who was in it
+  if ((c.emotions ?? []).some((e) => e.intensity >= 6 && others.includes(e.target))) fullBecause.push('strong emotion about someone there');
   // Step 5.5: talking with someone you recently caught at something is never small talk.
   if (others.some((o) => world.relationships.events(pid, o, 20).some((e) => e.source === 'signal' && world.now - e.gameTime <= 1440))) fullBecause.push('a warning sign about someone there');
   if (reason === 'cap') fullBecause.push('talked themselves out');
@@ -148,6 +152,7 @@ async function remember(world, conv, c, limits, path) {
   }).join('\n');
   const relLines = others.map((o) => `- ${labelOf.get(o.id)}: ${relationLine(world, c, o).text}`).join('\n');
   const onMind = (c.onMyMind ?? []).map((m) => `- ${m.text}`).join('\n');
+  const feelNow = emotionsSummary(world, c);
   const seenThings = objectContext(world, conv, c, (id) => labelOf.get(id) ?? mem.nameFor(c, id));
   const user = [
     `# THE CONVERSATION THAT JUST ENDED\nAt ${room?.name ?? 'somewhere'}, with ${[...labels.keys()].join(', ')}.`,
@@ -155,7 +160,8 @@ async function remember(world, conv, c, limits, path) {
     seenThings ? `# WHAT YOU ALSO SAW MEANWHILE\n${seenThings}` : '',
     `# HOW YOU SEE THEM\n${relLines || '(nobody you know)'}`,
     onMind ? `# ON YOUR MIND\n${onMind}` : '',
-    `# WHAT NOW\nTake a private moment to take stock. What will you remember from this conversation, in your own words and from your own point of view? How do you feel about them now? Only what actually happened or was said; don't invent anything. If someone told you about something you don't remember yourself (including things you supposedly did), record it as what they said ("Greta says I promised…", firsthand: false), not as a fact.${limits.maxMemories === 1 ? ' Keep it to the one thing that matters most.' : ''} Call remember exactly once.`,
+    feelNow ? `# HOW YOU FEEL RIGHT NOW\n${feelNow}` : '',
+    `# WHAT NOW\nTake a private moment to take stock. What will you remember from this conversation, in your own words and from your own point of view? How do you feel about them now? Only what actually happened or was said; don't invent anything. If someone told you about something you don't remember yourself (including things you supposedly did), record it as what they said ("Greta says I promised…", firsthand: false), not as a fact.${limits.maxMemories === 1 ? ' Keep it to the one thing that matters most.' : ''} Under feelings, say what this conversation left you with (up to 3: a sting of envy, shame at an insult, warmth at a kindness…), if anything. Call remember exactly once.`,
   ].filter(Boolean).join('\n\n');
 
   const labelList = [...labels.keys()];
@@ -196,6 +202,7 @@ async function remember(world, conv, c, limits, path) {
             },
           },
           learned_names: { type: 'array', items: { type: 'string', enum: labelList }, description: 'People whose name you learned in this conversation.' },
+          feelings: { type: 'array', maxItems: 3, items: feelingItemSchema(world, labelList), description: 'What this conversation left you feeling, if anything.' },
           on_my_mind: { type: 'string', description: 'Optional. Something from this you keep thinking about.' },
         },
         required: ['memories'],
@@ -228,6 +235,7 @@ async function remember(world, conv, c, limits, path) {
       source: { conversationId: conv.id, gated: path, ...(secondhand ? { toldBy: lastOtherSpeaker } : {}) },
     });
     if (Number(m.importance) >= 7) mem.pushOnMind(c, { text: String(m.text).trim(), importance: Number(m.importance), memoryId: id });
+    if (secondhand && about.length >= 2) world.emotions.appraisal.secondhand(c, about);
   }
   for (const rr of Array.isArray(args.relationships) ? args.relationships : []) {
     const o = byLabel(rr?.person);
@@ -249,6 +257,11 @@ async function remember(world, conv, c, limits, path) {
     if (o) mem.learnName(c.id, o.id, 1);
   }
   if (args.on_my_mind && String(args.on_my_mind).trim()) mem.pushOnMind(c, { text: String(args.on_my_mind).trim(), importance: 6 });
+  // Step 6: the feelings the conversation left behind (clamped, known people only); this is how the subtle
+  // things come in: envy from praise, shame from an insult, affection from a kindness.
+  for (const f of (Array.isArray(args.feelings) ? args.feelings : []).slice(0, 3)) {
+    applyFeeling(world, c, parseFeeling(world, c, f, labels), 'reflection');
+  }
 }
 
 function listJoin(items) {

@@ -78,7 +78,7 @@ export function constellationHtml(mem) {
     const title = `<title>${esc(`(${timeLabel(now, m.gameTime)}) ${m.text}\n${m.kind}${m.isGist ? ' · gist' : ''}${m.status !== 'active' ? ` · ${m.status}` : ''} · importance ${m.importance} · strength ${m.strength.toFixed(2)}`)}</title>`;
     const shape = m.kind === 'consolidated'
       ? `<path d="${star(x, y, r)}" fill="${fill}" fill-opacity="${op}" stroke="${fill}" ${filt}/>`
-      : `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" fill-opacity="${op}" stroke="${fill}" stroke-opacity="${Math.min(1, op + 0.2)}" ${dash} ${filt}/>`;
+      : `${m.valence ? `<circle cx="${x}" cy="${y}" r="${r + 3.5}" fill="none" stroke="${m.valence < 0 ? '#e0584a' : '#e8c547'}" stroke-width="${1 + Math.abs(m.valence) * 2.5}" stroke-opacity="${0.25 + Math.abs(m.valence) * 0.5}"><title>${esc(m.emotion ?? '')}</title></circle>` : ''}<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" fill-opacity="${op}" stroke="${fill}" stroke-opacity="${Math.min(1, op + 0.2)}" ${dash} ${filt}/>`;
     out.push(`<g class="${cls}" data-mem="${m.id}">${title}${shape}</g>`);
   }
   // legend: people (click to filter)

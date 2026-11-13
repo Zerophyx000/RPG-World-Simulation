@@ -22,6 +22,7 @@ export function retrieve(world, c, { presentIds = [], placeId = null } = {}, k =
   const onMind = new Set((c.onMyMind ?? []).map((m) => m.memoryId).filter(Boolean));
   const present = new Set(presentIds);
   const rows = world.db.prepare(`SELECT * FROM memories WHERE citizen_id = ? AND status = 'active'`).all(c.id).map(memFromDb);
+  const moodValence = c.mood?.valence ?? 0;
   const scored = [];
   for (const m of rows) {
     if (onMind.has(m.id)) continue;
@@ -29,7 +30,10 @@ export function retrieve(world, c, { presentIds = [], placeId = null } = {}, k =
     const samePlace = placeId && m.placeId === placeId ? 1 : 0;
     const age = now - m.gameTime;
     const recency = age <= RECENT_FULL ? 1 : Math.max(0, 1 - (age - RECENT_FULL) / (RECENT_ZERO - RECENT_FULL));
-    const score = m.importance * m.strength * (1 + 0.5 * aboutPresent + 0.3 * samePlace + recency);
+    // Step 6, mood-congruent recall: in a clearly low (or high) mood, memories of the same colour come more easily.
+    let congruence = 1;
+    if (Math.abs(moodValence) >= 1.5 && m.valence) congruence = 1 + 0.15 * (Math.sign(m.valence) === Math.sign(moodValence) ? 1 : -0.5);
+    const score = m.importance * m.strength * (1 + 0.5 * aboutPresent + 0.3 * samePlace + recency) * congruence;
     scored.push({ memory: m, score });
   }
   scored.sort((a, b) => b.score - a.score);

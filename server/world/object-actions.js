@@ -87,6 +87,8 @@ export function take(world, c, call) {
     actorId: c.id, action: 'take', text: `${c.name} takes ${O.label(o)}`,
     perceive: (v) => `${ref(c)} picks up ${O.textFor(v, o)}${from ? ` ${from}` : ''}.`,
   });
+  // Step 6: taking what isn't yours in front of others is shaming (and gnaws at the conscientious).
+  world.emotions.onOwnActSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? [], 'take');
   remember(world, c, `You picked up ${O.textFor(c, o)}.`);
   settle(world, c);
   return { ok: true };

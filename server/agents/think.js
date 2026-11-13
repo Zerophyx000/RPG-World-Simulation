@@ -27,8 +27,10 @@ export async function think(world, c, { mode = 'decide' } = {}) {
   const purpose = mode === 'plan' ? 'plan' : 'decide';
   const tierInfo = chooseTier(c, { purpose, stimuli: c.thinkingInbox }, world);
   t.tier = tierInfo.tier;
+  // EMOTION_PARAM_EFFECTS (off by default): a slightly higher temperature under overwhelming anger or fear.
+  const params = tierInfo.params?.temperatureDelta ? { temperature: Number(process.env.EMOTION_PARAM_BASE_TEMPERATURE ?? 0.7) + tierInfo.params.temperatureDelta } : undefined;
   const call = (messages, tools, tier, maxTokens) => world.llm.chat({
-    purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens,
+    purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, ...(params ? { params } : {}),
   });
 
   try {

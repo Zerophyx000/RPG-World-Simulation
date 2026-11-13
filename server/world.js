@@ -30,6 +30,8 @@ import { Groups } from './social/groups.js';
 import { Strangers } from './social/strangers.js';
 import { Signals } from './social/signals.js';
 import { relationLine } from './social/describe.js';
+import { Emotions } from './emotions/index.js';
+import { parseFeeling, applyFeeling } from './emotions/report.js';
 import { onConversationEnd as reflectOnConversationEnd } from './memory/reflect.js';
 import { onSleepStart as consolidateOnSleep, consolidate as consolidateNow, decayAndFade } from './memory/consolidate.js';
 import { seedFromScenario, ensureVillageAcquaintance, bootstrap as bootstrapMemories } from './memory/bootstrap.js';
@@ -59,6 +61,7 @@ export class World {
     this.objects = new Objects(this);
     this.strangers = new Strangers(this);
     this.signals = new Signals(this);
+    this.emotions = new Emotions(this);   // step 6: feelings shape what citizens are shown, never what they do
 
     this.insertEvent = db.prepare(`INSERT INTO events (game_time, real_time, type, actor_id, location, data)
                                    VALUES (?, ?, ?, ?, ?, ?)`);
@@ -167,7 +170,7 @@ export class World {
     expireDirectorState(this, now);
     this.conversations.releaseDue((held) => applyHeldSay(this, held));
     this.conversations.tick(now);
-    // STEP 5: emotions.decay(elapsed)
+    this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
     this.quiet.update();
     this.scheduler.run();
     if (Date.now() - this.lastFlush >= NEEDS_FLUSH_MS) this.#flushNeeds();
@@ -217,7 +220,7 @@ export class World {
       id: c.id, name: c.name, kind: c.kind, alive: c.alive, location: c.location,
       activity: c.activity, conversationId: c.conversationId, inboxSize: c.inbox.length,
       lastInnerThought: c.lastInnerThought, lastDecisionAt: c.lastDecisionAt, hp: c.needs?.hp ?? 100,
-      needs: needsSummary(c), marks: c.marks, plan: this.planSummary(c),
+      needs: needsSummary(c), marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
     });
   }
 
@@ -309,6 +312,7 @@ export class World {
           conv.flags.high = [...new Set([...(conv.flags.high ?? []), c.id])];
         }
       }
+      this.emotions.appraisal.onPerceived(c, s); // first, so the memory is laid down with the feeling
       this.memory.onPerceived(c, s);
       this.saveCitizen(c);
       if (s.importance >= 5) this.quiet.snap(); // something worth watching: back to normal speed now
@@ -383,6 +387,7 @@ export class World {
     c.thinkCooldownUntil = this.now + (this.governor?.thinkGapMinutes() ?? THINK_COOLDOWN_MINUTES);
     c.lastTier = outcome.tier ?? null;
     this.memory.recalled(outcome.recalled);
+    this.#afterThought(c, outcome);
 
     if (outcome.call) {
       if (outcome.innerThought) c.lastInnerThought = outcome.innerThought; // keep the latest thought if this decision had none
@@ -395,6 +400,24 @@ export class World {
       // Text but no tool call: a private thought; the citizen lingers for a bit.
       c.lastInnerThought = trimText(outcome.text, 600) || c.lastInnerThought;
       this.setActivity(c, { type: 'waiting', until: this.now + NO_ACTION_WAIT_MINUTES, detail: { reason: 'lost in thought', minutes: NO_ACTION_WAIT_MINUTES } });
+    }
+  }
+
+  // Step 6: the optional `feeling` on a decision (clamped ±3, known people only), and grudges stirred by
+  // the memories that were in mind for this decision.
+  #afterThought(c, outcome) {
+    const raw = outcome.call?.arguments?.feeling;
+    if (raw != null && raw !== '') {
+      const people = this.memory.labelsFor(c, [...new Set([...this.memory.knownPeople(c), ...(c.location ? this.citizensIn(c.location, { exceptId: c.id }) : [])])]);
+      const f = parseFeeling(this, c, raw, people);
+      const r = applyFeeling(this, c, f, 'self');
+      this.logEvent('feeling', { actorId: c.id, location: c.location, raw: String(typeof raw === 'string' ? raw : JSON.stringify(raw)).slice(0, 200), parsed: f, applied: r ? Math.round(r.applied * 100) / 100 : 0 });
+    }
+    const ids = (outcome.recalled ?? []).slice(0, 8);
+    if (ids.length) {
+      const rows = this.db.prepare(`SELECT about FROM memories WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+      const about = new Set(rows.flatMap((r) => { try { return JSON.parse(r.about); } catch { return []; } }));
+      for (const id of about) this.emotions.ruminate(c, id, 'recall');
     }
   }
 
@@ -771,7 +794,7 @@ export class World {
     this.#cancelAllThinks('reseed');
     this.conversations.clear();
     wipeCitizens(this.db);
-    this.db.exec('DELETE FROM rooms; DELETE FROM objects; DELETE FROM object_history;');
+    this.db.exec('DELETE FROM rooms; DELETE FROM objects; DELETE FROM object_history; DELETE FROM emotion_log;');
     setState(this.db, 'scenario', id);
     this.#load();
     this.needs.reload();
@@ -787,7 +810,7 @@ export class World {
       clock: this.clock.snapshot(),
       scenario: this.scenario,
       rooms: [...this.rooms.values()].map((r) => this.roomView(r)),
-      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), plan: this.planSummary(c), lastTier: c.lastTier ?? null })),
+      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), plan: this.planSummary(c), lastTier: c.lastTier ?? null, emotion: this.emotions.summary(c) })),
       conversations: this.conversations.list().map((cv) => this.conversations.view(cv)),
       objects: [...this.objects.byId.values()].map((o) => this.objects.view(o)),
       groups: this.groups.list(),
@@ -832,6 +855,7 @@ export class World {
         sourceName: k.source?.startsWith('told:') ? name(k.source.slice(5)) : null, learnedAt: k.learnedAt,
       })),
       ...this.#objectsOf(c),
+      emotionsView: this.emotions.view(c),
       promptPreview: buildMessages(this, c),
       toolsPreview: buildTools(this, c).map((t) => t.function.name),
       conversation: conv && { ...this.conversations.view(conv), participantNames: conv.participants.map(name) },

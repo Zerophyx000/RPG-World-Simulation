@@ -37,6 +37,7 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('relationship', (r) => broadcast('relationship', r));
   world.bus.on('object', (o) => broadcast('object', o));
   world.bus.on('group', (g) => broadcast('group', g));
+  world.bus.on('emotion_room', (r) => broadcast('emotion_room', r));
   const qs = (req) => new URL(req.url, 'http://x').searchParams;
   const num = (v) => (v == null || v === '' ? null : Number(v));
   const found = (v) => {
@@ -108,6 +109,17 @@ export function createServer(world, { observer = null } = {}) {
 
     ['GET', /^\/api\/director\/presets$/, () => loadDirectorPresets()],
 
+    // ---- Emotions (step 6) ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/emotions$/, (_req, _body, [id]) => world.emotions.view(found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/emotions\/history$/, (req, _body, [id]) => world.emotions.history(id, { from: num(qs(req).get('from')), to: num(qs(req).get('to')), limit: qs(req).get('limit') })],
+    ['POST', /^\/api\/director\/emotion$/, (_req, body) => world.emotions.directorEmotion(body)],
+    ['POST', /^\/api\/director\/mood$/, (_req, body) => world.emotions.directorMood(body)],
+    ['GET', /^\/api\/emotions\/types$/, () => ({ types: world.emotions.types, contagion: world.emotions.contagionOn, paramEffects: world.emotions.paramEffects })],
+    ['GET', /^\/api\/emotions\/appraisals$/, (req) => world.emotions.appraisalLog(qs(req).get('limit'))],
+    ['GET', /^\/api\/emotions\/aimed$/, () => [...world.citizens.values()].flatMap((c) => world.emotions.of(c).filter((e) => e.target && e.intensity >= 2)
+      .map((e) => ({ from: c.id, to: e.target, about: e.about, type: e.type, intensity: Math.round(e.intensity * 10) / 10, color: world.emotions.types[e.type]?.color, cause: e.cause })))],
+    ['POST', /^\/api\/director\/contagion$/, (_req, body) => world.emotions.setContagion(body.enabled)],
+
     // ---- Trust with reasons, groups, strangers (step 5.5) ----
     ['GET', /^\/api\/citizens\/([\w-]+)\/relationships\/([\w-]+)\/events$/, (_req, _body, [id, other]) => world.relationshipEvents(id, other)],
     ['GET', /^\/api\/citizens\/([\w-]+)\/wariness$/, (req, _body, [id]) => world.warinessOf(id, qs(req).get('other'))],
@@ -163,7 +175,11 @@ export function createServer(world, { observer = null } = {}) {
 
     ['GET', /^\/api\/conversations\/([\w-]+)$/, (_req, _body, [id]) => found(getConversation(world, id))],
 
-    ['GET', /^\/api\/timeline$/, (req) => timeline(world, { from: num(qs(req).get('from')), to: num(qs(req).get('to')) })],
+    ['GET', /^\/api\/timeline$/, (req) => {
+      const from = num(qs(req).get('from'));
+      const to = num(qs(req).get('to'));
+      return { ...timeline(world, { from, to }), emotions: world.emotions.timeline(from, to) };
+    }],
 
     ['GET', /^\/api\/relationships$/, (req) => interactions(world, { from: num(qs(req).get('from')), to: num(qs(req).get('to')) })],
 
