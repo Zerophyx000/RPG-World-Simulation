@@ -144,9 +144,13 @@ export function endOfDay(world, c) {
 export function runPlan(world, c) {
   const plan = c.plan;
   plan.interrupted = false;
+  // step 7A: the step before the cursor was still running — it ended now (this call happens the moment
+  // its activity finished or was cut short). Steps that end instantly are stamped at their transition.
+  stampFinished(plan.steps[plan.cursor - 1]);
   for (let guard = 0; guard <= PLAN_MAX_STEPS + 1; guard++) {
     if (plan.cursor >= plan.steps.length) {
       plan.status = 'done';
+      stampFinished(plan.steps[plan.steps.length - 1]);
       world.saveCitizen(c);
       world.perceive([c.id], { kind: 'timer', text: "You've done everything you planned for today.", importance: 5, data: { planEnd: true } });
       return;
@@ -155,16 +159,20 @@ export function runPlan(world, c) {
     const r = runStep(world, c, step);
     if (r === 'skip' || r === 'started-done') {
       step.status = 'done';
+      step.startedAt ??= world.now;
+      if (r === 'skip') step.doneAt ??= world.now; // 'started-done' ends when its activity ends (stamped then)
       plan.cursor++;
       if (r === 'started-done') return world.saveCitizen(c);
       continue;
     }
     if (r === 'started') {
+      if (step.startedAt == null) step.startedAt = world.now;
       step.status = 'active';
       return world.saveCitizen(c);
     }
     // failed / found: the citizen has to decide
     step.status = r.kind === 'found' ? 'done' : 'failed';
+    stampFinished(step);
     plan.cursor++;
     world.saveCitizen(c);
     world.perceive([c.id], {
@@ -173,6 +181,13 @@ export function runPlan(world, c) {
     });
     return;
   }
+}
+
+// step 7A: when a step started and (once known) when it ended, in game minutes.
+function stampFinished(step) {
+  if (!step) return;
+  step.startedAt ??= world.now;
+  step.doneAt ??= world.now;
 }
 
 // 'skip' (nothing to do) | 'started' (step still running afterwards) | 'started-done' (step complete once this ends)
@@ -268,14 +283,42 @@ function doTarget(world, c, step) {
   return o ? { target: world.objects.alias(o) } : {};
 }
 
+// ---------- step 7A: YOUR PLAN with times ----------
+// Times only for steps of TODAY (the plan is replaced on morning wake-up, so its steps always are).
+// A finished step shows when it started, or '–end' too once it lasted half an hour or more; a step
+// still to come shows its planned time if it has one (wait_until's).
+function stepWhen(world, s) {
+  const started = Number.isFinite(s.startedAt) ? s.startedAt : null;
+  if (s.status === 'done' || s.status === 'failed') {
+    const end = Number.isFinite(s.doneAt) ? s.doneAt : world.now;
+    if (started == null) return clockTime(end);
+    return end - started >= 30 ? `${clockTime(started)}–${clockTime(end)}` : clockTime(started);
+  }
+  if (s.kind === 'wait_until' && s.time) return s.time;
+  if (started != null) return clockTime(started);
+  return null;
+}
+
 /** YOUR PLAN block text for the prompt. */
 export function planBlock(world, c) {
-  if (!c.plan) return null;
   const p = c.plan;
-  const lines = p.steps.map((s, i) => {
-    const mark = s.status === 'done' ? '✓' : s.status === 'failed' ? '✗' : i === p.cursor ? '→' : '·';
-    return `${mark} ${stepText(world, c, s)}`;
-  });
+  if (!p) return null;
+  // The step that is running now IS the '→ now:' line; the list keeps done, failed and still-to-come steps.
+  const curIdx = p.steps.findIndex((s, i) => i >= p.cursor && s.status !== 'done' && s.status !== 'failed');
+  const lines = [];
+  for (let i = 0; i < p.steps.length; i++) {
+    const s = p.steps[i];
+    if (i === curIdx) {
+      lines.push(`→ now: ${stepText(world, c, s)}`);
+      continue;
+    }
+    const mark = s.status === 'done' ? '✓' : s.status === 'failed' ? '✗' : '·';
+    // A wait still to come already carries its time in the step text; don't say it twice.
+    const text = s.kind === 'wait_until' && s.status === 'pending' ? (s.description || 'waiting') : stepText(world, c, s);
+    const when = stepWhen(world, s);
+    lines.push(`${mark} ${when ? `${when} ` : ''}${text}`);
+  }
+  if (curIdx === -1) lines.push('→ now: nothing planned');
   const head = p.status === 'done' ? 'You have done what you planned for today.'
     : p.status === 'abandoned' ? 'You gave up on your plan for today.'
       : p.interrupted ? 'Your plan for today (on hold while you deal with this):' : 'Your plan for today:';
