@@ -1,0 +1,5 @@
+{
+  "name": "calm-day",
+  "description": "Baseline: no director actions at all. Run this once, then reseed and run it again with the same seed to see how much a day varies on its own; compare any other test day against it.",
+  "actions": []
+}

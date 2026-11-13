@@ -11,6 +11,7 @@ let root = null;
 let presets = [];
 let effects = []; // effect rows being built
 let scenarios = { active: null, list: [] };
+let testDays = []; // content/test-days/*.json (step A8)
 
 const TRAITS = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
 const PERSONA_FIELDS = ['appearance', 'personality', 'backstory', 'speechStyle', 'occupation'];
@@ -197,6 +198,17 @@ export function mount(el) {
         <div class="result" id="cr-result"></div>
       </form>
 
+      <div class="card" id="testday-card">
+        <h3>Test days</h3>
+        <p class="muted">Scripted days from <code>content/test-days/</code>: director actions fire on game time while the clock runs. A seed makes every chance and pick choice reproducible.</p>
+        <div class="row"><select id="td-name"></select><button type="button" id="td-run">Run test day</button><button type="button" id="td-stop">Stop</button></div>
+        <p class="muted" id="td-desc"></p>
+        <div class="row"><label>Seed <input id="td-seed" type="number" min="0" max="4294967295" step="1" placeholder="random" class="short"></label></div>
+        <div id="td-status" class="dim"></div>
+        <div class="result" id="td-result"></div>
+        <p class="muted">For a full replay, reseed the scenario first (Reseed, dev only) and use the same seed.</p>
+      </div>
+
       <div class="card danger">
         <h3>Reseed (dev only)</h3>
         <p class="muted">Backs up the database, then wipes all citizens and rooms and seeds a scenario from <code>content/scenarios/</code>.</p>
@@ -234,6 +246,7 @@ export function mount(el) {
   el.querySelector('#f-object').addEventListener('submit', createObject);
   bindSocial(el);
   bindEmotions(el);
+  bindTestDays(el);
   for (const id of ['#ob-type', '#ob-where']) el.querySelector(id).addEventListener('change', fillObjectForm);
   objectTypes().then((t) => {
     types = t;
@@ -274,12 +287,15 @@ export function mount(el) {
   fillSelects();
   fillSocial();
   fillEmotions();
+  fillTestDaySelect();
   renderEffects();
-  renderRoomChanges();
   renderReach();
   renderNeeds();
+  renderRoomChanges();
   return () => {
     off();
+    clearTimeout(tdTimer);
+    tdTimer = null;
     root = null;
   };
 }
@@ -340,6 +356,63 @@ function fillEmotions() {
     if (va) a.value = va;
     if (vb) b.value = vb;
   }
+}
+
+// ---------- test days (step A8) ----------
+let tdTimer = null;
+function bindTestDays(el) {
+  const say = (ok, t) => result('#td-result', ok, t);
+  el.querySelector('#td-name').addEventListener('change', () => {
+    const d = testDays.find((x) => x.name === el.querySelector('#td-name').value);
+    el.querySelector('#td-desc').textContent = d?.description ?? '';
+  });
+  el.querySelector('#td-run').addEventListener('click', async () => {
+    try {
+      const seed = el.querySelector('#td-seed').value;
+      const r = await api.post('/api/director/test-days/run', { name: el.querySelector('#td-name').value, seed: seed === '' ? undefined : Number(seed) });
+      say(true, `Running "${r.name}" (seed ${r.seed}), ${r.actions} actions.`);
+      refreshTestDay();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#td-stop').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/test-days/stop', {});
+      say(true, `Stopped "${r.name}" after ${r.done}/${r.total} actions.`);
+      refreshTestDay();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+}
+
+async function fillTestDaySelect() {
+  if (!root) return;
+  testDays = await api.get('/api/director/test-days').catch(() => []);
+  if (!root) return;
+  const sel = root.querySelector('#td-name');
+  const cur = sel.value;
+  sel.innerHTML = testDays.map((d) => `<option value="${esc(d.name)}">${esc(d.name)} (${d.actions} actions)</option>`).join('');
+  if (cur && testDays.some((d) => d.name === cur)) sel.value = cur;
+  const d = testDays.find((x) => x.name === sel.value);
+  root.querySelector('#td-desc').textContent = d?.description ?? '';
+  refreshTestDay();
+}
+
+// Status line while a run is going: name, seed, done/total, next scheduled time.
+async function refreshTestDay() {
+  if (!root) return;
+  const s = await api.get('/api/director/test-days/status').catch(() => null);
+  if (!root) return;
+  if (!s) return;
+  const st = root.querySelector('#td-status');
+  st.textContent = s.running
+    ? `Running: ${s.name} · seed ${s.seed} · ${s.done}/${s.total} done${s.next != null ? ` · next at ${clockOnly(s.next)} (D${Math.floor(s.next / 1440) + 1})` : ''}`
+    : (s.done ? `Last run: ${s.name} · ${s.done}/${s.total} done` : 'Not running.');
+  root.querySelector('#td-stop').disabled = !s.running;
+  clearTimeout(tdTimer);
+  if (s.running) tdTimer = setTimeout(refreshTestDay, 2000);
 }
 
 // ---------- people, groups, strangers (step 5.5) ----------

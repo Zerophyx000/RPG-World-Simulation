@@ -1,0 +1,87 @@
+{
+  "name": "chaos-day",
+  "description": "A busy test day: a stranger arrives in the morning, Greta's ledger vanishes from her house and turns up hidden in Tomas's, a whisper, and an explosion in the Tilted Cup around midday. For a full replay, reseed the scenario first (Reseed, dev only) and use the same seed.",
+  "actions": [
+    {
+      "at": "07:30",
+      "type": "activate",
+      "id": "kael",
+      "location": "square",
+      "comment": "the stranger: a dormant scenario character walks into the village"
+    },
+    {
+      "at": "08:00",
+      "type": "whisper",
+      "citizenId": "greta",
+      "text": "Flour is missing again. Someone has been in your storeroom in the night.",
+      "importance": 8
+    },
+    {
+      "at": "08:30",
+      "type": "objects-patch",
+      "id": "greta_ledger",
+      "patch": { "roomId": "house_tomas", "placement": { "relation": "under", "of": "tomas_bed" }, "visibility": "hidden", "searchDifficulty": 3 },
+      "comment": "Greta's ledger is moved out of her house and hidden under Tomas's bed"
+    },
+    {
+      "at": "09:15",
+      "type": "pick",
+      "pick": [
+        {
+          "type": "event",
+          "preset": "scream",
+          "roomId": "well",
+          "label": "A scream by the well"
+        },
+        {
+          "type": "event",
+          "preset": "bell",
+          "roomId": "square",
+          "label": "The bell rings"
+        }
+      ],
+      "comment": "seeded choice: whichever alternative the seed picks is the one that happens"
+    },
+    {
+      "at": "11:00",
+      "chance": 0.5,
+      "type": "memory",
+      "citizenId": "tomas",
+      "action": "add",
+      "text": "You can't stop thinking about the dice game last night. One more throw and you'd have won it all back.",
+      "importance": 7,
+      "comment": "only fires half the time: compare two runs with different seeds"
+    },
+    {
+      "at": "12:30",
+      "type": "event",
+      "preset": "explosion",
+      "roomId": "tavern",
+      "comment": "midday: the powder keg behind the bar goes up"
+    },
+    {
+      "at": "14:00",
+      "type": "apply",
+      "effects": [
+        { "type": "needs", "target": "greta", "mode": "add", "hunger": 30, "fatigue": 20, "notify": false }
+      ],
+      "comment": "a long day catches up with the baker"
+    },
+    {
+      "at": "18:00",
+      "type": "relationship",
+      "citizenId": "greta",
+      "otherId": "tomas",
+      "dTrust": -1,
+      "reason": "Tomas was seen near her house the very day her ledger went missing."
+    },
+    {
+      "at": "21:00",
+      "type": "mood",
+      "citizenId": "jonas",
+      "valence": -3,
+      "tension": 7,
+      "comment": "a bad end to a bad day for the apprentice"
+    }
+  ]
+}
