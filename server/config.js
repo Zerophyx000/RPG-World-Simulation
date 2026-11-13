@@ -125,6 +125,8 @@ export const config = {
     routes: { ...DEFAULT_ROUTES, ...parseJson('LLM_ROUTES') },
     timeouts: { observer: 300000, consolidate: 240000, keeper: 60000, ...parseJson('LLM_TIMEOUTS') }, // purpose -> ms
     deferrable: ['observer', 'director_text'],      // queued and retried when no profile is up
+    // Output-token caps per tier: full/light are roomy enough for thinking + a tool call, 'none' stays tiny.
+    maxTokens: { full: num('LLM_MAX_TOKENS_FULL', 3000), light: num('LLM_MAX_TOKENS_LIGHT', 1000), none: num('LLM_MAX_TOKENS_NONE', 300) },
   },
 
   // Token budget governor: output tokens per rolling real hour, per profile (0 = off).
@@ -156,5 +158,10 @@ export const config = {
   speech: {
     charsPerSecond: num('SPEECH_CHARS_PER_SECOND', 15),
     minSeconds: num('SPEECH_MIN_SECONDS', 2),
+  },
+
+  // step A6: every addressed speech decision is expected at tier full; true also console.warns a violation.
+  debug: {
+    tierCheck: env('DEBUG_TIER_CHECK', 'false') === 'true',
   },
 };

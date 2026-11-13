@@ -7,12 +7,15 @@
 // - captures THINKING separately from the answer, logs every call (incl. profile + tier)
 import { config } from './config.js';
 
-export const TIER_MAX_TOKENS = { full: 2000, light: 600, none: 300 };
-// Heavy background purposes write long tool calls after thinking: 2,000 tokens is not enough there
-// (measured on GLM: plans and consolidations ran out mid-call). Applies to their 'full' tier.
+// Token caps per tier (full / light / none) come from config: LLM_MAX_TOKENS_FULL/LIGHT/NONE, so an
+// operator can tune them without touching code. Heavy background purposes write long tool calls after
+// thinking, which is why PURPOSE_FULL_MAX overrides 'full' for them.
+export const TIER_MAX_TOKENS = { ...config.llm.maxTokens };
 export const PURPOSE_FULL_MAX = { plan: 4000, reflect: 4000, consolidate: 6000, bootstrap: 6000 };
 // When a call runs out of tokens without a usable tool call, the retry (thinking off) gets this many.
 export const RETRY_MAX = { decide: 600, plan: 2000, reflect: 1500, consolidate: 3000, bootstrap: 3000 };
+// Cut-off ladder for citizen decisions (server/agents/think.js): one retry at the next higher cap.
+export const CAP_ABOVE = { none: 'light', light: 'full' }; // step A6
 
 /** True if the model ran out of tokens before producing a usable call to `toolName` (or any tool). */
 export function ranOut(res, toolName = null) {
@@ -100,8 +103,8 @@ export class LLM {
     this.routeFilter = null; // (purpose, chain) => chain; the governor narrows routes under budget pressure
     this.insert = db.prepare(`INSERT INTO llm_calls
       (real_time, game_time, citizen_id, purpose, model, request, reasoning, content, tool_calls,
-       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier, finish_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     this.healthTimer = setInterval(() => this.healthCheck(), HEALTH_EVERY_MS);
     this.healthTimer.unref?.();
     setTimeout(() => this.healthCheck(), 1000).unref?.();
@@ -312,7 +315,7 @@ export class LLM {
         result ? JSON.stringify(result.toolCalls) : null,
         status, error, Date.now() - started,
         result?.usage?.prompt_tokens ?? null, result?.usage?.completion_tokens ?? null,
-        profile, tier,
+        profile, tier, result?.finishReason ?? null,
       );
       if (result) result.callId = Number(info.lastInsertRowid);
       this.bus.emit('llm', {

@@ -1,15 +1,19 @@
 // Tiered thinking: how hard a citizen thinks about a decision, decided in code BEFORE the call.
 //
-//   full  (thinking on, 2,000 tokens)  addressed speech; importance >= 8; director events; first decision after
+//   full  (thinking on, 3,000 tokens)  addressed speech; importance >= 8; director events; first decision after
 //                                      waking; planning; any decision while a need is at level >= 3
-//   light (600 tokens)                 conversation turns not addressed to them; arrivals/departures of people
+//   light (1,000 tokens)               conversation turns not addressed to them; arrivals/departures of people
 //                                      with |affinity| >= 3; timers that end a plan; plan snags / visits
 //   none  (thinking off, 300 tokens)   routine: an activity finished, minor timers, low-importance stimuli
+//
+// Caps are defaults, overridable per tier via LLM_MAX_TOKENS_FULL / LLM_MAX_TOKENS_LIGHT / LLM_MAX_TOKENS_NONE
+// (server/llm.js TIER_MAX_TOKENS). A cut-off decide call climbs one tier (server/agents/think.js).
 //
 // Step 6: an intense emotion (>= 7) relevant to what triggered the think RAISES the tier to full. Emotions never
 // lower a tier unless EMOTION_PARAM_EFFECTS=true (experiments only, off by default).
 //
 // One pure function, so the rules are easy to tune. The governor may lower the result.
+import { config } from '../config.js';
 import { tierEffect } from '../emotions/present.js';
 
 /**
@@ -25,6 +29,12 @@ export function chooseTier(c, trigger, world) {
   const needLevel = Math.max(0, ...Object.values(c.needs?.levels ?? {}));
   const decide = (tier, reason) => {
     const adj = world.governor ? world.governor.adjust({ tier, addressed, maxImportance }) : { tier, maxTokens: null };
+    // step A6: addressed speech is a hard rule — it must be decided at tier full, even if the governor
+    // wanted to save tokens. Log a violation instead of silently drifting from the design.
+    if (addressed && trigger.purpose !== 'plan' && adj.tier !== 'full') {
+      world.logEvent('tier_violation', { actorId: c.id, tier: adj.tier, reason: adj.reason ?? reason });
+      if (config.debug.tierCheck) console.warn(`[tier] ASSERTION FAILED: ${c.id} addressed speech decided at "${adj.tier}" (wanted full)`);
+    }
     return { tier: adj.tier, maxTokens: adj.maxTokens, reason: adj.tier === tier ? reason : `${reason} (governor: ${tier}→${adj.tier})`, addressed, maxImportance };
   };
 
