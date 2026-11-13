@@ -87,6 +87,9 @@ function defaultData() {
     mood: null,             // { valence, tension, history, outSince, outDir }; null = baseline on first use
     masks: [],              // hide_feelings: [{ type | null, until }]
     contagionLog: {},       // { type: [[time, delta]] } for the hourly contagion cap
+    // step A2: sleep bookkeeping
+    wokeEarly: null,        // { at, until } woken with fatigue still >= 80 within an hour of falling asleep
+    lastUrgentAt: null,     // game time of the last stimulus with importance >= 7 that reached them
   };
 }
 
@@ -149,6 +152,7 @@ function normalizeNeeds(n) {
   const out = { ...def, ...(n ?? {}) };
   out.levels = { ...def.levels, ...(n?.levels ?? {}) };
   out.lastReminderAt = { ...def.lastReminderAt, ...(n?.lastReminderAt ?? {}) };
+  out.collapsingSince = Number.isFinite(Number(out.collapsingSince)) ? Number(out.collapsingSince) : null; // step A2
   for (const k of ['hunger', 'fatigue', 'hp', 'hpMax']) out[k] = Number.isFinite(Number(out[k])) ? Number(out[k]) : def[k];
   return out;
 }

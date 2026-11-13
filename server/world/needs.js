@@ -2,10 +2,19 @@
 // Citizens only become aware of a need when it crosses a level (or as a reminder at bad levels):
 // the update is pure math here; World turns the results into stimuli and state changes.
 //
+// step A2: an unaware body (sleeping / collapsed) keeps its levels up to date silently — no reminders,
+// no '(still)' noise — except pain crossing to the critical level, which may still wake them. Fatigue at
+// the top level starts a countdown (needs.collapsingSince) after which World forces sleep.
+//
 // All numbers live in content/needs.json, the wording in content/needs-text.json.
 import { loadNeedsContent } from './scenarios.js';
 
 export const NEED_KINDS = ['hunger', 'fatigue', 'hp'];
+
+// step A2: activity types during which the body's own noise is switched off ('unconscious' is kept in
+// case a later step introduces it).
+const UNAWARE = new Set(['sleeping', 'collapsed', 'unconscious']);
+const COLLAPSE_DEADLINE_MINUTES = 30; // 'collapsing' and still awake this long → World forces sleep
 
 export class Needs {
   constructor() {
@@ -81,13 +90,18 @@ export class Needs {
 
   /**
    * Advance one citizen by `elapsed` game minutes. Pure math on the needs object.
+   * step A2: any sleep-like activity must REST. The asleepRough rate is negative by content, but if a
+   * content edit ever makes it 0+, fall back to the plain asleep rate (still negative) so fatigue can
+   * never flatline or rise while asleep — forced sleep has to recover.
    * @returns {{ forcedSleep: boolean, hpZero: boolean, rested: boolean }}
    */
   advance(c, elapsed) {
     const n = c.needs;
     const key = this.rateKey(c);
+    let fRate = this.rate('fatigue', key);
+    if ((key === 'asleep' || key === 'asleepRough') && fRate >= 0) fRate = Math.min(-0.5, this.rate('fatigue', 'asleep'));
     n.hunger = clamp(n.hunger + (this.rate('hunger', key) * elapsed) / 60, 0, 100);
-    n.fatigue = clamp(n.fatigue + (this.rate('fatigue', key) * elapsed) / 60, 0, 100);
+    n.fatigue = clamp(n.fatigue + (fRate * elapsed) / 60, 0, 100);
     n.hp = clamp(n.hp + (this.hpRate(c) * elapsed) / 60, 0, n.hpMax ?? 100);
     const a = c.activity?.type;
     return {
@@ -98,12 +112,17 @@ export class Needs {
   }
 
   /**
-   * Level crossings and reminders. Mutates needs.levels / lastReminderAt.
-   * Returns body stimuli to deliver (only levels with importance > 0).
-   * Several levels crossed at once → only the highest one is announced.
+   * Level crossings and reminders. Mutates needs.levels / lastReminderAt (always — the levels stay
+   * accurate for the prompt's HOW YOU FEEL block). Returns body stimuli to deliver (only levels with
+   * importance > 0). Several levels crossed at once → only the highest one is announced.
+   *
+   * step A2: an unaware body (sleeping / collapsed / unconscious) announces nothing — reminders pile up
+   * as '(still)' noise after waking. One exception: hp crossing to the critical level (importance 9)
+   * is still delivered; it is the stand-in for Part B's critical alerts and may wake a sleeper.
    */
   checkLevels(c, now) {
     const n = c.needs;
+    const unaware = UNAWARE.has(c.activity?.type);
     const out = [];
     for (const kind of NEED_KINDS) {
       const idx = this.levelIndex(kind, n);
@@ -112,16 +131,29 @@ export class Needs {
       if (idx > told) {
         n.levels[kind] = idx;
         n.lastReminderAt[kind] = now;
-        if (lvl?.importance > 0) out.push(this.#stimulus(kind, lvl, false));
+        // step A2: asleep, only a critical hp crossing is worth waking for.
+        if (lvl?.importance > 0 && (!unaware || (kind === 'hp' && lvl.importance >= 9))) out.push(this.#stimulus(kind, lvl, false));
       } else if (idx < told) {
         n.levels[kind] = idx; // getting better: no stimulus, the prompt's HOW YOU FEEL shows it
         n.lastReminderAt[kind] = now;
       } else if (idx > 0 && lvl?.remindEvery && now - (n.lastReminderAt[kind] ?? 0) >= lvl.remindEvery) {
         n.lastReminderAt[kind] = now;
-        if (lvl.importance > 0) out.push(this.#stimulus(kind, lvl, true));
+        if (lvl.importance > 0 && !unaware) out.push(this.#stimulus(kind, lvl, true));
       }
     }
     return out;
+  }
+
+  /**
+   * step A2: the collapse deadline. World forces sleep when a citizen has been at the top fatigue level
+   * ('collapsing') this long — or reaches fatigue 100 sooner.
+   */
+  collapsingDeadline(c, now) {
+    if (c.needs?.collapsingSince == null) return null;
+    const fatigueMin = this.levels('fatigue').at(-1)?.min ?? 93;
+    if ((c.needs.fatigue ?? 0) < fatigueMin) return null; // got better: the deadline no longer applies
+    if (UNAWARE.has(c.activity?.type)) return null;       // already down: nothing to force
+    return (c.needs.collapsingSince ?? 0) + COLLAPSE_DEADLINE_MINUTES;
   }
 
   #stimulus(kind, lvl, reminder) {
@@ -165,6 +197,9 @@ export class Needs {
     }
     const fr = this.rate('fatigue', key);
     toward(n.fatigue, fr, 100); // forced sleep
+    // step A2: the collapse deadline is also a scheduled event — a long tick must not jump past it.
+    const dl = this.collapsingDeadline(c, now);
+    if (dl != null) cands.push(Math.max(0, dl - now));
     if (c.activity?.type === 'sleeping' && c.activity.detail?.untilRested) toward(n.fatigue, fr, 5); // waking rested
     toward(n.hunger, this.rate('hunger', key), this.starvingAt);
     const hr = this.hpRate(c);
