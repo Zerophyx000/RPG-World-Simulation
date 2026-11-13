@@ -94,6 +94,48 @@ export function makeObjects(pal, recipes = []) {
   const GENERIC_DAMAGE = new Set(['broken', 'smashed', 'wrecked', 'destroyed', 'shattered']);
 
   /**
+   * Broken, unmistakably: a jagged crack splits the thing, the far half drops and leans, a chunk is bitten out of one
+   * corner, soot and scorch darken it, and splinters / shards lie on the floor around it. Returns { img, ox } (ox =
+   * how far the anchor moved right because of the margin added for the debris).
+   */
+  function wreck(src, seed, ay) {
+    const rng = rngFor(`wreck|${seed}`);
+    const M = 8;
+    const out = new Img(src.w + M * 2, src.h + 6);
+    const crack = [];
+    let cx = Math.round(src.w * (0.38 + rng() * 0.24));
+    for (let y = 0; y < src.h; y++) { cx += Math.round((rng() - 0.5) * 3); cx = Math.max(3, Math.min(src.w - 4, cx)); crack.push(cx); }
+    const biteR = Math.max(4, Math.round(Math.min(src.w, src.h) * 0.3));
+    const biteX = rng() < 0.5 ? 0 : src.w - 1; const biteY = Math.round(rng() * src.h * 0.35);
+    const colours = [];
+    for (let y = 0; y < src.h; y++) {
+      for (let x = 0; x < src.w; x++) {
+        const c = src.get(x, y);
+        if (!c || !c[3]) continue;
+        if (colours.length < 400 && (x + y) % 3 === 0) colours.push(c);
+        const db = Math.hypot((x - biteX) / biteR, (y - biteY) / biteR);
+        if (db < 1 - rng() * 0.25) continue;                       // the missing chunk, with a ragged edge
+        if (x >= crack[y] && x <= crack[y] + 1) continue;          // the crack itself
+        const right = x > crack[y];
+        const dx = right ? 2 : -1;
+        const dy = right ? Math.min(5, 1 + Math.round((x - crack[y]) * 0.12)) : 0;
+        let col = mix(c, [34, 28, 26, 255], 0.28);                  // soot
+        if (rng() < 0.1) col = mix(col, [12, 10, 10, 255], 0.55);  // scorch marks
+        out.set(x + M + dx, y + dy, col);
+      }
+    }
+    // splinters and shards on the floor around it
+    const n = 10 + Math.round((src.w * src.h) / 90);
+    for (let i = 0; i < n && colours.length; i++) {
+      const c = mix(colours[(rng() * colours.length) | 0], [30, 26, 24, 255], 0.2);
+      const x = Math.round(rng() * (src.w + M * 2 - 3)); const y = Math.round(ay + 1 + (rng() - 0.6) * 6);
+      const w = 1 + ((rng() * 3) | 0); const h = rng() < 0.6 ? 1 : 2;
+      out.rect(x, Math.min(out.h - 2, y), w, h, c);
+    }
+    return { img: out, ox: M };
+  }
+
+  /**
    * The sprite of an object type in the given states.
    * opts: { states: ['lit'], color: 'blue' (garment ramp), tags: [...] }
    * → { img, ax, ay (anchor on the ground), flames: [{x,y,w,h}], glows: [{x,y,radius,ramp}] }
@@ -112,15 +154,17 @@ export function makeObjects(pal, recipes = []) {
     let overturned = false; let damaged = false;
     for (const s of states) {
       if (recipe.states?.[s]) applyOps(ctx, recipe.states[s], color);
-      else if (s === 'overturned') overturned = true;
-      else if (GENERIC_DAMAGE.has(s)) damaged = true;
+      if (s === 'overturned' && !recipe.states?.[s]) overturned = true;
+      if (GENERIC_DAMAGE.has(s)) damaged = true; // on top of the recipe's own broken look: broken must be obvious
     }
+    let ax = recipe.anchor[0] + PAD; let ay = recipe.anchor[1] + PAD;
+    let canvas = ctx.canvas;
     if (damaged) {
-      applyOps(ctx, [{ op: 'holes', seed: type.length * 7, count: Math.max(6, Math.round(bw * bh / 60)) }, { op: 'tint', color: [40, 36, 34], amount: 0.35 }], color);
+      const wr = wreck(canvas, type, ay);
+      canvas = wr.img; ax += wr.ox;
       ctx.flames = []; ctx.glows = [];
     }
-    let img = ctx.canvas.outline((near) => dim(near, 0.5));
-    let ax = recipe.anchor[0] + PAD; let ay = recipe.anchor[1] + PAD;
+    let img = canvas.outline((near) => dim(near, 0.5));
     if (overturned) { img = rotateCW(img); ax = Math.round(img.w / 2); ay = img.h - 1; ctx.flames = []; ctx.glows = []; }
     const out = { img, ax, ay, flames: ctx.flames, glows: ctx.glows, w: img.w, h: img.h };
     cache.set(key, out);

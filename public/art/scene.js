@@ -36,7 +36,10 @@ export function createScene({ pal, recipes = [], maps = [] }) {
   const roofCache = new Map();
   const roofAlpha = new Map();
   const stainCache = new Map();
-  const lastDir = new Map();
+  const movers = new Map();   // citizen id -> drawn position walking toward the simulation target
+  const trips = new Map();    // citizen id -> { key, t }: trip progress never runs backwards
+  const cropCache = new WeakMap();
+  const cropped = (img, x, y, w, h) => { const k = img; let m = cropCache.get(k); if (!m) { m = new Map(); cropCache.set(k, m); } const kk = x + "|" + y + "|" + w + "|" + h; let c = m.get(kk); if (!c) { c = img.crop(x, y, w, h); m.set(kk, c); } return c; };
   const placeCache = { rev: -1, byRoom: new Map() };
   let lastMs = 0;
   const blasts = [];
@@ -95,6 +98,18 @@ export function createScene({ pal, recipes = [], maps = [] }) {
     const s = objs.sprite(o.typeId, { states, tags: o.tags ?? [], color: o.data?.color });
     return s;
   }
+  // a door in a side wall is seen edge-on: the same sprite squeezed to a narrow slab, darker on its far edge
+  const sideCache = new WeakMap();
+  function sideOn(sp) {
+    let s2 = sideCache.get(sp);
+    if (s2) return s2;
+    const w = Math.max(6, Math.round(sp.w * 0.28));
+    const img = new Img(w, sp.h);
+    for (let y = 0; y < sp.h; y++) for (let x = 0; x < w; x++) { const c = sp.img.get(Math.min(sp.w - 1, Math.floor(((x + 0.5) * sp.w) / w)), y); if (c && c[3]) img.set(x, y, x === w - 1 ? mix(c, [0, 0, 0, 255], 0.35) : c); }
+    s2 = { ...sp, img, w, ax: Math.round(w / 2), flames: [], glows: [] };
+    sideCache.set(sp, s2);
+    return s2;
+  }
   const spriteSize = (o) => { const s = objectSprite(o); return s ? { w: s.w, h: s.h } : null; };
 
   function stainImg(seed) {
@@ -116,13 +131,18 @@ export function createScene({ pal, recipes = [], maps = [] }) {
     return { id: c.id, build: l.build, look: { skin: l.skin, hair: l.hair, facial: l.facial, eyes: l.eyes }, garments: [], wounds: [], missing: [], aids: [], dead: c.alive === false };
   }
 
+  const legBroken = (c) => (c.look?.wounds ?? []).some((w) => w.kind === 'fracture' && !w.splinted && /^(thigh|shin|foot)_/.test(w.part)) || (c.look?.missing ?? []).some((p) => /^(thigh|shin|foot)_/.test(p) && !(c.look?.aids ?? []).some((a) => a === 'peg_leg' || a === 'crutch'));
+
   function poseOf(c, place, S) {
     if (c.alive === false) return 'lie';
     const a = c.activity ?? {};
     const status = c.body?.status ?? [];
     if (a.type === 'sleeping' || a.type === 'collapsed' || status.includes('unconscious')) return 'lie';
     const moving = place?.moving;
-    if (status.some((s) => /crawling|can't move/.test(s)) && (moving || a.type === 'moving')) return 'crawl';
+    // a body that can't stand is on the floor: lying still, crawling when it moves
+    if (status.some((s) => /crawling|can't move|paralyzed|in shock|dying/.test(s))) return moving ? 'crawl' : 'lie';
+    // a leg that can't bear weight (a broken, unsplinted thigh or shin): down on the floor unless they have to move
+    if (!moving && legBroken(c)) return 'lie';
     if (moving) return S.holding?.has(c.id) ? 'carry' : 'walk';
     if (a.type === 'doing') {
       const k = a.detail?.kind ?? '';
@@ -140,7 +160,8 @@ export function createScene({ pal, recipes = [], maps = [] }) {
    * Returns { hits: [{ type: 'citizen'|'object'|'room', id, x, y, w, h }] } for hover/click picking.
    */
   function draw(target, cam0, S, ms) {
-    const dt = Math.min(0.1, (ms - lastMs) / 1000 || 0.016); lastMs = ms;
+    const target_ = target; // (the people loop calls its walk goal "target")
+    const dt = clamp((ms - lastMs) / 1000 || 0.016, 0, 0.1); lastMs = ms; // never negative (a fade must not run backwards)
     const map = mapById.get(S.mapId) ?? maps[0];
     if (!map) return { hits: [] };
     const grid = layout.grids.get(map.id);
@@ -201,7 +222,7 @@ export function createScene({ pal, recipes = [], maps = [] }) {
     const lights = [];
     const flameJobs = [];
     const smoke = [];
-    const decorOf = (type, tx, ty, key) => ({ y: (ty + 1) * TILE - 2, draw: () => { const s = objs.sprite(type, {}); if (!s) return; const wx = tx * TILE + TILE / 2; const wy = (ty + 1) * TILE - 3; if (!inView(wx, wy)) return; target.blit(s.img, X(wx - s.ax), Y(wy - s.ay), { scale: z }); } });
+    const decorOf = (type, tx, ty, key) => ({ y: objs.byType.get(type)?.flat ? ty * TILE - 40 : (ty + 1) * TILE - 2, draw: () => { const s = objs.sprite(type, {}); if (!s) return; const wx = tx * TILE + TILE / 2; const wy = (ty + 1) * TILE - 3; if (!inView(wx, wy)) return; target.blit(s.img, X(wx - s.ax), Y(wy - s.ay), { scale: z }); } });
     if (!lod) {
       for (const d of map.decor ?? []) ents.push(decorOf(d.type, d.tile[0], d.tile[1]));
       for (let ty = 0; ty < grid.H; ty++) {
@@ -223,7 +244,8 @@ export function createScene({ pal, recipes = [], maps = [] }) {
         if (S.visibleObjectIds && !S.visibleObjectIds.has(o.id)) continue;
         const concealed = ['hidden', 'concealed'].includes(o.visibility) || ['under', 'behind'].includes(o.placement?.relation);
         if (concealed && !showHidden) continue;
-        const sp = objectSprite(o);
+        const sp0 = objectSprite(o);
+        const sp = sp0 && p.wall === 'side' ? sideOn(sp0) : sp0; // a door in a side wall is seen edge-on
         if (!sp) continue;
         // light sources are collected even when slightly off screen
         for (const g of sp.glows) lights.push({ wx: p.x - sp.ax + g.x, wy: p.y - sp.ay + g.y, r: g.radius, k: 0.9 });
@@ -236,7 +258,7 @@ export function createScene({ pal, recipes = [], maps = [] }) {
         ents.push({
           y: p.y, id: o.id, draw: () => {
             const x = X(p.x - sp.ax); const y = Y(p.y - sp.ay);
-            if (!lod) target.ellipse(X(p.x), Y(p.y - 1), (sp.w / 2 - 2) * z, 3 * z, [10, 10, 14, 255], 0.22);
+            if (!lod && !p.wall) target.ellipse(X(p.x), Y(p.y - 1), (sp.w / 2 - 2) * z, 3 * z, [10, 10, 14, 255], 0.22);
             target.blit(sp.img, x, y, { scale: z, alpha: concealed ? 0.55 : 1 });
             for (const f of sp.flames) target.blit(objs.flame(f.w, f.h, Math.floor(ms / 110) + (hash32(o.id) & 3)), x + f.x * z, y + f.y * z, { scale: z });
             hits.push({ type: 'object', id: o.id, x: x, y: y, w: sp.w * z, h: sp.h * z });
@@ -244,43 +266,76 @@ export function createScene({ pal, recipes = [], maps = [] }) {
         });
       }
     }
-    // people
+    // people: the simulation gives a target, a mover walks the drawn person there tile by tile
     const entries = [];
-    const sleepersHidden = new Set();
     const taken = new Set();
     const order = [...S.citizens.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
+    // beds: a sleeper lies IN a bed of their room (their own first, then the one at their spot, then any free one)
+    const bedsByRoom = new Map();
+    for (const [roomId, { list, pos }] of placeCache.byRoom) for (const o of list) if (o.typeId === 'bed' && pos.get(o.id)) (bedsByRoom.get(roomId) ?? bedsByRoom.set(roomId, []).get(roomId)).push({ o, p: pos.get(o.id) });
+    const bedOf = new Map(); const bedTaken = new Set();
     for (const c of order) {
-      const place = layout.citizenPlace(c, now, lastDir.get(c.id) ?? 'down', taken);
-      if (!place) continue;
+      if (c.alive === false || c.activity?.type !== 'sleeping') continue;
+      const beds = (bedsByRoom.get(c.location) ?? []).filter((b) => !bedTaken.has(b.o.id));
+      const bed = beds.find((b) => b.o.ownerId === c.id) ?? beds.find((b) => b.p.spot === c.spot) ?? beds[0];
+      if (bed) { bedOf.set(c.id, bed); bedTaken.add(bed.o.id); }
+    }
+    const dtReal = Math.min(0.25, dt);
+    for (const c of order) {
+      // a trip only ever moves forward, even when the client clock is corrected backwards
+      const a = c.activity ?? {};
+      const tripKey = a.type === 'moving' || a.detail?.kind === 'walk' ? `${a.since}|${a.detail?.to ?? a.detail?.toSpot}` : null;
+      let tnow = now;
+      if (tripKey) { const tr = trips.get(c.id); tnow = tr?.key === tripKey ? Math.max(tr.t, now) : now; trips.set(c.id, { key: tripKey, t: tnow }); }
+      let target = layout.citizenPlace(c, tnow, movers.get(c.id)?.dir ?? 'down', taken);
+      if (!target) continue;
+      const bed = bedOf.get(c.id);
+      if (bed) target = { ...target, x: bed.p.x, y: bed.p.y, moving: false };
+      const status = c.body?.status ?? [];
+      const slow = status.some((s) => /crawling|can't move/.test(s)) ? 0.3 : status.includes('limping') || legBroken(c) ? 0.5 : 1;
+      const mv = layout.stepMover(movers.get(c.id) ?? {}, target, dtReal, slow);
+      movers.set(c.id, mv);
+      const place = { x: mv.x, y: mv.y, dir: mv.dir, moving: mv.moving, roomId: target.roomId };
       c.__place = place;
-      if (place.moving) lastDir.set(c.id, place.dir);
-      else if (S.partnerDir?.has(c.id)) { /* handled below */ }
-      let dir = place.dir;
-      if (!place.moving) {
+      let dir = mv.dir ?? 'down';
+      if (!mv.moving) {
         const partner = S.faceOf?.get(c.id);
         const pp = partner && S.citizens.get(partner)?.__place;
         if (pp && Math.abs(pp.x - place.x) > 6) dir = pp.x > place.x ? 'right' : 'left';
         else if (pp && pp.y < place.y - 8) dir = 'up';
-        else dir = lastDir.get(c.id) && lastDir.get(c.id) !== 'up' ? lastDir.get(c.id) : 'down';
-        lastDir.set(c.id, dir);
+        else if (pp) dir = 'down';
+        else dir = mv.dir === 'up' ? 'down' : (mv.dir ?? 'down');
       }
+      const inBed = bed && !mv.moving && Math.hypot(mv.x - bed.p.x, mv.y - bed.p.y) < 2;
       const roof = roofAlpha.get(place.roomId) ?? 0;
       ents.push({
-        y: place.y + (c.alive === false || c.activity?.type === 'sleeping' ? -6 : 0), id: c.id, draw: () => {
+        y: inBed ? bed.p.y + 0.5 : place.y, id: c.id, draw: () => {
           if (!inView(place.x, place.y)) return;
-          if (lod) { target.rect(X(place.x) - 1, Y(place.y) - 2, 3, 3, S.colorOf?.(c.id) ?? [255, 255, 255, 255]); return; }
+          if (lod) { target_.rect(X(place.x) - 1, Y(place.y) - 2, 3, 3, S.colorOf?.(c.id) ?? [255, 255, 255, 255]); return; }
+          const sp = spec(c);
+          const sprite = characterSprite(pal, sp);
+          const alpha = roof > 0.6 ? 0.35 : 1;
+          const color = S.colorOf?.(c.id) ?? [255, 255, 255, 255];
+          if (inBed) {
+            // tucked in: the head on the pillow, the blanket pulled over the rest
+            const bs = objectSprite(bed.o);
+            const bx = bed.p.x - bs.ax; const by = bed.p.y - bs.ay;
+            const f = sprite.frame('down', 'idle', 0, sp.expression ?? 'neutral');
+            target_.blit(cropped(f.img, 0, 0, f.img.w, 20), X(bed.p.x - f.anchor[0]), Y(by + 5), { scale: z, alpha });
+            target_.blit(cropped(bs.img, 2, 21, bs.w - 4, bs.h - 23), X(bx + 2), Y(by + 21), { scale: z, alpha });
+            entries.push({ c, x: X(bed.p.x), y: Y(by + 24), head: Y(by + 4), color, selected: S.selectedId === c.id, hovered: S.hoverId === c.id });
+            hits.push({ type: 'citizen', id: c.id, x: X(bx), y: Y(by), w: bs.w * z, h: bs.h * z });
+            return;
+          }
           const pose = poseOf(c, place, S);
-          const sprite = characterSprite(pal, spec(c));
-          const walkRate = place.moving ? 130 : 600;
-          const idx = pose === 'walk' || pose === 'carry' ? Math.floor(ms / walkRate) + (hash32(c.id) & 3) : pose === 'crawl' || pose === 'work' || pose === 'idle' ? Math.floor(ms / (pose === 'idle' ? 700 : 280)) + (hash32(c.id) & 1) : 0;
-          const f = sprite.frame(dir, pose, idx, spec(c).expression ?? 'neutral');
+          const idx = pose === 'walk' || pose === 'carry' || pose === 'crawl' ? Math.floor((mv.dist ?? 0) / (pose === 'crawl' ? 5 : 7)) : pose === 'work' || pose === 'idle' ? Math.floor(ms / (pose === 'idle' ? 700 : 280)) + (hash32(c.id) & 1) : 0;
+          const f = sprite.frame(dir, pose, idx, sp.expression ?? 'neutral');
           const lying = pose === 'lie' || pose === 'crawl';
           const ox = place.x - f.anchor[0]; const oy = place.y - f.anchor[1] + (pose === 'lie' ? -2 : 0) + (pose === 'sit' ? 4 : 0);
-          target.ellipse(X(place.x), Y(place.y - 1), (lying ? 14 : 8) * z, 3 * z, [10, 10, 14, 255], 0.28);
-          const alpha = roof > 0.6 ? 0.35 : 1;
-          target.blit(f.img, X(ox), Y(oy), { scale: z, alpha });
+          target_.ellipse(X(place.x), Y(place.y - 1), (lying ? 14 : 8) * z, 3 * z, [10, 10, 14, 255], 0.28);
+          target_.blit(f.img, X(ox), Y(oy), { scale: z, alpha });
           const head = lying ? Y(oy) - 2 : Y(oy) + 2 * z;
-          entries.push({ c, x: X(place.x), y: Y(place.y), head, color: S.colorOf?.(c.id) ?? [255, 255, 255, 255], selected: S.selectedId === c.id, hovered: S.hoverId === c.id });
+          entries.push({ c, x: X(place.x), y: Y(place.y), head, color, selected: S.selectedId === c.id, hovered: S.hoverId === c.id });
           hits.push({ type: 'citizen', id: c.id, x: X(ox), y: Y(oy), w: f.img.w * z, h: f.img.h * z });
         },
       });
@@ -322,9 +377,11 @@ export function createScene({ pal, recipes = [], maps = [] }) {
       }
     }
     for (const room of roomsMap.values()) {
+      const drawn = new Set(); // the same kind of effect twice in one room is drawn once
       for (const ef of room.effects ?? []) {
         const kind = ef.visual?.kind ?? effectKind(ef.text);
-        if (!kind || kind === 'bloodstain') continue;
+        if (!kind || kind === 'bloodstain' || drawn.has(kind)) continue;
+        drawn.add(kind);
         const g = layout.geom(room.id);
         if (!g) continue;
         const r = g.room.rect;
@@ -341,8 +398,12 @@ export function createScene({ pal, recipes = [], maps = [] }) {
             target.blit(fr, X(wx - 9), Y(wy - 22), { scale: z });
             lights.push({ wx, wy: wy - 10, r: 44, k: 0.9 });
           } else if (kind === 'smoke') {
-            const ph = ((ms / 6000) + i / n) % 1;
-            target.ellipse(X(wx + Math.sin(ph * 6) * 6), Y(wy - ph * 70), (5 + ph * 9) * z, (4 + ph * 6) * z, pal.color('smoke', 1), (1 - ph) * 0.5);
+            // smoke hangs in the air: a haze over the whole place (once) and slow puffs drifting up and fading
+            if (i === 0) target.rect(X(r.x * TILE), Y(r.y * TILE), r.w * TILE * z, r.h * TILE * z, pal.color('smoke', 2), 0.08 + 0.03 * Math.sin(ms / 900));
+            // wisps up under the ceiling (the top third of the room), never lying on the floor like stains
+            const ph = ((ms / 7000) + i / n) % 1;
+            const top = (r.y + 1) * TILE + ((h >>> 12) % Math.max(1, Math.round(r.h * TILE / 3)));
+            target.ellipse(X(wx + Math.sin(ph * 6) * 10), Y(top - ph * 24), (8 + ph * 12) * z, (3 + ph * 4) * z, pal.color('smoke', 2), Math.sin(ph * Math.PI) * 0.22);
           }
         }
       }

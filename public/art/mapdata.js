@@ -117,6 +117,31 @@ export function validateMaps(maps, rooms) {
         if (!grid.walk[y]?.[x]) problems.push(`room "${id}": spot "${spot.id}" tile ${x},${y} is not walkable`);
       }
     }
+    // furniture (hand-placed): on the room's floor, or set into one of its walls; never under a spot or another piece
+    const blockedHere = new Set();
+    for (const f of room.furniture ?? []) {
+      if (!f.object) { problems.push(`room "${id}": a furniture entry has no object`); continue; }
+      if (f.wall) {
+        const [x, y] = f.wall;
+        const border = room.kind === 'building' && inRect(r, x, y) && (x === r.x || y === r.y || x === r.x + r.w - 1 || y === r.y + r.h - 1);
+        if (!border) problems.push(`room "${id}": "${f.object}" is set into ${x},${y}, which is not a wall of the room`);
+        continue;
+      }
+      if (!Array.isArray(f.at) || f.at.length < 2) { problems.push(`room "${id}": "${f.object}" has no "at" or "wall"`); continue; }
+      const [fx, fy, fw = 1, fh = 1] = f.at;
+      for (let y = fy; y < fy + fh; y++) {
+        for (let x = fx; x < fx + fw; x++) {
+          const inside = room.kind === 'building' ? x > r.x && y > r.y && x < r.x + r.w - 1 && y < r.y + r.h - 1 : inRect(r, x, y);
+          if (!inside) problems.push(`room "${id}": "${f.object}" tile ${x},${y} is not on the room's floor`);
+          else if (!grid.walk[y]?.[x]) problems.push(`room "${id}": "${f.object}" tile ${x},${y} is not floor`);
+          const k = `${x},${y}`;
+          if (seen.has(k)) problems.push(`room "${id}": spot "${seen.get(k)}" stands on "${f.object}" at ${k}`);
+          if (blockedHere.has(k)) problems.push(`room "${id}": "${f.object}" overlaps other furniture at ${k}`);
+          blockedHere.add(k);
+        }
+      }
+    }
+    const furnished = blockedHere.size ? { ...grid, walk: grid.walk.map((row, y) => row.map((w, x) => w && !blockedHere.has(`${x},${y}`))) } : grid;
     const spotIds = new Set((room.spots ?? []).map((s) => s.id));
     for (const [a, b] of room.adjacency ?? []) if (!spotIds.has(a) || !spotIds.has(b)) problems.push(`room "${id}": adjacency ${a}-${b} names an unknown spot`);
     for (const [from, spot] of Object.entries(room.entries ?? {})) if (!spotIds.has(spot)) problems.push(`room "${id}": entry from ${from} names unknown spot "${spot}"`);
@@ -134,7 +159,7 @@ export function validateMaps(maps, rooms) {
     }
     if (first) {
       const start = anchorTile(room, [...rooms.get(id).exits ?? []][0]?.to) ?? spotTiles(first)[0];
-      for (const spot of room.spots ?? []) if (start && spotTiles(spot)[0] && !findPath(grid, start, spotTiles(spot)[0])) problems.push(`room "${id}": spot "${spot.id}" is not reachable`);
+      for (const spot of room.spots ?? []) if (start && spotTiles(spot)[0] && !findPath(furnished, start, spotTiles(spot)[0])) problems.push(`room "${id}": spot "${spot.id}" is not reachable${blockedHere.size ? ' (with the furniture in the way)' : ''}`);
     }
   }
   return problems;

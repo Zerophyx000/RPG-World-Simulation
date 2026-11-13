@@ -1,6 +1,6 @@
 // Step 8: a screenshot of the map as PNG, drawn by the same scene code the browser uses (software renderer).
 //   node scripts/map-shot.js [--url http://localhost:3000] [--out shot.png] [--zoom 1] [--w 960] [--h 640]
-//        [--room tavern | --x 1200 --y 800] [--night] [--time 22:00] [--select greta] [--roofs on|off|auto] [--scale 1]
+//        [--local (maps and art from disk)] [--room tavern | --x 1200 --y 800] [--night] [--time 22:00] [--select greta] [--roofs on|off|auto] [--scale 1]
 // Reads /api/world, /api/looks, /api/maps and /api/art from a running server (read-only), or --state file.json
 // (a saved { world, looks, maps, art }) so the shot works offline.
 import fs from 'node:fs';
@@ -28,6 +28,11 @@ if (args.state) data = JSON.parse(fs.readFileSync(args.state, 'utf8'));
 else {
   const [world, looks, maps, art] = await Promise.all([get('/api/world'), get('/api/looks'), get('/api/maps'), get('/api/art')]);
   data = { world, looks, maps: maps.maps, art };
+}
+if (args.local) {
+  // maps and art from content/ on disk (to see edits before the server restarts); world state still from the server
+  const { loadMapFiles, artContent } = await import('../server/world/maps.js');
+  data.maps = loadMapFiles(); data.art = artContent();
 }
 if (args.save) fs.writeFileSync(args.save, JSON.stringify(data));
 
@@ -58,7 +63,7 @@ const target = new ImgTarget(W, H);
 const t0 = Date.now();
 const ms = 1e9 + Number(args.ms ?? 0);
 scene.draw(target, { x: cx, y: cy, zoom, w: W, h: H }, S, ms - 1000); // warm up roof fades and caches
-for (let i = 0; i < 12; i++) scene.draw(target, { x: cx, y: cy, zoom, w: W, h: H }, S, ms - 1000 + i * 100);
+for (let i = 1; i < 10; i++) scene.draw(target, { x: cx, y: cy, zoom, w: W, h: H }, S, ms - 1000 + i * 100);
 target.img.fill([16, 20, 18, 255]);
 const res = scene.draw(target, { x: cx, y: cy, zoom, w: W, h: H }, S, ms);
 const out = args.out ?? 'shot.png';

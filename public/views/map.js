@@ -67,7 +67,7 @@ export function mount(el) {
   let dpr = 1;
   let follow = prefs.get('mapFollow', false);
   const opt = {
-    objView: prefs.get('mapObjView', 'true'), god: prefs.get('mapGod', 'god'), thoughts: prefs.get('mapThoughts', 'selected'),
+    objView: prefs.get('mapObjView', 'true'), god: prefs.get('mapGod', 'god'), thoughts: prefs.get('mapThoughts', 'all'),
     roofs: prefs.get('mapRoofs', 'auto'), light: prefs.get('mapLight', 'auto'), surfaceOf: null, dock: prefs.get('mapDock', ''),
   };
   const S = {
@@ -363,7 +363,9 @@ export function mount(el) {
     cam.x = Math.max(0, Math.min(mw, cam.x)); cam.y = Math.max(0, Math.min(mh, cam.y));
     // state
     const clock = store.clock;
-    S.now = clockMin + (clock?.running ? ((performance.now() - clockAt) / 1000) * (60 / (clock.realSecondsPerGameHour || 120)) : 0);
+    const est = clockMin + (clock?.running ? ((performance.now() - clockAt) / 1000) * (60 / (clock.realSecondsPerGameHour || 120)) : 0);
+    // the drawn clock never runs backwards when the server corrects it (small corrections are absorbed; a reseed jumps)
+    S.now = est < S.now && S.now - est < 30 ? S.now : est;
     S.uiScale = dpr;
     S.rooms = store.rooms; S.citizens = store.citizens; S.objects = store.objects; // loadWorld() replaces these Maps on every resync
     S.faceOf = faces();

@@ -1,10 +1,7 @@
 {
   "id": "village",
   "name": "Brackenford",
-  "size": [
-    64,
-    48
-  ],
+  "size": [64, 48],
   "legend": {
     ".": "grass",
     ",": "dirt_path",
@@ -125,22 +122,14 @@
   "rooms": [
     {
       "roomId": "tavern",
-      "footprint": [
-        6,
-        14,
-        12,
-        10
-      ],
+      "footprint": [6, 14, 12, 10],
       "roof": {
         "style": "thatch",
         "color": "straw"
       },
       "doors": [
         {
-          "tile": [
-            17,
-            19
-          ],
+          "tile": [17, 19],
           "to": "square"
         }
       ],
@@ -148,647 +137,222 @@
         {
           "id": "door",
           "label": "the doorway",
-          "tiles": [
-            [
-              16,
-              18
-            ],
-            [
-              16,
-              19
-            ],
-            [
-              16,
-              20
-            ]
-          ],
-          "objects": [
-            "tavern_door"
-          ]
+          "tiles": [[16, 18], [16, 19], [16, 20]],
+          "objects": ["tavern_door"]
         },
         {
           "id": "counter",
           "label": "at the counter",
-          "tiles": [
-            [
-              8,
-              15
-            ],
-            [
-              9,
-              15
-            ],
-            [
-              10,
-              15
-            ],
-            [
-              11,
-              15
-            ],
-            [
-              8,
-              16
-            ],
-            [
-              9,
-              16
-            ],
-            [
-              10,
-              16
-            ],
-            [
-              11,
-              16
-            ]
-          ],
-          "objects": [
-            "tavern_counter",
-            "tavern_barrel_1",
-            "tavern_barrel_2",
-            "tavern_broom",
-            "tavern_shutters"
-          ],
+          "tiles": [[10, 16], [8, 17], [9, 17], [10, 17]],
+          "objects": ["tavern_counter", "tavern_barrel_1", "tavern_barrel_2", "tavern_broom", "tavern_shutters"],
           "service": "food"
         },
         {
           "id": "hearth",
           "label": "by the hearth",
-          "tiles": [
-            [
-              7,
-              19
-            ],
-            [
-              8,
-              19
-            ],
-            [
-              7,
-              20
-            ],
-            [
-              8,
-              20
-            ],
-            [
-              7,
-              21
-            ],
-            [
-              8,
-              21
-            ]
-          ],
-          "objects": [
-            "tavern_hearth"
-          ]
+          "tiles": [[11, 16], [12, 16], [11, 17], [12, 17]],
+          "objects": ["tavern_hearth"]
         },
         {
           "id": "table",
           "label": "at the long table",
-          "tiles": [
-            [
-              10,
-              18
-            ],
-            [
-              11,
-              18
-            ],
-            [
-              12,
-              18
-            ],
-            [
-              13,
-              18
-            ],
-            [
-              10,
-              19
-            ],
-            [
-              11,
-              19
-            ],
-            [
-              12,
-              19
-            ],
-            [
-              13,
-              19
-            ],
-            [
-              10,
-              20
-            ],
-            [
-              11,
-              20
-            ],
-            [
-              12,
-              20
-            ],
-            [
-              13,
-              20
-            ]
-          ],
-          "objects": [
-            "tavern_table_1",
-            "tavern_bench"
-          ],
+          "tiles": [[10, 18], [11, 18], [9, 19], [12, 19], [9, 20], [12, 20], [10, 21], [11, 21]],
+          "objects": ["tavern_table_1", "tavern_bench"],
           "default": true
         },
         {
           "id": "corner",
           "label": "at the corner table",
-          "tiles": [
-            [
-              13,
-              15
-            ],
-            [
-              14,
-              15
-            ],
-            [
-              15,
-              15
-            ],
-            [
-              13,
-              16
-            ],
-            [
-              14,
-              16
-            ],
-            [
-              15,
-              16
-            ]
-          ],
-          "objects": [
-            "tavern_table_2"
-          ]
+          "tiles": [[13, 16], [16, 16], [13, 17], [14, 17], [15, 17], [16, 17]],
+          "objects": ["tavern_table_2"]
         },
         {
           "id": "cot",
           "label": "at the cot in the back",
-          "tiles": [
-            [
-              7,
-              22
-            ],
-            [
-              8,
-              22
-            ],
-            [
-              9,
-              22
-            ]
-          ],
+          "tiles": [[7, 21], [7, 22], [8, 22], [9, 22]],
           "objects": [],
           "service": "bed"
         }
       ],
       "adjacency": [
-        [
-          "door",
-          "table"
-        ],
-        [
-          "table",
-          "counter"
-        ],
-        [
-          "table",
-          "hearth"
-        ],
-        [
-          "table",
-          "corner"
-        ],
-        [
-          "counter",
-          "corner"
-        ],
-        [
-          "hearth",
-          "cot"
-        ],
-        [
-          "table",
-          "cot"
-        ]
+        ["door", "table"],
+        ["door", "corner"],
+        ["table", "counter"],
+        ["table", "hearth"],
+        ["table", "corner"],
+        ["counter", "hearth"],
+        ["hearth", "corner"],
+        ["table", "cot"]
       ],
       "entries": {
         "square": "door"
-      }
+      },
+      "furniture": [
+        { "object": "tavern_barrel_1", "at": [8, 15, 1, 1] },
+        { "object": "tavern_barrel_2", "at": [9, 15, 1, 1] },
+        { "object": "tavern_broom", "at": [7, 15, 1, 1] },
+        { "object": "tavern_counter", "at": [8, 16, 2, 1] },
+        { "object": "tavern_hearth", "at": [11, 15, 2, 1] },
+        { "object": "tavern_shutters", "wall": [15, 14] },
+        { "object": "tavern_table_2", "at": [14, 16, 2, 1] },
+        { "object": "tavern_table_1", "at": [10, 19, 2, 1] },
+        { "object": "tavern_bench", "at": [10, 20, 2, 1] },
+        { "object": "tavern_door", "wall": [17, 19] }
+      ]
     },
     {
       "roomId": "bakery",
-      "footprint": [
-        44,
-        8,
-        10,
-        8
-      ],
+      "footprint": [44, 8, 10, 8],
       "roof": {
         "style": "thatch",
         "color": "straw"
       },
       "doors": [
         {
-          "tile": [
-            48,
-            15
-          ],
-          "to": [
-            "square",
-            "house_greta"
-          ]
+          "tile": [48, 15],
+          "to": ["square", "house_greta"]
         }
       ],
       "spots": [
         {
           "id": "door",
           "label": "the doorway",
-          "tiles": [
-            [
-              47,
-              14
-            ],
-            [
-              48,
-              14
-            ],
-            [
-              49,
-              14
-            ]
-          ],
+          "tiles": [[47, 14], [48, 14], [49, 14]],
           "objects": []
         },
         {
           "id": "oven",
           "label": "by the oven",
-          "tiles": [
-            [
-              45,
-              9
-            ],
-            [
-              46,
-              9
-            ],
-            [
-              45,
-              10
-            ],
-            [
-              46,
-              10
-            ],
-            [
-              45,
-              11
-            ],
-            [
-              46,
-              11
-            ]
-          ],
-          "objects": [
-            "bakery_oven",
-            "bakery_broom"
-          ],
+          "tiles": [[45, 10], [46, 10], [45, 11], [46, 11]],
+          "objects": ["bakery_oven", "bakery_broom"],
           "service": "food",
           "default": true
         },
         {
           "id": "racks",
           "label": "by the bread racks",
-          "tiles": [
-            [
-              48,
-              9
-            ],
-            [
-              49,
-              9
-            ],
-            [
-              48,
-              10
-            ],
-            [
-              49,
-              10
-            ]
-          ],
-          "objects": [
-            "bakery_rack"
-          ]
+          "tiles": [[48, 10], [49, 10], [49, 9]],
+          "objects": ["bakery_rack"]
         },
         {
           "id": "counter",
           "label": "at the counter",
-          "tiles": [
-            [
-              50,
-              11
-            ],
-            [
-              51,
-              11
-            ],
-            [
-              52,
-              11
-            ],
-            [
-              50,
-              12
-            ],
-            [
-              51,
-              12
-            ],
-            [
-              52,
-              12
-            ]
-          ],
-          "objects": [
-            "bakery_counter"
-          ]
+          "tiles": [[49, 12], [52, 12], [50, 13], [51, 13]],
+          "objects": ["bakery_counter"]
         },
         {
           "id": "storeroom",
           "label": "at the storeroom door",
-          "tiles": [
-            [
-              51,
-              9
-            ],
-            [
-              52,
-              9
-            ],
-            [
-              51,
-              10
-            ],
-            [
-              52,
-              10
-            ]
-          ],
-          "objects": [
-            "bakery_storeroom_door",
-            "bakery_shutters"
-          ]
+          "tiles": [[51, 9], [52, 9], [51, 10], [52, 10]],
+          "objects": ["bakery_storeroom_door", "bakery_shutters"]
         }
       ],
       "adjacency": [
-        [
-          "door",
-          "oven"
-        ],
-        [
-          "door",
-          "counter"
-        ],
-        [
-          "oven",
-          "racks"
-        ],
-        [
-          "racks",
-          "counter"
-        ],
-        [
-          "racks",
-          "storeroom"
-        ],
-        [
-          "counter",
-          "storeroom"
-        ]
+        ["door", "oven"],
+        ["door", "counter"],
+        ["oven", "racks"],
+        ["racks", "counter"],
+        ["racks", "storeroom"],
+        ["counter", "storeroom"]
       ],
       "entries": {
         "square": "door",
         "house_greta": "door"
-      }
+      },
+      "furniture": [
+        { "object": "bakery_oven", "at": [45, 9, 2, 1] },
+        { "object": "bakery_broom", "at": [47, 9, 1, 1] },
+        { "object": "bakery_shutters", "wall": [47, 8] },
+        { "object": "bakery_rack", "at": [48, 9, 1, 1] },
+        { "object": "bakery_storeroom_door", "wall": [51, 8] },
+        { "object": "bakery_counter", "at": [50, 12, 2, 1] }
+      ]
     },
     {
       "roomId": "house_greta",
-      "footprint": [
-        56,
-        17,
-        7,
-        8
-      ],
+      "footprint": [56, 17, 7, 8],
       "roof": {
         "style": "thatch",
         "color": "straw"
       },
       "doors": [
         {
-          "tile": [
-            56,
-            20
-          ],
-          "to": [
-            "square",
-            "bakery"
-          ]
+          "tile": [56, 20],
+          "to": ["square", "bakery"]
         }
       ],
       "spots": [
         {
           "id": "door",
           "label": "the doorway",
-          "tiles": [
-            [
-              57,
-              19
-            ],
-            [
-              57,
-              20
-            ],
-            [
-              57,
-              21
-            ]
-          ],
-          "objects": [
-            "greta_door"
-          ]
+          "tiles": [[57, 20], [57, 21], [58, 20]],
+          "objects": ["greta_door"]
         },
         {
           "id": "table",
           "label": "at the kitchen table",
-          "tiles": [
-            [
-              59,
-              18
-            ],
-            [
-              60,
-              18
-            ],
-            [
-              61,
-              18
-            ],
-            [
-              59,
-              19
-            ],
-            [
-              60,
-              19
-            ],
-            [
-              61,
-              19
-            ]
-          ],
-          "objects": [
-            "greta_table"
-          ],
+          "tiles": [[59, 18], [59, 19], [60, 19], [61, 19]],
+          "objects": ["greta_table"],
           "default": true
         },
         {
           "id": "hearth",
           "label": "by the hearth",
-          "tiles": [
-            [
-              61,
-              20
-            ],
-            [
-              61,
-              21
-            ]
-          ],
-          "objects": [
-            "greta_hearth"
-          ]
+          "tiles": [[57, 19], [58, 19]],
+          "objects": ["greta_hearth"]
         },
         {
           "id": "bed",
           "label": "by the bed",
-          "tiles": [
-            [
-              58,
-              22
-            ],
-            [
-              59,
-              22
-            ],
-            [
-              60,
-              22
-            ],
-            [
-              58,
-              23
-            ],
-            [
-              59,
-              23
-            ],
-            [
-              60,
-              23
-            ]
-          ],
-          "objects": [
-            "greta_bed"
-          ],
+          "tiles": [[60, 21], [60, 22], [60, 23]],
+          "objects": ["greta_bed"],
           "service": "bed"
         }
       ],
       "adjacency": [
-        [
-          "door",
-          "table"
-        ],
-        [
-          "door",
-          "bed"
-        ],
-        [
-          "table",
-          "hearth"
-        ],
-        [
-          "hearth",
-          "bed"
-        ]
+        ["door", "table"],
+        ["door", "bed"],
+        ["table", "hearth"],
+        ["hearth", "bed"]
       ],
       "entries": {
         "square": "door",
         "bakery": "door"
-      }
+      },
+      "furniture": [
+        { "object": "greta_hearth", "at": [57, 18, 2, 1] },
+        { "object": "greta_table", "at": [60, 18, 2, 1] },
+        { "object": "greta_bed", "at": [61, 21, 1, 2] },
+        { "object": "greta_chest", "at": [61, 23, 1, 1] },
+        { "object": "greta_door", "wall": [56, 20] }
+      ]
     },
     {
       "roomId": "smithy",
-      "footprint": [
-        42,
-        33,
-        10,
-        9
-      ],
+      "footprint": [42, 33, 10, 9],
       "roof": {
         "style": "slate",
         "color": "slate"
       },
       "doors": [
         {
-          "tile": [
-            45,
-            33
-          ],
+          "tile": [45, 33],
           "to": "square"
         },
         {
-          "tile": [
-            46,
-            33
-          ],
+          "tile": [46, 33],
           "to": "square"
         },
         {
-          "tile": [
-            47,
-            33
-          ],
+          "tile": [47, 33],
           "to": "square"
         },
         {
-          "tile": [
-            42,
-            38
-          ],
+          "tile": [42, 38],
           "to": "house_tomas"
         },
         {
-          "tile": [
-            51,
-            37
-          ],
+          "tile": [51, 37],
           "to": "old_mine_entrance"
         }
       ],
@@ -796,210 +360,70 @@
         {
           "id": "doorway",
           "label": "in the doorway",
-          "tiles": [
-            [
-              44,
-              34
-            ],
-            [
-              45,
-              34
-            ],
-            [
-              46,
-              34
-            ],
-            [
-              47,
-              34
-            ],
-            [
-              48,
-              34
-            ]
-          ],
+          "tiles": [[45, 34], [46, 34], [47, 34]],
           "objects": []
         },
         {
           "id": "forge",
           "label": "by the forge",
-          "tiles": [
-            [
-              43,
-              36
-            ],
-            [
-              44,
-              36
-            ],
-            [
-              43,
-              37
-            ],
-            [
-              44,
-              37
-            ],
-            [
-              43,
-              38
-            ],
-            [
-              44,
-              38
-            ]
-          ],
-          "objects": [
-            "smithy_forge"
-          ]
+          "tiles": [[43, 35], [44, 35], [43, 36], [44, 36]],
+          "objects": ["smithy_forge"]
         },
         {
           "id": "anvil",
           "label": "at the anvil",
-          "tiles": [
-            [
-              46,
-              37
-            ],
-            [
-              47,
-              37
-            ],
-            [
-              46,
-              38
-            ],
-            [
-              47,
-              38
-            ]
-          ],
-          "objects": [
-            "smithy_anvil",
-            "smithy_barrel"
-          ],
+          "tiles": [[45, 37], [47, 37], [45, 38], [46, 38], [47, 38]],
+          "objects": ["smithy_anvil", "smithy_barrel"],
           "default": true
         },
         {
           "id": "barrel",
           "label": "by the quenching barrel",
-          "tiles": [
-            [
-              49,
-              36
-            ],
-            [
-              50,
-              36
-            ],
-            [
-              49,
-              37
-            ],
-            [
-              50,
-              37
-            ]
-          ],
+          "tiles": [[49, 36], [49, 37], [50, 36], [50, 37]],
           "objects": []
         },
         {
           "id": "back",
           "label": "at the back wall",
-          "tiles": [
-            [
-              44,
-              40
-            ],
-            [
-              45,
-              40
-            ],
-            [
-              46,
-              40
-            ],
-            [
-              47,
-              40
-            ],
-            [
-              48,
-              40
-            ],
-            [
-              49,
-              40
-            ]
-          ],
+          "tiles": [[44, 40], [45, 40], [46, 40], [47, 40], [48, 40], [49, 40]],
           "objects": []
         }
       ],
       "adjacency": [
-        [
-          "doorway",
-          "forge"
-        ],
-        [
-          "doorway",
-          "anvil"
-        ],
-        [
-          "doorway",
-          "barrel"
-        ],
-        [
-          "forge",
-          "anvil"
-        ],
-        [
-          "anvil",
-          "barrel"
-        ],
-        [
-          "anvil",
-          "back"
-        ],
-        [
-          "forge",
-          "back"
-        ],
-        [
-          "barrel",
-          "back"
-        ]
+        ["doorway", "forge"],
+        ["doorway", "anvil"],
+        ["doorway", "barrel"],
+        ["forge", "anvil"],
+        ["anvil", "barrel"],
+        ["anvil", "back"],
+        ["forge", "back"],
+        ["barrel", "back"]
       ],
       "entries": {
         "square": "doorway",
         "house_tomas": "forge",
         "old_mine_entrance": "barrel"
-      }
+      },
+      "furniture": [
+        { "object": "smithy_forge", "at": [43, 34, 2, 1] },
+        { "object": "smithy_anvil", "at": [46, 37, 1, 1] },
+        { "object": "smithy_barrel", "at": [48, 36, 1, 1] }
+      ]
     },
     {
       "roomId": "house_tomas",
-      "footprint": [
-        30,
-        39,
-        8,
-        8
-      ],
+      "footprint": [30, 39, 8, 8],
       "roof": {
         "style": "thatch",
         "color": "brown"
       },
       "doors": [
         {
-          "tile": [
-            33,
-            39
-          ],
+          "tile": [33, 39],
           "to": "square"
         },
         {
-          "tile": [
-            37,
-            42
-          ],
+          "tile": [37, 42],
           "to": "smithy"
         }
       ],
@@ -1007,177 +431,67 @@
         {
           "id": "door",
           "label": "the doorway",
-          "tiles": [
-            [
-              32,
-              40
-            ],
-            [
-              33,
-              40
-            ],
-            [
-              34,
-              40
-            ]
-          ],
-          "objects": [
-            "tomas_door"
-          ]
+          "tiles": [[32, 40], [33, 40], [34, 40]],
+          "objects": ["tomas_door"]
         },
         {
           "id": "table",
           "label": "at the table",
-          "tiles": [
-            [
-              31,
-              42
-            ],
-            [
-              32,
-              42
-            ],
-            [
-              31,
-              43
-            ],
-            [
-              32,
-              43
-            ]
-          ],
-          "objects": [
-            "tomas_table"
-          ],
+          "tiles": [[31, 42], [32, 42], [33, 42]],
+          "objects": ["tomas_table"],
           "default": true
         },
         {
           "id": "hearth",
           "label": "by the hearth",
-          "tiles": [
-            [
-              35,
-              41
-            ],
-            [
-              36,
-              41
-            ],
-            [
-              35,
-              42
-            ],
-            [
-              36,
-              42
-            ]
-          ],
-          "objects": [
-            "tomas_hearth"
-          ]
+          "tiles": [[35, 41], [36, 41], [36, 42]],
+          "objects": ["tomas_hearth"]
         },
         {
           "id": "bed",
           "label": "by Tomas's bed",
-          "tiles": [
-            [
-              31,
-              44
-            ],
-            [
-              32,
-              44
-            ],
-            [
-              31,
-              45
-            ],
-            [
-              32,
-              45
-            ]
-          ],
-          "objects": [
-            "tomas_bed"
-          ],
+          "tiles": [[32, 44], [32, 45]],
+          "objects": ["tomas_bed"],
           "service": "bed"
         },
         {
           "id": "cot",
           "label": "by Jonas's cot",
-          "tiles": [
-            [
-              35,
-              44
-            ],
-            [
-              36,
-              44
-            ],
-            [
-              35,
-              45
-            ],
-            [
-              36,
-              45
-            ]
-          ],
-          "objects": [
-            "jonas_cot"
-          ],
+          "tiles": [[35, 44], [35, 45]],
+          "objects": ["jonas_cot"],
           "service": "bed"
         }
       ],
       "adjacency": [
-        [
-          "door",
-          "table"
-        ],
-        [
-          "door",
-          "hearth"
-        ],
-        [
-          "table",
-          "bed"
-        ],
-        [
-          "hearth",
-          "cot"
-        ],
-        [
-          "bed",
-          "cot"
-        ],
-        [
-          "table",
-          "hearth"
-        ]
+        ["door", "table"],
+        ["door", "hearth"],
+        ["table", "bed"],
+        ["hearth", "cot"],
+        ["bed", "cot"],
+        ["table", "hearth"]
       ],
       "entries": {
         "square": "door",
         "smithy": "hearth"
-      }
+      },
+      "furniture": [
+        { "object": "tomas_table", "at": [31, 41, 2, 1] },
+        { "object": "tomas_hearth", "at": [35, 40, 2, 1] },
+        { "object": "tomas_bed", "at": [31, 44, 1, 2] },
+        { "object": "jonas_cot", "at": [36, 44, 1, 2] },
+        { "object": "tomas_door", "wall": [33, 39] }
+      ]
     },
     {
       "roomId": "house_lena",
-      "footprint": [
-        6,
-        30,
-        8,
-        8
-      ],
+      "footprint": [6, 30, 8, 8],
       "roof": {
         "style": "thatch",
         "color": "green"
       },
       "doors": [
         {
-          "tile": [
-            13,
-            34
-          ],
+          "tile": [13, 34],
           "to": "square"
         }
       ],
@@ -1185,161 +499,55 @@
         {
           "id": "door",
           "label": "the doorway",
-          "tiles": [
-            [
-              12,
-              33
-            ],
-            [
-              12,
-              34
-            ],
-            [
-              12,
-              35
-            ]
-          ],
-          "objects": [
-            "lena_door"
-          ]
+          "tiles": [[12, 33], [12, 34], [12, 35]],
+          "objects": ["lena_door"]
         },
         {
           "id": "hearth",
           "label": "by the hearth",
-          "tiles": [
-            [
-              7,
-              31
-            ],
-            [
-              8,
-              31
-            ],
-            [
-              7,
-              32
-            ],
-            [
-              8,
-              32
-            ]
-          ],
-          "objects": [
-            "lena_hearth"
-          ]
+          "tiles": [[7, 32], [8, 32]],
+          "objects": ["lena_hearth"]
         },
         {
           "id": "table",
           "label": "at the table",
-          "tiles": [
-            [
-              9,
-              31
-            ],
-            [
-              10,
-              31
-            ],
-            [
-              11,
-              31
-            ],
-            [
-              9,
-              32
-            ],
-            [
-              10,
-              32
-            ],
-            [
-              11,
-              32
-            ]
-          ],
-          "objects": [
-            "lena_table"
-          ],
+          "tiles": [[9, 32], [10, 32], [11, 32], [9, 31]],
+          "objects": ["lena_table"],
           "default": true
         },
         {
           "id": "bed",
           "label": "by the bed",
-          "tiles": [
-            [
-              7,
-              35
-            ],
-            [
-              8,
-              35
-            ],
-            [
-              7,
-              36
-            ],
-            [
-              8,
-              36
-            ]
-          ],
-          "objects": [
-            "lena_bed"
-          ],
+          "tiles": [[8, 34], [8, 35]],
+          "objects": ["lena_bed"],
           "service": "bed"
         },
         {
           "id": "chest",
           "label": "by the linen chest",
-          "tiles": [
-            [
-              10,
-              36
-            ],
-            [
-              11,
-              36
-            ],
-            [
-              12,
-              36
-            ]
-          ],
-          "objects": [
-            "lena_linen_chest",
-            "lena_crutch"
-          ]
+          "tiles": [[9, 36], [10, 35], [11, 35]],
+          "objects": ["lena_linen_chest", "lena_crutch"]
         }
       ],
       "adjacency": [
-        [
-          "door",
-          "table"
-        ],
-        [
-          "door",
-          "chest"
-        ],
-        [
-          "table",
-          "hearth"
-        ],
-        [
-          "hearth",
-          "bed"
-        ],
-        [
-          "bed",
-          "chest"
-        ],
-        [
-          "table",
-          "chest"
-        ]
+        ["door", "table"],
+        ["door", "chest"],
+        ["table", "hearth"],
+        ["hearth", "bed"],
+        ["bed", "chest"],
+        ["table", "chest"]
       ],
       "entries": {
         "square": "door"
-      }
+      },
+      "furniture": [
+        { "object": "lena_hearth", "at": [7, 31, 2, 1] },
+        { "object": "lena_table", "at": [10, 31, 2, 1] },
+        { "object": "lena_bed", "at": [7, 34, 1, 2] },
+        { "object": "lena_linen_chest", "at": [10, 36, 1, 1] },
+        { "object": "lena_crutch", "at": [11, 36, 1, 1] },
+        { "object": "lena_door", "wall": [13, 34] }
+      ]
     }
   ],
   "areas": [
@@ -1350,559 +558,51 @@
         {
           "id": "middle",
           "label": "in the middle of the square",
-          "tiles": [
-            [
-              30,
-              22
-            ],
-            [
-              31,
-              22
-            ],
-            [
-              32,
-              22
-            ],
-            [
-              33,
-              22
-            ],
-            [
-              30,
-              23
-            ],
-            [
-              31,
-              23
-            ],
-            [
-              32,
-              23
-            ],
-            [
-              33,
-              23
-            ],
-            [
-              30,
-              24
-            ],
-            [
-              31,
-              24
-            ],
-            [
-              32,
-              24
-            ],
-            [
-              33,
-              24
-            ],
-            [
-              30,
-              25
-            ],
-            [
-              31,
-              25
-            ],
-            [
-              32,
-              25
-            ],
-            [
-              33,
-              25
-            ]
-          ],
+          "tiles": [[30, 22], [31, 22], [32, 22], [33, 22], [30, 23], [31, 23], [32, 23], [33, 23], [30, 24], [31, 24], [32, 24], [33, 24], [30, 25], [31, 25], [32, 25], [33, 25]],
           "objects": [],
           "default": true
         },
         {
           "id": "north",
           "label": "at the northern edge",
-          "tiles": [
-            [
-              29,
-              17
-            ],
-            [
-              30,
-              17
-            ],
-            [
-              31,
-              17
-            ],
-            [
-              32,
-              17
-            ],
-            [
-              33,
-              17
-            ],
-            [
-              34,
-              17
-            ],
-            [
-              29,
-              18
-            ],
-            [
-              30,
-              18
-            ],
-            [
-              31,
-              18
-            ],
-            [
-              32,
-              18
-            ],
-            [
-              33,
-              18
-            ],
-            [
-              34,
-              18
-            ]
-          ],
+          "tiles": [[29, 17], [30, 17], [31, 17], [32, 17], [33, 17], [34, 17], [29, 18], [30, 18], [31, 18], [32, 18], [33, 18], [34, 18]],
           "objects": []
         },
         {
           "id": "cart",
           "label": "by the broken cart",
-          "tiles": [
-            [
-              36,
-              18
-            ],
-            [
-              37,
-              18
-            ],
-            [
-              38,
-              18
-            ],
-            [
-              39,
-              18
-            ],
-            [
-              36,
-              19
-            ],
-            [
-              37,
-              19
-            ],
-            [
-              38,
-              19
-            ],
-            [
-              39,
-              19
-            ]
-          ],
-          "objects": [
-            "square_cart",
-            "square_bench"
-          ]
+          "tiles": [[36, 18], [36, 19], [37, 19], [38, 19], [39, 18], [39, 19]],
+          "objects": ["square_cart", "square_bench"]
         },
         {
           "id": "east",
           "label": "at the eastern edge",
-          "tiles": [
-            [
-              36,
-              21
-            ],
-            [
-              37,
-              21
-            ],
-            [
-              38,
-              21
-            ],
-            [
-              39,
-              21
-            ],
-            [
-              36,
-              22
-            ],
-            [
-              37,
-              22
-            ],
-            [
-              38,
-              22
-            ],
-            [
-              39,
-              22
-            ],
-            [
-              36,
-              23
-            ],
-            [
-              37,
-              23
-            ],
-            [
-              38,
-              23
-            ],
-            [
-              39,
-              23
-            ],
-            [
-              36,
-              24
-            ],
-            [
-              37,
-              24
-            ],
-            [
-              38,
-              24
-            ],
-            [
-              39,
-              24
-            ],
-            [
-              36,
-              25
-            ],
-            [
-              37,
-              25
-            ],
-            [
-              38,
-              25
-            ],
-            [
-              39,
-              25
-            ],
-            [
-              36,
-              26
-            ],
-            [
-              37,
-              26
-            ],
-            [
-              38,
-              26
-            ],
-            [
-              39,
-              26
-            ],
-            [
-              36,
-              27
-            ],
-            [
-              37,
-              27
-            ],
-            [
-              38,
-              27
-            ],
-            [
-              39,
-              27
-            ],
-            [
-              36,
-              28
-            ],
-            [
-              37,
-              28
-            ],
-            [
-              38,
-              28
-            ],
-            [
-              39,
-              28
-            ],
-            [
-              36,
-              29
-            ],
-            [
-              37,
-              29
-            ],
-            [
-              38,
-              29
-            ],
-            [
-              39,
-              29
-            ],
-            [
-              36,
-              30
-            ],
-            [
-              37,
-              30
-            ],
-            [
-              38,
-              30
-            ],
-            [
-              39,
-              30
-            ]
-          ],
+          "tiles": [[36, 21], [37, 21], [38, 21], [39, 21], [36, 22], [37, 22], [38, 22], [39, 22], [36, 23], [37, 23], [38, 23], [39, 23], [36, 24], [37, 24], [38, 24], [39, 24], [36, 25], [37, 25], [38, 25], [39, 25], [36, 26], [37, 26], [38, 26], [39, 26], [36, 27], [37, 27], [38, 27], [39, 27], [36, 28], [37, 28], [38, 28], [39, 28], [36, 29], [37, 29], [38, 29], [39, 29], [36, 30], [37, 30], [38, 30], [39, 30]],
           "objects": []
         },
         {
           "id": "south",
           "label": "at the southern edge",
-          "tiles": [
-            [
-              29,
-              28
-            ],
-            [
-              30,
-              28
-            ],
-            [
-              31,
-              28
-            ],
-            [
-              32,
-              28
-            ],
-            [
-              33,
-              28
-            ],
-            [
-              34,
-              28
-            ],
-            [
-              29,
-              29
-            ],
-            [
-              30,
-              29
-            ],
-            [
-              31,
-              29
-            ],
-            [
-              32,
-              29
-            ],
-            [
-              33,
-              29
-            ],
-            [
-              34,
-              29
-            ],
-            [
-              29,
-              30
-            ],
-            [
-              30,
-              30
-            ],
-            [
-              31,
-              30
-            ],
-            [
-              32,
-              30
-            ],
-            [
-              33,
-              30
-            ],
-            [
-              34,
-              30
-            ]
-          ],
+          "tiles": [[29, 28], [30, 28], [31, 28], [32, 28], [33, 28], [34, 28], [29, 29], [30, 29], [31, 29], [32, 29], [33, 29], [34, 29], [29, 30], [30, 30], [31, 30], [32, 30], [33, 30], [34, 30]],
           "objects": []
         },
         {
           "id": "west",
           "label": "at the western edge",
-          "tiles": [
-            [
-              24,
-              21
-            ],
-            [
-              25,
-              21
-            ],
-            [
-              26,
-              21
-            ],
-            [
-              27,
-              21
-            ],
-            [
-              24,
-              22
-            ],
-            [
-              25,
-              22
-            ],
-            [
-              26,
-              22
-            ],
-            [
-              27,
-              22
-            ],
-            [
-              24,
-              23
-            ],
-            [
-              25,
-              23
-            ],
-            [
-              26,
-              23
-            ],
-            [
-              27,
-              23
-            ],
-            [
-              24,
-              24
-            ],
-            [
-              25,
-              24
-            ],
-            [
-              26,
-              24
-            ],
-            [
-              27,
-              24
-            ],
-            [
-              24,
-              25
-            ],
-            [
-              25,
-              25
-            ],
-            [
-              26,
-              25
-            ],
-            [
-              27,
-              25
-            ],
-            [
-              24,
-              26
-            ],
-            [
-              25,
-              26
-            ],
-            [
-              26,
-              26
-            ],
-            [
-              27,
-              26
-            ]
-          ],
+          "tiles": [[24, 21], [25, 21], [26, 21], [27, 21], [24, 22], [25, 22], [26, 22], [27, 22], [24, 23], [25, 23], [26, 23], [27, 23], [24, 24], [25, 24], [26, 24], [27, 24], [24, 25], [25, 25], [26, 25], [27, 25], [24, 26], [25, 26], [26, 26], [27, 26]],
           "objects": []
         }
       ],
       "adjacency": [
-        [
-          "middle",
-          "north"
-        ],
-        [
-          "middle",
-          "east"
-        ],
-        [
-          "middle",
-          "south"
-        ],
-        [
-          "middle",
-          "west"
-        ],
-        [
-          "north",
-          "cart"
-        ],
-        [
-          "cart",
-          "east"
-        ],
-        [
-          "east",
-          "south"
-        ],
-        [
-          "south",
-          "west"
-        ],
-        [
-          "west",
-          "north"
-        ]
+        ["middle", "north"],
+        ["middle", "east"],
+        ["middle", "south"],
+        ["middle", "west"],
+        ["north", "cart"],
+        ["cart", "east"],
+        ["east", "south"],
+        ["south", "west"],
+        ["west", "north"]
       ],
       "entries": {
         "tavern": "west",
@@ -1912,7 +612,11 @@
         "house_greta": "east",
         "house_tomas": "south",
         "house_lena": "west"
-      }
+      },
+      "furniture": [
+        { "object": "square_cart", "at": [37, 18, 2, 1] },
+        { "object": "square_bench", "at": [37, 20, 2, 1] }
+      ]
     },
     {
       "roomId": "well",
@@ -1921,129 +625,33 @@
         {
           "id": "well",
           "label": "at the well",
-          "tiles": [
-            [
-              30,
-              7
-            ],
-            [
-              31,
-              7
-            ],
-            [
-              32,
-              7
-            ],
-            [
-              33,
-              7
-            ],
-            [
-              30,
-              8
-            ],
-            [
-              33,
-              8
-            ],
-            [
-              30,
-              9
-            ],
-            [
-              31,
-              9
-            ],
-            [
-              32,
-              9
-            ],
-            [
-              33,
-              9
-            ]
-          ],
+          "tiles": [[30, 7], [31, 7], [32, 7], [33, 7], [30, 8], [33, 8], [30, 9], [31, 9], [32, 9], [33, 9]],
           "objects": [],
           "default": true
         },
         {
           "id": "bench",
           "label": "on the bench by the well",
-          "tiles": [
-            [
-              28,
-              8
-            ],
-            [
-              29,
-              8
-            ],
-            [
-              28,
-              9
-            ],
-            [
-              29,
-              9
-            ]
-          ],
-          "objects": [
-            "well_bench"
-          ]
+          "tiles": [[28, 8], [29, 8]],
+          "objects": ["well_bench"]
         },
         {
           "id": "path",
           "label": "on the path south",
-          "tiles": [
-            [
-              30,
-              10
-            ],
-            [
-              31,
-              10
-            ],
-            [
-              32,
-              10
-            ],
-            [
-              33,
-              10
-            ],
-            [
-              30,
-              11
-            ],
-            [
-              31,
-              11
-            ],
-            [
-              32,
-              11
-            ],
-            [
-              33,
-              11
-            ]
-          ],
+          "tiles": [[30, 10], [31, 10], [32, 10], [33, 10], [30, 11], [31, 11], [32, 11], [33, 11]],
           "objects": []
         }
       ],
       "adjacency": [
-        [
-          "well",
-          "bench"
-        ],
-        [
-          "well",
-          "path"
-        ]
+        ["well", "bench"],
+        ["well", "path"]
       ],
       "entries": {
         "square": "path"
-      }
+      },
+      "furniture": [
+        { "object": "well_bench", "at": [28, 9, 2, 1] }
+      ]
     },
     {
       "roomId": "old_mine_entrance",
@@ -2052,289 +660,102 @@
         {
           "id": "track",
           "label": "on the track",
-          "tiles": [
-            [
-              54,
-              40
-            ],
-            [
-              55,
-              40
-            ],
-            [
-              56,
-              40
-            ],
-            [
-              54,
-              41
-            ],
-            [
-              55,
-              41
-            ],
-            [
-              56,
-              41
-            ],
-            [
-              54,
-              42
-            ],
-            [
-              55,
-              42
-            ],
-            [
-              56,
-              42
-            ]
-          ],
+          "tiles": [[54, 40], [55, 40], [56, 40], [54, 41], [55, 41], [56, 41], [54, 42], [55, 42], [56, 42]],
           "objects": [],
           "default": true
         },
         {
           "id": "mouth",
           "label": "at the mine mouth",
-          "tiles": [
-            [
-              57,
-              39
-            ],
-            [
-              58,
-              39
-            ],
-            [
-              59,
-              39
-            ],
-            [
-              60,
-              39
-            ],
-            [
-              57,
-              40
-            ],
-            [
-              58,
-              40
-            ],
-            [
-              59,
-              40
-            ],
-            [
-              60,
-              40
-            ]
-          ],
-          "objects": [
-            "mine_lantern"
-          ]
+          "tiles": [[57, 39], [58, 39], [59, 39], [60, 39], [57, 40], [58, 40], [59, 40], [60, 40]],
+          "objects": ["mine_lantern"]
         },
         {
           "id": "rubble",
           "label": "among the rubble",
-          "tiles": [
-            [
-              57,
-              43
-            ],
-            [
-              58,
-              43
-            ],
-            [
-              59,
-              43
-            ],
-            [
-              60,
-              43
-            ],
-            [
-              61,
-              43
-            ],
-            [
-              57,
-              44
-            ],
-            [
-              58,
-              44
-            ],
-            [
-              59,
-              44
-            ],
-            [
-              60,
-              44
-            ],
-            [
-              61,
-              44
-            ],
-            [
-              57,
-              45
-            ],
-            [
-              58,
-              45
-            ],
-            [
-              59,
-              45
-            ],
-            [
-              60,
-              45
-            ],
-            [
-              61,
-              45
-            ]
-          ],
-          "objects": [
-            "mine_rope"
-          ]
+          "tiles": [[57, 43], [58, 43], [59, 43], [60, 43], [61, 43], [57, 44], [58, 44], [59, 44], [60, 44], [61, 44], [57, 45], [58, 45], [59, 45], [60, 45], [61, 45]],
+          "objects": ["mine_rope"]
         }
       ],
       "adjacency": [
-        [
-          "track",
-          "mouth"
-        ],
-        [
-          "track",
-          "rubble"
-        ],
-        [
-          "mouth",
-          "rubble"
-        ]
+        ["track", "mouth"],
+        ["track", "rubble"],
+        ["mouth", "rubble"]
       ],
       "entries": {
         "smithy": "track"
-      }
+      },
+      "furniture": [
+        { "object": "mine_lantern", "at": [61, 40, 1, 1] },
+        { "object": "mine_rope", "at": [56, 45, 1, 1] }
+      ]
     }
   ],
   "decor": [
+    { "type": "bedroll", "tile": [8, 22] },
     {
       "type": "barrel",
-      "tile": [
-        19,
-        17
-      ]
+      "tile": [19, 17]
     },
     {
       "type": "crate",
-      "tile": [
-        19,
-        22
-      ]
+      "tile": [19, 22]
     },
     {
       "type": "barrel",
-      "tile": [
-        41,
-        31
-      ]
+      "tile": [41, 31]
     },
     {
       "type": "crate",
-      "tile": [
-        41,
-        32
-      ]
+      "tile": [41, 32]
     },
     {
       "type": "barrel",
-      "tile": [
-        55,
-        22
-      ]
+      "tile": [55, 22]
     },
     {
       "type": "haystack",
-      "tile": [
-        58,
-        28
-      ]
+      "tile": [58, 28]
     },
     {
       "type": "haystack",
-      "tile": [
-        60,
-        28
-      ]
+      "tile": [60, 28]
     },
     {
       "type": "crate",
-      "tile": [
-        14,
-        36
-      ]
+      "tile": [14, 36]
     },
     {
       "type": "barrel",
-      "tile": [
-        28,
-        14
-      ]
+      "tile": [28, 14]
     },
     {
       "type": "flowers",
-      "tile": [
-        9,
-        28
-      ]
+      "tile": [9, 28]
     },
     {
       "type": "flowers",
-      "tile": [
-        11,
-        28
-      ]
+      "tile": [11, 28]
     },
     {
       "type": "flowers",
-      "tile": [
-        14,
-        29
-      ]
+      "tile": [14, 29]
     },
     {
       "type": "flowers",
-      "tile": [
-        30,
-        36
-      ]
+      "tile": [30, 36]
     },
     {
       "type": "rock",
-      "tile": [
-        56,
-        41
-      ]
+      "tile": [56, 41]
     },
     {
       "type": "rock",
-      "tile": [
-        60,
-        44
-      ]
+      "tile": [60, 44]
     },
     {
       "type": "rock",
-      "tile": [
-        62,
-        40
-      ]
+      "tile": [62, 40]
     }
   ]
 }

@@ -48,7 +48,7 @@ const FEET_Y = 46; // the baseline of a standing character
 function skeleton(build, dir, pose, frame) {
   const B = BUILDS[build] ?? BUILDS.average;
   const side = dir === 'left' || dir === 'right';
-  const tw = side ? Math.max(8, B.torsoW - 4) : B.torsoW;
+  const tw = side ? Math.max(9, Math.round(B.torsoW * 0.8)) : B.torsoW; // seen from the side the body is a little narrower, not a stick
   const cx = 16;
   const ls = B.legShort;
   const phase = [0, 1, 0, -1][frame % 4];                 // walk cycle: -1, 0, 1
@@ -69,11 +69,20 @@ function skeleton(build, dir, pose, frame) {
 
   const leg = (sideSign, off, code3) => {
     // sideSign: -1 left of the figure (anatomical right in front view), +1 right
-    const x = side ? cx - Math.floor(lw / 2) + (sideSign > 0 ? 0 : 0) : cx + (sideSign > 0 ? 1 : -lw - 1);
-    const dx = side ? off * 3 : 0; const dy = side ? 0 : off * 2;
-    add(code3[0], x + dx * 0.5, thighY + (side ? 0 : off), lw, thighH + (side ? 0 : 0));
-    add(code3[1], x + dx, shinY + dy, lw, Math.max(2, shinHeff - dy * (side ? 0 : 0)));
-    add(code3[2], x + dx + (side ? 1 : 0), footY + (side ? 0 : off), lw + 1, footH);
+    const x = side ? cx - Math.floor(lw / 2) : cx + (sideSign > 0 ? 1 : -lw - 1);
+    if (side) {
+      // a stride: the legs swing forward and back, both feet stay on the baseline
+      const dx = off * 3;
+      add(code3[0], x + Math.round(dx * 0.5), thighY, lw, thighH);
+      add(code3[1], x + dx, shinY, lw, shinHeff);
+      add(code3[2], x + dx + 1, footY, lw + 1, footH);
+    } else {
+      // front / back: the stepping leg lifts its foot (never drops below the baseline: that read as a glitch)
+      const lift = off > 0 ? 2 : 0;
+      add(code3[0], x, thighY, lw, thighH);
+      add(code3[1], x, shinY, lw, Math.max(2, shinHeff - lift));
+      add(code3[2], x, footY - lift, lw + 1, footH);
+    }
   };
   // far leg first, so the near leg paints over it
   const legs = () => {
@@ -237,7 +246,7 @@ function hairPixels(style, dir, head) {
       for (let j = 4; j < h + 8; j++) { out.push([x + 1, y + j], [x + w - 2, y + j]); if (dir === 'up') row(j, Math.floor(w / 2) - 1, Math.floor(w / 2) + 1); } break;
     default: row(0, 2, w - 2); row(1, 1, w - 1); row(2, 0, w); row(3, 0, w); row(4, 0, 1); row(4, w - 1, w); // short
   }
-  if (dir === 'up') for (let j = 4; j < Math.floor(h * 0.7); j++) if (style !== 'bald') row(j, 1, w - 1); // the back of the head is all hair
+  if (dir === 'up') for (let j = 3; j < h - 1; j++) if (style !== 'bald') row(j, j < h - 2 ? 0 : 1, j < h - 2 ? w : w - 1); // the back of the head is all hair, down to the nape
   if (side) for (let j = 4; j < Math.floor(h * 0.6); j++) if (style !== 'bald') out.push([x + (dir === 'right' ? 0 : w - 1), y + j], [x + (dir === 'right' ? 1 : w - 2), y + j]);
   return out;
 }
@@ -328,6 +337,30 @@ export function composeFrame(pal, spec, dir, pose, frameIndex = 0) {
         if (g.type === 'hood' && code === R.head && dir !== 'up' && x > t.head.x + 2 && x < t.head.x + t.head.w - 3 && y > t.head.y + 4) continue; // the face stays open
         covered.add(y * t.w + x);
       }
+    }
+    // a cloak is a cape: the whole back, from the front only its edges and the shoulders, from the side a strip behind
+    if (g.type === 'cloak' && dir !== 'up') {
+      let tx0 = 1e9; let tx1 = -1; let ty0 = 1e9; let ty1 = -1;
+      for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const c0 = at(x, y); if (c0 === R.chest || c0 === R.abdomen) { tx0 = Math.min(tx0, x); tx1 = Math.max(tx1, x); ty0 = Math.min(ty0, y); ty1 = Math.max(ty1, y); } }
+      const side = dir === 'left' || dir === 'right';
+      const backLeft = dir === 'right'; // facing right, the back is on the left
+      for (const k of [...covered]) {
+        const x = k % t.w; const y = (k / t.w) | 0; const c0 = at(x, y);
+        let keep = false;
+        if (lying) keep = true;
+        else if (!side) keep = ((c0 === R.chest || c0 === R.abdomen) && (x <= tx0 + 1 || x >= tx1 - 1)) || ((c0 === R.uL || c0 === R.uR) && y <= ty0 + 2) || (c0 === R.chest && y === ty0);
+        else keep = (c0 === R.chest || c0 === R.abdomen || c0 === R.tL || c0 === R.tR) && (backLeft ? x <= tx0 + 2 : x >= tx1 - 2);
+        if (!keep) covered.delete(k);
+      }
+      if (side && !lying && tx1 >= 0) {
+        // the cape hangs behind the body down to the knees
+        const fx = backLeft ? tx0 - 1 : tx1 + 1;
+        for (let y = ty0 + 1; y <= Math.min(t.h - 6, ty1 + 9); y++) for (const xx of [fx, backLeft ? fx - 1 : fx + 1]) if (xx >= 0 && xx < t.w && !at(xx, y) && (y > ty0 + 2 || xx === fx)) covered.add(y * t.w + xx);
+      }
+    } else if (g.type === 'cloak' && dir === 'up' && !lying) {
+      let tx0 = 1e9; let tx1 = -1; let ty1 = -1;
+      for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const c0 = at(x, y); if (c0 === R.chest || c0 === R.abdomen) { tx0 = Math.min(tx0, x); tx1 = Math.max(tx1, x); ty1 = Math.max(ty1, y); } }
+      for (let y = ty1 + 1; y <= ty1 + 8; y++) for (let x = tx0 - 1; x <= tx1 + 1; x++) if (x >= 0 && x < t.w && y < t.h - 4) covered.add(y * t.w + x); // the cape falls over the back of the legs
     }
     // wear: holes show what lies beneath
     const holeRate = g.state === 'torn' ? 0.1 : g.state === 'rags' ? 0.34 : 0;

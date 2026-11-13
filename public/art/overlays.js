@@ -76,30 +76,72 @@ function bubble(target, lines, anchorX, bottomY, { ts, bg = PAPER, border = INK,
 /** Reading time of a line in real milliseconds (matches the pace of the server's reading floor). */
 export const readMs = (text) => Math.max(2800, Math.min(9000, 1400 + String(text).length * 55));
 
+/** A short version of a line for the overview: the first clause, cut at a word, with "…". */
+export function summarize(text, max = 22) {
+  let s = String(text ?? '').replace(/\s+/g, ' ').replace(/^["'“‘]+|["'”’]+$/g, '').trim();
+  const first = s.split(/(?<=[.!?;:])\s|\s[—–-]\s/)[0] ?? s;
+  if (first.length >= 6) s = first;
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1);
+  const sp = cut.lastIndexOf(' ');
+  return `${(sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[ ,.;:]+$/, '')}…`;
+}
+
+/** What someone is busy with, in a few words ('' when nothing worth a tag). */
+export function taskText(c) {
+  const a = c.activity ?? {};
+  const d = a.detail ?? {};
+  if (c.alive === false) return '';
+  if (a.type === 'sleeping') return 'sleeping';
+  if (a.type === 'collapsed') return 'collapsed';
+  if (a.type === 'doing' && d.kind !== 'walk') return d.description ?? d.kind ?? 'busy';
+  if (a.type === 'waiting') return d.reason ?? d.description ?? 'waiting';
+  return '';
+}
+
+const TAG_BG = [28, 30, 38, 255];
+const TAG_INK = [236, 230, 210, 255];
+
 /**
  * entries: [{ c, x, y (feet, screen px), head (screen px above the head), color, selected, hovered }]
- * S: { bubbles: Map id -> { text, born }, thoughts: 'off'|'selected'|'all', names: bool, icons: bool, uiScale }
+ * S: { bubbles: Map id -> { text, born }, thoughts: 'off'|'selected'|'all', names, icons, emotionIcons, uiScale }
+ * Focused people (selected or hovered) get the full text; everyone else a one-line summary, for the overview.
  */
 export function drawOverlays(target, entries, S, ms, zoom) {
-  const ts = Math.max(1, Math.round(S.uiScale ?? 1));
+  const ui = Math.max(1, Math.round(S.uiScale ?? 1));
+  const ts = ui * (zoom >= 1 ? 2 : 1);   // text and icons: big enough to read at a glance
   const showDetail = zoom >= 0.5;
   for (const e of entries) {
-    const { c } = e;
     if (e.selected) {
       const pulse = 1 + Math.sin(ms / 260) * 0.5;
       target.ring(e.x, e.y - 2 * zoom, 15 * zoom + pulse, 6 * zoom + pulse / 2, e.color);
     }
   }
   if (!showDetail) return;
-  // names and icons
-  for (const e of entries) {
+  // focused people last, so their full bubbles sit on top
+  const ordered = [...entries].sort((a, b) => (a.selected || a.hovered ? 1 : 0) - (b.selected || b.hovered ? 1 : 0) || a.y - b.y);
+  for (const e of ordered) {
     const { c } = e;
+    const focused = e.selected || e.hovered;
     let y = e.head;
-    if (S.names !== false && (zoom >= 1 || e.selected || e.hovered)) {
+    // name
+    if (S.names !== false && (zoom >= 1 || focused)) {
       const t = cachedText(c.name, e.color);
       target.blit(t, e.x - (t.w * ts) / 2, y - t.h * ts, { scale: ts });
-      y -= t.h * ts + 1;
+      y -= t.h * ts + ts;
     }
+    // what they are doing
+    const task = taskText(c);
+    if (task && zoom >= 1) {
+      const short = summarize(task, focused ? 34 : 16);
+      const label = /…$/.test(short) ? short : `${short}…`;
+      const t = cachedText(label, TAG_INK, [0, 0, 0, 0]);
+      const w = t.w * ts + 4 * ts; const h = t.h * ts + 2 * ts;
+      target.rect(e.x - w / 2, y - h, w, h, TAG_BG, 0.82);
+      target.blit(t, e.x - w / 2 + 2 * ts, y - h + ts, { scale: ts });
+      y -= h + ts;
+    }
+    // icons: feelings and the body
     if (S.icons !== false && zoom >= 1) {
       const icons = [];
       const dom = c.emotion?.dominant;
@@ -109,32 +151,33 @@ export function drawOverlays(target, entries, S, ms, zoom) {
         if (c.activity?.type === 'sleeping') icons.push('sleep');
         if ((c.body?.bleeding ?? 0) > 0.5) icons.push('blood');
         if ((c.body?.pain ?? 0) >= 6) icons.push('pain');
-        if (c.activity?.type === 'thinking' && c.alive !== false) icons.push('think');
+        if (c.activity?.type === 'thinking') icons.push('think');
       }
       const crit = c.body?.critical;
       const parts = icons.map(iconImg).filter(Boolean);
-      let w = parts.length * 9 * ts;
       let critImg = null;
-      if (crit != null && c.alive !== false) { critImg = cachedText(`${Math.max(0, Math.round(crit))}m`, [255, 120, 110, 255]); w += critImg.w * ts; }
+      if (crit != null && c.alive !== false) critImg = cachedText(`${Math.max(0, Math.round(crit))} min`, [255, 120, 110, 255]);
+      const iw = 10 * ts;
+      let w = parts.length * iw + (critImg ? critImg.w * ts + 2 : 0);
       let x = e.x - w / 2;
-      for (const p of parts) { target.blit(p, x, y - 9 * ts, { scale: ts }); x += 9 * ts; }
-      if (critImg) target.blit(critImg, x, y - critImg.h * ts, { scale: ts });
+      for (const p of parts) { target.blit(p, x, y - 9 * ts, { scale: ts }); x += iw; }
+      if (critImg) target.blit(critImg, x + 2, y - critImg.h * ts, { scale: ts });
       if (parts.length || critImg) y -= 10 * ts;
     }
     e.top = y;
   }
-  // speech bubbles (a spoken line stays until its reading time is over) and thoughts
-  for (const e of entries) {
+  // speech (a spoken line stays for its reading time) and thoughts
+  for (const e of ordered) {
     const { c } = e;
+    const focused = e.selected || e.hovered;
     const b = S.bubbles?.get(c.id);
     const age = b ? ms - b.born : Infinity;
     if (b && age < readMs(b.text)) {
-      const lines = wrapText(b.text, 26, 4);
-      bubble(target, lines, e.x, e.top - 2, { ts, alpha: Math.min(1, age / 120) });
-      e.top -= (lines.length * (CELL_H + 1) + 14) * ts;
-    } else if (S.thoughts && S.thoughts !== 'off' && c.lastInnerThought && c.alive !== false && (S.thoughts === 'all' || e.selected || e.hovered) && zoom >= 1) {
-      const lines = wrapText(c.lastInnerThought, 30, 3);
-      bubble(target, lines, e.x, e.top - 4, { ts, bg: THOUGHT, border: [90, 104, 150, 255], alpha: 0.92, round: true });
+      const lines = focused ? wrapText(b.text, 26, 4) : [summarize(b.text, 22)];
+      bubble(target, lines, e.x, e.top - 2, { ts: focused ? ts : ui * (zoom >= 1 ? 2 : 1), alpha: Math.min(1, age / 120) });
+    } else if (S.thoughts && S.thoughts !== 'off' && c.lastInnerThought && c.alive !== false && zoom >= 1 && (focused || S.thoughts === 'all')) {
+      const lines = focused ? wrapText(c.lastInnerThought, 30, 3) : [summarize(c.lastInnerThought, 20)];
+      bubble(target, lines, e.x, e.top - 4, { ts, bg: THOUGHT, border: [90, 104, 150, 255], alpha: focused ? 0.95 : 0.8, round: true });
     }
   }
 }
