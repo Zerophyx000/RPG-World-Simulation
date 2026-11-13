@@ -232,10 +232,7 @@ export class World {
     if (c.conversationId) {
       const conv = this.conversations.get(c.conversationId);
       this.conversations.leave(c, { reason: 'collapsed' });
-      // The room sees them go down (leave() only tells the remaining participants).
-      this.perceive(citizensIn(this.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
-        kind: 'action', text: `${c.name} sways and slumps down.`, importance: 6, sourceId: c.id, roomId: c.location,
-      });
+      // The room sees them go down through startSleep(forced): "X sways and slumps to the ground, asleep."
       if (conv) this.saveCitizen(c); // leave() may have ended the conversation and saved the others
     }
     c.needs.collapsingSince = null;
