@@ -7,6 +7,10 @@ import { config } from './config.js';
 import { listEvents, getEvent, listConversations, getConversation, timeline, interactions, pairLines, usage, memoriesOf, consolidationsOf, beliefs } from './readmodels.js';
 import { loadDirectorPresets } from './world/scenarios.js';
 import { artContent } from './world/maps.js';
+import { perceptionOf } from './ui/perception.js';
+import { interest } from './ui/interest.js';
+import { socialView } from './ui/social.js';
+import { replay } from './ui/replay.js';
 import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
@@ -76,7 +80,14 @@ export function createServer(world, { observer = null } = {}) {
     ['GET', /^\/api\/world$/, () => world.snapshot()],
     ['GET', /^\/api\/looks$/, () => world.looks()],                 // step 8: appearances for the map
     ['GET', /^\/api\/maps$/, () => world.maps.view()],              // step 8: map files (footprints, doors, spots)
-    ['GET', /^\/api\/art$/, () => artContent()],                    // step 8: palette + object recipes (content/art)
+    ['GET', /^\/api\/art$/, () => artContent()],
+    // step 9: the living map (read-only, never reaches citizens)
+    ['GET', /^\/api\/wear$/, () => world.wear.view()],
+    ['GET', /^\/api\/decals$/, () => world.decals.list()],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/perception$/, (_req, _body, [id]) => perceptionOf(world, id)],
+    ['GET', /^\/api\/interest$/, () => interest(world)],
+    ['GET', /^\/api\/map\/social$/, () => socialView(world)],
+    ['GET', /^\/api\/replay$/, (req) => { const q = new URL(req.url, 'http://x').searchParams; return replay(world, { from: q.get('from'), to: q.get('to') }); }],
 
     ['GET', /^\/api\/citizens\/([\w-]+)$/, (_req, _body, [id]) => world.citizenDetail(id)],
 

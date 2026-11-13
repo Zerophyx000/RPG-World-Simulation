@@ -122,6 +122,7 @@ export function directorEvent(world, input) {
   if (roomEffect) {
     room.effects = activeEffects(room, world.now);
     room.effects.push({ id: `fx${ev.id}`, text: roomEffect.text, until: world.now + roomEffect.durationGameMinutes, sourceEventId: ev.id });
+    world.hooks.onRoomEffect?.(room, room.effects.at(-1), { eventId: ev.id }); // step 9: lasting marks (decals)
     world.saveRoom(room);
   }
 

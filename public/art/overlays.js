@@ -126,7 +126,7 @@ export function drawOverlays(target, entries, S, ms, zoom) {
     let y = e.head;
     // name
     if (S.names !== false && (zoom >= 1 || focused)) {
-      const t = cachedText(c.name, e.color);
+      const t = cachedText(S.nameOf?.(c) ?? c.name, e.color); // step 9: the subjective camera names strangers by their look
       target.blit(t, e.x - (t.w * ts) / 2, y - t.h * ts, { scale: ts });
       y -= t.h * ts + ts;
     }
@@ -173,7 +173,8 @@ export function drawOverlays(target, entries, S, ms, zoom) {
     const b = S.bubbles?.get(c.id);
     const age = b ? ms - b.born : Infinity;
     if (b && age < readMs(b.text)) {
-      const lines = focused ? wrapText(b.text, 26, 4) : [summarize(b.text, 22)];
+      const said = S.muted?.(c) ? '…' : b.text; // step 9: a deaf viewer sees only that someone speaks
+      const lines = focused ? wrapText(said, 26, 4) : [summarize(said, 22)];
       bubble(target, lines, e.x, e.top - 2, { ts: focused ? ts : ui * (zoom >= 1 ? 2 : 1), alpha: Math.min(1, age / 120) });
     } else if (S.thoughts && S.thoughts !== 'off' && c.lastInnerThought && c.alive !== false && zoom >= 1 && (focused || S.thoughts === 'all')) {
       const lines = focused ? wrapText(c.lastInnerThought, 30, 3) : [summarize(c.lastInnerThought, 20)];

@@ -168,6 +168,7 @@ function startLeg(world, c, toId, trip) {
   }));
   const fromSpot = c.spot ?? null;
   c.spot = null;
+  world.hooks.onTripStart?.(c, { kind: 'room', fromRoom: room.id, fromSpot, toRoom: dest.id, toSpot: world.maps.entrySpot(dest.id, room.id), minutes });
   world.setActivity(c, {
     type: 'moving',
     until: world.now + minutes,
@@ -182,6 +183,7 @@ export function arrive(world, c) {
   const origin = world.rooms.get(d.from);
   c.location = dest.id;
   c.spot = world.maps.entrySpot(dest.id, origin?.id ?? null); // step 8: through the door they came by
+  world.hooks.onTrip?.(c, { kind: 'room', fromRoom: origin?.id ?? null, fromSpot: d.fromSpot ?? null, toRoom: dest.id, toSpot: c.spot });
   if (d.crawl && c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 2 * 6.5 * ((d.travelMinutes ?? 0) / 60)); // crawling tires three times as fast
   if (c.carryingPerson) {
     if (c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 6.5 * ((d.travelMinutes ?? 0) / 60)); // carrying someone doubles the effort
@@ -256,7 +258,9 @@ export function relocate(world, c, toId, { text = null } = {}) {
     kind: 'arrive', text: `${ref(c)} is suddenly here.`, importance: 5, sourceId: c.id, roomId: dest.id,
   });
   c.location = dest.id;
+  const before = { room: c.location, spot: c.spot };
   c.spot = world.maps.startSpot(dest.id); // step 8: a director move puts them at the room's default spot
+  world.hooks.onTrip?.(c, { kind: 'teleport', fromRoom: before.room ?? null, fromSpot: before.spot ?? null, toRoom: dest.id, toSpot: c.spot });
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now);
   const notice = world.objects.arrive(c, dest.id);
   world.memory.seeRoom(dest.id);
@@ -374,7 +378,7 @@ function heardWords(world, c, o, volume, addressee) {
 }
 
 function speak(world, c, text, addressee, present, room, { thought = null, eventId = null, volume = 'normal' } = {}) {
-  const rec = world.conversations.recordLine(c, text, addressee, { thought, eventId });
+  const rec = world.conversations.recordLine(c, text, addressee, { thought, eventId, volume });
   const toId = rec?.toId ?? null;
   const target = toId ? world.citizens.get(toId) : null;
   const cutIn = new Set(rec?.cutIn ?? []);
@@ -465,6 +469,7 @@ function startWalk(world, c, call, { spot }) {
   const minutes = world.maps.walkMinutes(room, c.spot, spot, c.body?.capacities?.moving ?? 1);
   const label = world.maps.label(room, spot) ?? 'there';
   world.logEvent('walk', { actorId: c.id, location: room, from: c.spot, to: spot, minutes: Math.round(minutes * 100) / 100, for: call.name });
+  world.hooks.onTripStart?.(c, { kind: 'spot', fromRoom: room, fromSpot: c.spot, toRoom: room, toSpot: spot, minutes });
   world.setActivity(c, {
     type: 'doing', until: world.now + minutes,
     detail: { kind: 'walk', description: `walking over to ${label}`, minutes, fromSpot: c.spot, toSpot: spot, call: { name: call.name, arguments: call.arguments, innerThought: call.innerThought, planned: call.planned, introduce: call.introduce, teach: call.teach, truncated: call.truncated } },
@@ -474,7 +479,9 @@ function startWalk(world, c, call, { spot }) {
 
 function finishWalk(world, c, a) {
   const d = a.detail;
+  const fromSpot = c.spot;
   c.spot = d.toSpot;
+  world.hooks.onTrip?.(c, { kind: 'spot', fromRoom: c.location, fromSpot, toRoom: c.location, toSpot: d.toSpot });
   if (c.carryingPerson) { const p = world.citizens.get(c.carryingPerson); if (p) p.spot = d.toSpot; }
   world.setActivity(c, { type: 'idle' });
   // the action now happens, and re-validates as usual (the target may have moved meanwhile)

@@ -70,6 +70,7 @@ export function appearance(world, c) {
     id: c.id, build: look.build, look: { skin: look.skin, hair: look.hair, facial: look.facial, eyes: look.eyes },
     garments, wounds, missing: [...new Set(missing)], aids, pallor, flush,
     expression: expressionOf(world, c), dead: !c.alive,
+    traits: c.persona?.traits ?? null, // step 9: personality flavours idle animation (god-view UI only)
     asleep: c.activity?.type === 'sleeping', unconscious: status.includes('unconscious') || c.activity?.type === 'collapsed',
   };
 }

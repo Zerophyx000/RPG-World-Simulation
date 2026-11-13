@@ -614,3 +614,8 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .map-dock { width: 42%; min-width: 320px; max-width: 640px; border-left: 1px solid var(--line); overflow: auto; padding: 12px; background: var(--bg); }
 .map-dock.hidden { display: none; }
+
+/* ---- step 9: the on-map UI layer ---- */
+.map-ui { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.map-ui > div > * { pointer-events: auto; }
+.map-caption { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: #14171dee; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 12px; font-size: 13px; z-index: 5; pointer-events: none; }

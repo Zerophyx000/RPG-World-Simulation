@@ -11,6 +11,9 @@ import { config } from './config.js';
 import { backup } from './db.js';
 import { loadRooms, citizensIn, danglingExits, saveRoom, activeEffects, activeServices, serviceNames } from './world/rooms.js';
 import { appearance } from './world/appearance.js';
+import { Wear } from './world/wear.js';
+import { Decals } from './world/decals.js';
+import { Positions } from './world/positions.js';
 import { createCitizenStore, citizenFromInput, citizenSummary, needsSummary, bodySummary } from './world/citizens.js';
 import { makeStimulus, pushToInbox, mergeInboxes, IMPORTANCE } from './world/perception.js';
 import { applyAction, resolveTimers, applyHeldSay, wake, startSleep, collapse, die, finishMeal } from './world/actions.js';
@@ -74,7 +77,10 @@ export class World {
     this.scheduler = new Scheduler(this);
     this.needs = new Needs();
     this.body = new Body(this);           // step 7B: parts, conditions, blood, healing, death (the one writer)
-    this.maps = new Maps(this);           // step 8: footprints, doors and named spots per room (checked against the room graph)
+    this.maps = new Maps(this);
+    this.wear = new Wear(this);            // step 9: worn paths (tiles walked over, decaying)
+    this.decals = new Decals(this);        // step 9: lasting marks: soot, scorch, rubble, puddles, blood
+    this.positions = new Positions(this);  // step 9: every position change as an event (replay)           // step 8: footprints, doors and named spots per room (checked against the room graph)
     this.quiet = new Quiet(this);
     this.rooms = new Map();
     this.citizens = new Map();
@@ -88,6 +94,10 @@ export class World {
     this.hooks = {
       onSleepStart: (citizen) => consolidateOnSleep(this, citizen),
       onWake(_citizen, _sleptMinutes) {},
+      // step 9 (visual record only, never perceived): trips feed the wear map and the replay log; room effects leave marks
+      onTripStart: (citizen, trip) => this.positions?.onTripStart(citizen, this.#withPath(trip)),
+      onTrip: (citizen, trip) => { const t = this.#withPath(trip); this.wear?.onTrip(citizen, t); this.positions?.onTrip(citizen, t); },
+      onRoomEffect: (room, effect, info) => this.decals?.onRoomEffect(room, effect, info),
     };
     this.lastCoPresence = -Infinity;
 
@@ -107,6 +117,7 @@ export class World {
     upsertRooms(this.db); // rooms are content: every boot brings new services/appearances into a live world
     this.rooms = loadRooms(this.db);
     this.maps.load(); // fails loudly if a room has no footprint or an exit no door
+    this.wear.load(); this.decals.load(); // step 9: persisted traces
     for (const bad of danglingExits(this.rooms)) console.warn(`[world] exit to unknown room: ${bad}`);
 
     this.scenario = activeScenario(this.db, config.scenario);
@@ -182,7 +193,14 @@ export class World {
     this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
     this.quiet.update();
     this.scheduler.run();
+    this.wear?.tick(now);   // step 9: decay and hourly persistence (self-throttled)
+    this.decals?.tick(now);
     if (Date.now() - this.lastFlush >= NEEDS_FLUSH_MS) this.#flushNeeds();
+  }
+
+  /** step 9: the tile path of a trip, computed on the server with the map's A* (furniture blocks). */
+  #withPath(trip) {
+    try { return { ...trip, path: this.maps.tilePath(trip.fromRoom, trip.fromSpot, trip.toRoom, trip.toSpot) }; } catch { return { ...trip, path: null }; }
   }
 
   #updateBodies(elapsed, now) {

@@ -37,7 +37,8 @@ if (args.local) {
 if (args.save) fs.writeFileSync(args.save, JSON.stringify(data));
 
 const pal = makePalette(data.art.palette);
-const scene = createScene({ pal, recipes: data.art.recipes, maps: data.maps });
+const { createQuality } = await import('../public/render/quality.js');
+const scene = createScene({ pal, recipes: data.art.recipes, maps: data.maps, art: data.art, quality: createQuality(args.quality ?? 'high') });
 const W = Number(args.w ?? 960); const H = Number(args.h ?? 640);
 const zoom = Number(args.zoom ?? 1);
 const clock = data.world.clock;

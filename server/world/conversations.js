@@ -121,7 +121,7 @@ export class Conversations {
    *   toId: who the line is effectively addressed to (explicit, or implicitly the last other speaker)
    *   cutIn: participants whose "cut in" turn came up (every few lines)
    */
-  recordLine(speaker, text, addressee, { thought = null, eventId = null } = {}) {
+  recordLine(speaker, text, addressee, { thought = null, eventId = null, volume = 'normal' } = {}) {
     let conv = this.of(speaker);
     if (addressee) {
       const theirs = this.of(addressee);
@@ -138,7 +138,7 @@ export class Conversations {
 
     const now = this.world.now;
     const toId = addressee?.id ?? this.#implicitAddressee(conv, speaker.id);
-    conv.lines.push({ speakerId: speaker.id, toId, text, thought: thought || null, gameTime: now, eventId });
+    conv.lines.push({ speakerId: speaker.id, toId, text, thought: thought || null, gameTime: now, eventId, ...(volume !== 'normal' ? { volume } : {}) }); // step 9: volume for the map
     conv.lastLineAt = now;
     this.#setFloor(conv, text);
 

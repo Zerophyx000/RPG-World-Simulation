@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_DIR } from './scenarios.js';
-import { mapRooms, validateMaps } from '../../public/art/mapdata.js';
+import { mapRooms, validateMaps, buildGrid, findPath, anchorTile } from '../../public/art/mapdata.js';
 
 export const NEAR_MINUTES = 0.3;
 export const ACROSS_MINUTES = 0.8;
@@ -132,6 +132,63 @@ export class Maps {
     return this.defaultSpot(roomId) ?? this.doorSpot(roomId);
   }
 
+  /** step 9: the map (id) a room is drawn on, or null. */
+  mapOf(roomId) {
+    return this.byRoom.get(roomId)?.map.id ?? null;
+  }
+
+  /** step 9: the walk grid of a map with hand-placed furniture blocking (cached). */
+  grid(mapId) {
+    this.grids ??= new Map();
+    if (this.grids.has(mapId)) return this.grids.get(mapId);
+    const map = this.maps.find((m) => m.id === mapId);
+    if (!map) return null;
+    const g = buildGrid(map);
+    for (const room of mapRooms(map)) {
+      for (const f of room.furniture ?? []) {
+        if (!f.at) continue;
+        const [x0, y0, w = 1, h = 1] = f.at;
+        for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (g.walk[y]) g.walk[y][x] = false;
+      }
+    }
+    this.grids.set(mapId, g);
+    return g;
+  }
+
+  /** step 9: the tile a spot is walked to (its first tile; the map's default for unknown spots). */
+  spotTile(roomId, spotId) {
+    const s = this.spot(roomId, spotId) ?? this.spot(roomId, this.defaultSpot(roomId));
+    return s?.tiles?.[0] ?? null;
+  }
+
+  /**
+   * step 9: the tiles walked on a trip (spot to spot in a room, or room to room through the doors), computed with the
+   * same A* as the client. [[x, y], ...] or null when there is no map or no path. Start and end tiles may be blocked.
+   */
+  tilePath(fromRoom, fromSpot, toRoom, toSpot) {
+    const mapId = this.mapOf(toRoom) ?? this.mapOf(fromRoom);
+    if (!mapId || (fromRoom && this.mapOf(fromRoom) !== mapId)) return null;
+    const grid = this.grid(mapId);
+    const a = fromRoom ? this.spotTile(fromRoom, fromSpot) : null;
+    const b = this.spotTile(toRoom, toSpot);
+    if (!a || !b || !grid) return null;
+    const legs = [a];
+    if (fromRoom && fromRoom !== toRoom) {
+      const ra = this.byRoom.get(fromRoom)?.room; const rb = this.byRoom.get(toRoom)?.room;
+      const outA = ra && anchorTile(ra, toRoom); const inB = rb && anchorTile(rb, fromRoom);
+      if (outA) legs.push(outA);
+      if (inB) legs.push(inB);
+    }
+    legs.push(b);
+    const out = [];
+    for (let i = 1; i < legs.length; i++) {
+      const p = walkPath(grid, legs[i - 1], legs[i]);
+      if (!p) return null;
+      out.push(...(out.length ? p.slice(1) : p));
+    }
+    return out;
+  }
+
   /** What the renderer needs: the map files and the spot data. */
   view() {
     return { maps: this.maps };
@@ -146,5 +203,17 @@ export function artContent() {
   const recipes = fs.existsSync(odir)
     ? fs.readdirSync(odir).filter((f) => f.endsWith('.json')).sort().flatMap((f) => JSON.parse(fs.readFileSync(path.join(odir, f), 'utf8')))
     : [];
-  return { palette, recipes };
+  const readOpt = (f) => (fs.existsSync(path.join(dir, f)) ? JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) : null);
+  return { palette, recipes, clutter: readOpt('clutter.json'), activityPoses: readOpt('activity-poses.json') }; // step 9
+}
+
+/** A* that lets the start and end tiles be blocked (a bed, a chair). */
+function walkPath(grid, a, b) {
+  const sa = grid.walk[a[1]]?.[a[0]]; const sb = grid.walk[b[1]]?.[b[0]];
+  if (grid.walk[a[1]]) grid.walk[a[1]][a[0]] = true;
+  if (grid.walk[b[1]]) grid.walk[b[1]][b[0]] = true;
+  const p = findPath(grid, a, b);
+  if (grid.walk[a[1]]) grid.walk[a[1]][a[0]] = sa;
+  if (grid.walk[b[1]]) grid.walk[b[1]][b[0]] = sb;
+  return p;
 }

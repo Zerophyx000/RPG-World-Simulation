@@ -14,13 +14,27 @@ import { createScene, ZOOMS } from '../art/scene.js';
 import { CanvasTarget } from '../art/target.js';
 import { hex, Img } from '../art/pixels.js';
 import { TILE, buildGrid } from '../art/mapdata.js';
+import { quality } from '../render/quality.js';
+import { createDirectorCam } from '../render/directorcam.js';
+import { createReplay } from '../render/replay.js';
+import { onEvent as audioEvent } from '../render/audio.js';
+import * as convPanelUi from './map-ui/convpanel.js';
+import * as hudUi from './map-ui/hud.js';
+import * as toastsUi from './map-ui/toasts.js';
+import * as watchlistUi from './map-ui/watchlist.js';
+import * as searchUi from './map-ui/search.js';
+import * as settingsUi from './map-ui/settings.js';
+import * as replaybarUi from './map-ui/replaybar.js';
+
+// step 9: the on-map UI modules, each mounted into its own layer over the canvas
+const UI_MODULES = [['convpanel', convPanelUi], ['hud', hudUi], ['toasts', toastsUi], ['watchlist', watchlistUi], ['search', searchUi], ['settings', settingsUi], ['replaybar', replaybarUi]];
 
 let assets = null; // { pal, scene, maps }
 async function loadAssets() {
   if (assets) return assets;
   const [maps, art] = await Promise.all([api.get('/api/maps'), api.get('/api/art')]);
   const pal = makePalette(art.palette);
-  assets = { pal, maps: maps.maps, scene: createScene({ pal, recipes: art.recipes, maps: maps.maps }) };
+  assets = { pal, art, maps: maps.maps, scene: createScene({ pal, recipes: art.recipes, maps: maps.maps, art, quality }) };
   return assets;
 }
 
@@ -53,6 +67,8 @@ export function mount(el) {
           <canvas id="mp-mini" class="map-mini" width="64" height="48"></canvas>
           <div class="map-tip hidden" id="mp-tip"></div>
           <div class="map-loading" id="mp-loading">Drawing the village…</div>
+          <div class="map-caption hidden" id="mp-caption"></div>
+          <div class="map-ui" id="mp-ui"></div>
         </div>
         <div class="map-dock hidden" id="mp-dockpane"></div>
       </div>
@@ -74,6 +90,8 @@ export function mount(el) {
     now: 0, mapId: null, rooms: store.rooms, citizens: store.citizens, objects: store.objects, objectsRev: 1, colorOf: rgbOf,
     selectedId: store.selectedId, hoverId: null, hoverRoom: null, bubbles: new Map(), holding: new Set(), faceOf: new Map(),
     uiScale: 1, names: true, icons: true, trueView: true, thoughts: opt.thoughts, roofMode: opt.roofs, rain: false, visibleObjectIds: null,
+    // step 9: data for the living map (all read-only, polled from the server)
+    social: null, wear: null, decals: [], events: store.events, observer: store.observer, subjective: null, god: true,
   };
   let hits = []; let lastEntries = [];
   canvas.mapHits = () => hits.map((h) => ({ ...h, x: h.x / dpr, y: h.y / dpr, w: h.w / dpr, h: h.h / dpr })); // for tests and tools: pickable things in CSS pixels
@@ -122,6 +140,45 @@ export function mount(el) {
     S.visibleObjectIds = ids; S.objectsRev++;
   }
   const refreshSurface = debounce(refreshSurfaceNow, 500);
+
+  // ---------- step 9: controllers, polling, the api the on-map UI modules use ----------
+  const fetchJson = (url) => api.get(url);
+  const directorCam = createDirectorCam({ fetchJson });
+  const replay = createReplay({ fetchJson });
+  const caption = $('#mp-caption');
+  const uis = [];
+  let subjectiveOn = false; let perception = null; let pollTimer = null; let pollN = 0; let replayBarOpen = false;
+  async function pollExtras() {
+    pollN++;
+    const want = (url, every) => pollN % every === 1 || every === 1;
+    const get = async (url) => { try { return await fetchJson(url); } catch { return null; } };
+    if (want('social', 3)) { const s = await get('/api/map/social'); if (s) S.social = s; }
+    if (want('decals', 30)) { const d = await get('/api/decals'); if (d) S.decals = d; }
+    if (want('wear', 60) && quality.get('wear')) { const wr = await get('/api/wear'); if (wr) S.wear = wr; }
+    if (subjectiveOn && S.selectedId && pollN % 2 === 0) { const p = await get(`/api/citizens/${encodeURIComponent(S.selectedId)}/perception`); if (p) perception = p; }
+  }
+  offs.push(subscribe('event', (e) => { try { audioEvent(e); } catch { /* the audio hook must never break the map */ } }));
+  const mapApi = {
+    store, quality, directorCam, replay, prefs, colorOf,
+    get pal() { return pal; },
+    get scene() { return sc; },
+    select,
+    follow(id) { if (id) select(id); follow = Boolean(id); prefs.set('mapFollow', follow); markSegs(); },
+    isFollowing: () => follow,
+    jumpTo(id) { if (store.citizens.has(id)) jumpToCitizen(id); else if (store.rooms.has(id)) jumpToRoom(id); else if (store.objects.has(id)) { const o = store.objects.get(id); if (o.roomId) jumpToRoom(o.roomId); else if (o.holderId) jumpToCitizen(o.holderId); } },
+    /** World pixels → CSS pixels inside the stage. */
+    worldToScreen(wx, wy) { return { x: (wx - cam.x) * cam.zoom + cam.w / dpr / 2, y: (wy - cam.y) * cam.zoom + cam.h / dpr / 2 }; },
+    getCamera: () => ({ x: cam.x, y: cam.y, zoom: cam.zoom, w: cam.w / dpr, h: cam.h / dpr }),
+    stageSize: () => ({ w: cam.w / dpr, h: cam.h / dpr }),
+    isGod: () => opt.god === 'god',
+    openConversation(id) { if ((store.viewList ?? []).some((v) => v.id === 'conversations')) { setDock('conversations'); } navigateConversation(id); },
+    setSubjective(on) { subjectiveOn = Boolean(on) && Boolean(S.selectedId); if (subjectiveOn) { follow = true; markSegs(); pollExtras(); } },
+    isSubjective: () => subjectiveOn,
+    toggleDirectorCam() { if (directorCam.active) directorCam.stop(); else { follow = false; directorCam.start(); } markSegs(); },
+    toggleReplayBar() { replayBarOpen = !replayBarOpen; },
+    isReplayBarOpen: () => replayBarOpen,
+  };
+  function navigateConversation(id) { import('../store.js').then(({ emit }) => emit('navigate', { view: 'conversations', params: { conversationId: id } })).catch(() => {}); }
 
   // ---------- toolbar ----------
   function markSegs() {
@@ -233,7 +290,7 @@ export function mount(el) {
     const r = canvas.getBoundingClientRect();
     if (drag) {
       const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; follow = false; goal = null; markSegs(); }
+      if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; follow = false; goal = null; directorCam.pause(); markSegs(); }
       if (drag.moved) { cam.x = drag.cx - dx / cam.zoom; cam.y = drag.cy - dy / cam.zoom; canvas.style.cursor = 'grabbing'; return; }
     }
     hover(e.clientX - r.left, e.clientY - r.top);
@@ -248,6 +305,7 @@ export function mount(el) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const r = canvas.getBoundingClientRect();
+    directorCam.pause();
     zoomBy(e.deltaY < 0 ? 1 : -1, { x: e.clientX - r.left, y: e.clientY - r.top });
   }, { passive: false });
   const pick = (px, py) => {
@@ -305,11 +363,22 @@ export function mount(el) {
       else if (e.key === '-' || e.key === '_') zoomBy(-1);
       else if (e.key === '0') fit();
       else if (e.key === 'f' || e.key === 'F') { follow = !follow; prefs.set('mapFollow', follow); markSegs(); }
-      else if (/^(arrow(up|down|left|right)|[wasd])$/i.test(e.key)) { keys.add(e.key.toLowerCase()); if (e.key.startsWith('Arrow')) e.preventDefault(); }
+      else if (e.key === 's' || e.key === 'S') mapApi.setSubjective(!mapApi.isSubjective());
+      else if (e.key === 'd' || e.key === 'D') mapApi.toggleDirectorCam();
+      else if (e.key === 'r' || e.key === 'R') mapApi.toggleReplayBar();
+      else if (e.key === 'g' || e.key === 'G') { opt.god = opt.god === 'god' ? 'plain' : 'god'; prefs.set('mapGod', opt.god); markSegs(); }
+      else if (e.key === 't' || e.key === 'T') { opt.objView = opt.objView === 'true' ? 'surface' : 'true'; prefs.set('mapObjView', opt.objView); markSegs(); refreshSurfaceNow(); }
+      else if (/^[0-9]$/.test(e.key)) {
+        // digits pick a dock tab here (0 = none) instead of switching the main view
+        e.stopImmediatePropagation(); e.preventDefault();
+        const docks = (store.viewList ?? []).filter((v) => !['map', 'world'].includes(v.id));
+        setDock(e.key === '0' ? '' : (docks[Number(e.key) - 1]?.id ?? opt.dock));
+      }
+      else if (/^arrow(up|down|left|right)$/i.test(e.key)) { keys.add(e.key.toLowerCase()); e.preventDefault(); directorCam.pause(); }
     } else keys.delete(e.key.toLowerCase());
   };
-  window.addEventListener('keydown', onKey);
-  window.addEventListener('keyup', onKey);
+  window.addEventListener('keydown', onKey, true); // capture: digits must reach the map before the app's view switch
+  window.addEventListener('keyup', onKey, true);
 
   // ---------- minimap base ----------
   let miniBase = null;
@@ -343,7 +412,7 @@ export function mount(el) {
   }
 
   // ---------- the frame ----------
-  let lastT = 0; let fpsAcc = 0; let fpsN = 0; let fpsShow = 0; let costAcc = 0;
+  let lastT = 0; let fpsAcc = 0; let fpsN = 0; let fpsShow = 0; let costAcc = 0; let uiAt = 0; let lastPeople = new Map();
   function frame(t) {
     if (!sc) return;
     const dt = Math.min(0.1, (t - lastT) / 1000 || 0.016); lastT = t;
@@ -355,7 +424,13 @@ export function mount(el) {
     cam.w = w; cam.h = h;
     // keys, glide, follow
     const sp = 420 * dt / cam.zoom;
-    if (keys.size) { follow = false; goal = null; if (keys.has('arrowleft') || keys.has('a')) cam.x -= sp; if (keys.has('arrowright') || keys.has('d')) cam.x += sp; if (keys.has('arrowup') || keys.has('w')) cam.y -= sp; if (keys.has('arrowdown') || keys.has('s')) cam.y += sp; }
+    if (keys.size) { follow = false; goal = null; if (keys.has('arrowleft')) cam.x -= sp; if (keys.has('arrowright')) cam.x += sp; if (keys.has('arrowup')) cam.y -= sp; if (keys.has('arrowdown')) cam.y += sp; }
+    // step 9: the director camera picks the goal while it is active
+    if (directorCam.active) {
+      const g = directorCam.update(dt, S, { x: cam.x, y: cam.y, zoom: cam.zoom }, lastPeople);
+      if (g) { goal = { x: g.x, y: g.y }; if (g.zoom && ZOOMS.includes(g.zoom) && g.zoom !== cam.zoom) { cam.zoom = g.zoom; markSegs(); } }
+      caption.textContent = directorCam.caption || ''; caption.classList.toggle('hidden', !directorCam.caption);
+    } else caption.classList.add('hidden');
     const tp = follow && S.selectedId ? store.citizens.get(S.selectedId)?.__place : null;
     const tg = tp ? { x: tp.x, y: tp.y - 20 } : goal;
     if (tg) { const k = 1 - Math.exp(-dt * 7); cam.x += (tg.x - cam.x) * k; cam.y += (tg.y - cam.y) * k; if (!tp && Math.hypot(tg.x - cam.x, tg.y - cam.y) < 1) goal = null; }
@@ -369,11 +444,15 @@ export function mount(el) {
     S.uiScale = dpr;
     S.rooms = store.rooms; S.citizens = store.citizens; S.objects = store.objects; // loadWorld() replaces these Maps on every resync
     S.faceOf = faces();
+    S.events = store.events; S.observer = store.observer; S.god = opt.god === 'god';
+    S.subjective = subjectiveOn && S.selectedId ? { id: S.selectedId, perception: perception?.citizenId === S.selectedId ? perception : null } : null;
     const view = { x: cam.x, y: cam.y, zoom: cam.zoom * dpr, w, h };
+    const drawState = replay.active ? replay.stateAt(S, t) : S; // step 9: replay draws the past while the world runs on
     const c0 = performance.now();
-    const res = sc.draw(target, view, S, t);
+    const res = sc.draw(target, view, drawState, t);
     costAcc += performance.now() - c0;
-    hits = res.hits; lastEntries = res.entries;
+    hits = res.hits; lastEntries = res.entries; lastPeople = res.people;
+    if (t - uiAt > 100) { uiAt = t; for (const u of uis) { try { u.handle.update(drawState, res); } catch (err) { if (!u.warned) { u.warned = true; console.error(`[map] ${u.id} failed`, err); } } } }
     drawMini();
     fpsAcc += dt; fpsN++;
     if (fpsAcc >= 1) { fpsShow = Math.round(fpsN / fpsAcc); fpsAcc = 0; $('#mp-fps').textContent = `${fpsShow} fps · ${(costAcc / fpsN).toFixed(1)} ms`; costAcc = 0; fpsN = 0; }
@@ -403,13 +482,22 @@ export function mount(el) {
     setDock(opt.dock);
     if (opt.objView === 'surface') refreshSurfaceNow();
     pollLooks();
+    // step 9: on-map UI modules
+    const uiLayer = $('#mp-ui');
+    for (const [id, mod] of UI_MODULES) {
+      const box = document.createElement('div'); box.className = `map-ui-${id}`; uiLayer.append(box);
+      try { uis.push({ id, handle: mod.mount(box, mapApi) ?? { update() {}, unmount() {} } }); } catch (err) { console.error(`[map] ${id} could not mount`, err); }
+    }
+    pollExtras(); pollTimer = setInterval(pollExtras, 1000);
     raf = requestAnimationFrame(loop);
   }).catch((err) => { $('#mp-loading').textContent = `The map could not be drawn: ${err.message}`; console.error(err); });
 
   return () => {
     alive = false; cancelAnimationFrame(raf); clearTimeout(looksTimer);
     offs.forEach((off) => off());
-    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey);
+    window.removeEventListener('keydown', onKey, true); window.removeEventListener('keyup', onKey, true);
+    for (const u of uis) { try { u.handle.unmount(); } catch { /* ignore */ } }
+    clearInterval(pollTimer);
     dockUnmount?.();
   };
 }
