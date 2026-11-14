@@ -92,7 +92,11 @@ export class Scheduler {
     const w = this.world;
     if (c.activity.type === 'thinking' && s.data?.interrupt && w.clock.running) {
       const last = w.runtime(c.id).lastInterruptAt;
-      if (w.now - last >= INTERRUPT_EVERY_MINUTES || s.data?.altercation || s.data?.fire) w.interruptThink(c, s); // step 10: blows and flames always get through
+      // step 10: blows and flames always get through — but a think already about this fire or fight is let finish (a GLM
+      // fire day: every new flame restarted the decision, and nobody acted before the smoke took them)
+      const urgent = s.data?.altercation || s.data?.fire;
+      const already = urgent && (c.thinkingInbox ?? []).some((x) => (s.data?.fire && x.data?.fire) || (s.data?.altercation && x.data?.altercation && x.importance >= 8));
+      if (!already && (w.now - last >= INTERRUPT_EVERY_MINUTES || urgent)) w.interruptThink(c, s);
     }
     this.poke();
   }

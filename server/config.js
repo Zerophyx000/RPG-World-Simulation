@@ -140,6 +140,7 @@ export const config = {
     accidentRate: num('ACCIDENT_RATE', 1.0),
     criticalGraceMinutes: num('CRITICAL_GRACE_MINUTES', 15), // 0 = fully realistic bleeding
     criticalSlowdown: num('CRITICAL_SLOWDOWN', 1.0),      // < 1: the clock runs slower while a critical window is open
+    emergencySlowdown: num('EMERGENCY_SLOWDOWN', 1.0),    // step 10: < 1: slower while a fight is on or a room with people in it burns
   },
 
   // Step 8: spots. Walking between spots before an action that needs proximity (SPOT_WALKING=false: act from where you stand; tests).

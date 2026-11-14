@@ -48,6 +48,11 @@ const TYPES = {
   'injure': 'body.injure',
   'heal': 'body.heal',
   'kill': 'body.kill',
+  // step 10 (server/physical/director.js)
+  'provoke': 'physical/director.provoke',
+  'weapon': 'physical/director.giveWeapon',
+  'ignite': 'physical/director.igniteObject',
+  'altercation': 'physical/director.startAltercation',
 };
 
 // ---------- scripts on disk ----------

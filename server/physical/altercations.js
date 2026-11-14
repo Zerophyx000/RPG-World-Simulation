@@ -149,9 +149,11 @@ export class Altercations {
         else if (quiet) reason = 'yielded'; // they gave up, and the other side stopped
         if (reason) break;
       }
+      // decisions take real time: nobody has cooled down while someone in it hasn't yet answered the last blow
+      const answered = alt.participants.every((p) => { const c = w.citizens.get(p.id); return !c || !c.alive || c.location !== alt.roomId || down(c) || ['sleeping', 'collapsed'].includes(c.activity.type) || (c.lastDecisionAt ?? -Infinity) >= alt.lastAggressionAt; });
       const held = alt.participants.some((p) => w.citizens.get(p.id)?.phys?.restraint?.kind === 'held' && alt.participants.find((q) => q.id === w.citizens.get(p.id)?.phys?.restraint?.by)?.role === 'holder');
-      if (!reason && quiet && held) reason = 'separated';
-      if (!reason && quiet) reason = 'cooled';
+      if (!reason && quiet && held && answered) reason = 'separated';
+      if (!reason && quiet && answered) reason = 'cooled';
       if (reason) { this.end(alt, reason); changed = true; }
     }
     return changed;

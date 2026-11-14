@@ -13,6 +13,7 @@ import { Consequences } from './consequences.js';
 import { Fire } from './fire.js';
 import { combatProfile, weaponProfile, isDark } from './profile.js';
 import { phys } from './props.js';
+import { config } from '../config.js';
 
 export class Physical {
   constructor(world) {
@@ -98,6 +99,14 @@ export class Physical {
     const w = this.world;
     tickBodies(w, elapsed);
     w.altercations.tick();
+    // EMERGENCY_SLOWDOWN (off by default): give a fight or a fire time for decisions that take real seconds
+    const k = config.body.emergencySlowdown;
+    if (k < 1) {
+      const aware = (c) => c?.alive && !['sleeping', 'collapsed'].includes(c.activity.type);
+      const fight = w.altercations.active().some((a) => a.participants.some((p) => aware(w.citizens.get(p.id))));
+      const fire = !fight && this.fire.burning().some((o) => [...w.citizens.values()].some((c) => c.location === o.roomId && aware(c)));
+      w.clock.setEmergencyMultiplier?.(fight || fire ? k : 1);
+    }
     this.acc += elapsed;
     if (this.acc >= 1) {
       const step = this.acc;

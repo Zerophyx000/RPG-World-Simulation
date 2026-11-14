@@ -1,6 +1,6 @@
 {
   "name": "brawl-day",
-  "description": "Step 10 test day (times are minutes after the run starts): a provoked brawl in the Tilted Cup. Tomas has a hammer and a grievance against Kael (the stranger), who has been winning at dice; Anselm, Lena and Jonas are there. Nothing makes anyone strike. Watch whether Tomas goes at Kael, who holds whom back, WHAT YOU'VE DONE and his intent in his next prompts, whether he turns to help (with a reason) and how Kael takes it, the relationship events, the crime events, and whether anyone bars a door afterwards.",
+  "description": "Step 10 test day (times are minutes after the run starts): a provoked brawl in the Tilted Cup. Tomas has a hammer and a grievance against Kael (the stranger), who has been winning at dice; Anselm, Lena and Jonas are there. Nothing makes anyone strike: the director only provokes both men and has Tomas square up (an altercation starts, no blow is struck). Watch whether Tomas goes at Kael, who holds whom back, WHAT YOU'VE DONE and his intent in his next prompts, whether he turns to help (with a reason) and how Kael takes it, the relationship events, the crime events, and whether anyone bars a door afterwards.",
   "actions": [
     {
       "at": 0,
@@ -53,7 +53,7 @@
       "type": "provoke",
       "a": "tomas",
       "b": "kael",
-      "amount": 7,
+      "amount": 8,
       "cause": "The stranger Kael took my last coins at dice with loaded bones, and he laughed in my face about it."
     },
     {
@@ -61,6 +61,22 @@
       "type": "whisper",
       "citizenId": "tomas",
       "text": "Kael is grinning at you across the room, rattling the dice he cheated you with."
+    },
+    {
+      "at": 8,
+      "type": "provoke",
+      "a": "kael",
+      "b": "tomas",
+      "amount": 5,
+      "cause": "The drunk smith called me a cheat in front of the whole tavern, and nobody calls me that twice."
+    },
+    {
+      "at": 12,
+      "type": "altercation",
+      "a": "tomas",
+      "b": "kael",
+      "intent": "hurt",
+      "comment": "Tomas squares up to Kael"
     }
   ]
 }

@@ -49,6 +49,8 @@ const hold = (id, typeId, extra = {}) => {
   w.objects.change(o.id, { holderId: id, ...(extra.state ? { state: extra.state } : {}) }, { actorId: 'director', action: 'give', notify: false });
   return w.objects.get(o.id);
 };
+// in a real run everyone answers a blow with a decision; here nobody calls the model, so mark it
+const answered = () => { for (const c of w.citizens.values()) c.lastDecisionAt = w.now; };
 const endAll = () => { for (const a of w.altercations.active()) w.altercations.end(a, 'director'); };
 const ALL = ['tomas', 'jonas', 'lena', 'anselm', 'greta'];
 // every light out to begin with (a knocked-over candle sets real fires; the fire tests light their own)
@@ -239,7 +241,7 @@ console.log('\n--- §3 altercations');
   for (let i = 0; i < 40 && !held; i++) { const rr = w.applyAction(C('anselm'), { name: 'act_on', arguments: { person: label('anselm', 'tomas'), action: 'hold_back', intent: 'care' } }); held = C('tomas').phys.restraint?.kind === 'held'; advance(0.3); }
   ok(held && w.altercations.part(w.altercations.of('tomas'), 'anselm')?.role === 'holder', 'Anselm holds Tomas back (and joins as the one holding)');
   ok(JSON.stringify(actsOf('tomas').sort()) === JSON.stringify(['break_free', 'plead', 'yield']), 'held back, Tomas can only break free, plead or yield (or speak)');
-  advance(2.5);
+  answered(); advance(2.5);
   ok(!w.altercations.of('tomas') && w.altercations.list.find((a) => a.id === alt.id).endReason === 'separated', `it ends with a reason (${w.altercations.list.find((a) => a.id === alt.id).endReason})`);
   // yield, and the end when the other side stops
   reset('tomas'); reset('greta');
@@ -247,20 +249,27 @@ console.log('\n--- §3 altercations');
   w.applyAction(C('greta'), { name: 'act_on', arguments: { person: label('greta', 'tomas'), action: 'yield' } });
   ok(C('tomas').inbox.some((s) => /gives up/.test(s.text) && s.importance === 8), 'yielding is perceived');
   ok(/has given up\. Going on would be beating someone who yielded/.test(buildMessages(w, C('tomas'))[1].content), 'the attacker\'s prompt says so');
-  advance(2.5);
+  answered(); advance(2.5);
   ok(w.altercations.list.at(-1).endReason === 'yielded', `ends: yielded (${w.altercations.list.at(-1).endReason})`);
   // fled
   reset('tomas'); reset('greta');
   act('tomas', 'greta', 'slap', { intent: 'scare' });
   move('greta', 'square');
-  advance(0.5);
+  answered(); advance(0.5);
   ok(w.altercations.list.at(-1).endReason === 'fled', `ends: fled (${w.altercations.list.at(-1).endReason})`);
   move('greta', 'tavern');
   // cooled down
   reset('tomas'); reset('greta');
   act('tomas', 'greta', 'shove', { intent: 'scare' });
-  advance(2.5);
+  answered(); advance(2.5);
   ok(w.altercations.list.at(-1).endReason === 'cooled', `ends: cooled (${w.altercations.list.at(-1).endReason})`);
+  reset('tomas'); reset('greta');
+  act('tomas', 'greta', 'shove', { intent: 'scare' });
+  C('greta').lastDecisionAt = w.now - 5; // still thinking about it
+  advance(3);
+  ok(w.altercations.of('greta'), 'a fight does not "cool" while someone in it has not yet answered the last blow (decisions take real time)');
+  answered(); advance(0.5);
+  ok(!w.altercations.of('greta'), 'once everyone has answered, it can');
   ok(events('altercation_end').length >= 4, 'every end is logged with its reason');
 }
 

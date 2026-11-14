@@ -2,7 +2,7 @@
 // states; when it is over the object is burnt (durability 0, "the charred remains of…"), or 'broken' if the type has it.
 //
 //   ignition   ignite (a held flame to something flammable), a knocked-over lit lantern or candle, a director event
-//   spread     every game minute: same spot high, a near spot medium; a TIMBER room (room.construction) with 3+ burning
+//   spread     every game minute: same spot 12%, a near spot 3% (a GLM run: faster spread killed before anyone could decide); a TIMBER room (room.construction) with 3+ burning
 //              objects is on fire as a whole (a room effect), then catches its flammables and, slowly, connected timber rooms
 //   people     smoke builds per room (c.phys.smoke; it lowers breathing and consciousness like choking — senseless after
 //              about 10 minutes of heavy smoke, dead at 6); standing at a burning spot burns
@@ -147,7 +147,7 @@ export class Fire {
         const px = phys(w, x);
         if (x.id === o.id || !px.flammable || px.burning || px.burnt) continue;
         const cls = w.maps.distanceClass(o.roomId, spot, w.maps.objectSpot(x));
-        const p = (cls === 'same' ? 0.35 : cls === 'near' ? 0.08 : 0) * elapsed * (px.accelerant ? 2 : 1);
+        const p = (cls === 'same' ? 0.12 : cls === 'near' ? 0.03 : 0) * elapsed * (px.accelerant ? 2 : 1);
         if (p > 0 && this.rng() < p) this.ignite(x, { cause: 'spreading fire', quiet: true });
       }
     }
@@ -170,7 +170,7 @@ export class Fire {
         w.decals?.add({ kind: 'soot', roomId, intensity: 1, source: `roomfire-${roomId}` });
       }
       if (room.onFire) {
-        for (const x of w.objects.inRoom(roomId)) if (phys(w, x).flammable && !phys(w, x).burning && !phys(w, x).burnt && this.rng() < 0.3 * elapsed) this.ignite(x, { cause: 'the room fire', quiet: true });
+        for (const x of w.objects.inRoom(roomId)) if (phys(w, x).flammable && !phys(w, x).burning && !phys(w, x).burnt && this.rng() < 0.1 * elapsed) this.ignite(x, { cause: 'the room fire', quiet: true });
         for (const e of room.exits ?? []) {
           const next = w.rooms.get(e.to);
           if (next?.construction !== 'timber' || next.onFire) continue;
@@ -186,7 +186,8 @@ export class Fire {
 
   smokeLevel(roomId) {
     const room = this.world.rooms.get(roomId);
-    return this.burning(roomId).length * 0.4 + (room?.onFire ? 3 : 0);
+    // heavy smoke is 3 at most: about 10 game minutes to senseless, however much burns
+    return Math.min(3, this.burning(roomId).length * 0.4 + (room?.onFire ? 2 : 0));
   }
 
   #smoke(elapsed) {
@@ -206,7 +207,7 @@ export class Fire {
       // burning at a burning spot
       const atSpot = this.burning(c.location).filter((o) => w.maps.objectSpot(o) === c.spot);
       if (atSpot.length) {
-        w.body.damage(c.id, { damageType: 'burn', part: 'random', amount: Math.min(12, 3 * atSpot.length * elapsed), cause: 'the flames', sourceId: null });
+        w.body.damage(c.id, { damageType: 'burn', part: 'random', amount: Math.min(6, 2.5 * elapsed), cause: 'the flames', sourceId: null });
       }
       // what they notice, now and then
       if (['sleeping', 'collapsed', 'unconscious'].includes(c.activity.type) && level < 3) continue;

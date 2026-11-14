@@ -611,6 +611,8 @@ export function tickBodies(world, elapsed) {
       const by = world.citizens.get(r.by);
       if (!by || !by.alive || by.location !== c.location || isDown(by) || (by.phys?.holding && by.phys.holding !== c.id)) release(world, c, 'let go');
       else if (by.activity.type === 'doing' && by.activity.detail?.kind === 'act' && by.activity.detail.targetId !== c.id && !['strike', 'punch', 'slap', 'kick'].includes(by.activity.detail.act)) release(world, c, 'let go');
+      // busy with anything else (work, a wait, a walk, sleep): the hold is gone — talking keeps it (a GLM run held someone 47 minutes)
+      else if (['sleeping', 'moving'].includes(by.activity.type) || ((by.activity.type === 'doing' || by.activity.type === 'waiting') && by.activity.detail?.kind !== 'act')) release(world, c, 'let go');
     }
     if (r?.kind === 'tied' && c.location == null) { /* stays tied, wherever they are */ }
     // choking eases once the hands are gone
