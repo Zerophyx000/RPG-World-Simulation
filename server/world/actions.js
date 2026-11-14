@@ -12,6 +12,7 @@ import { nowPhrase } from './time.js';
 import { CRAWL_FACTOR } from '../body/content.js';
 import { startTreatment, finishTreatment, startExamine, finishExamine as finishExaminePerson, refuseTreatment, acceptHelp, startCarry, putDownPerson, dropCarried, carryAlong, carryArrive, washClothes } from '../body/treat.js';
 import { ref, plainRef } from '../memory/index.js';
+import { fireIntent } from '../physical/handle.js';
 import { tendBody, finishTend, keepVigil, endVigil, bury, finishBury, proposeGathering } from '../death/customs.js';
 import { follow, followStep, tellNews } from './social-actions.js';
 import {
@@ -42,6 +43,11 @@ export function applyAction(world, c, call) {
   }
   // step 10: physical acts on people and things (server/physical/)
   if (['act_on', 'get_up', 'handle', 'force_door'].includes(call.name)) return world.physical.apply(c, call, { stale, logAction, remember, findPerson });
+  // step 10: "use the cloth to smother the flames" / "do: beating out the fire" — the free-form path to the fire actions
+  if ((call.name === 'use' || call.name === 'do') && world.physical) {
+    const fx = fireIntent(world, c, args.object ?? args.target, args.intent ?? args.action);
+    if (fx) { const r = world.physical.apply(c, { ...call, ...fx, innerThought: call.innerThought }, { stale, logAction, remember, findPerson }); if (r?.ok) return r; }
+  }
   const result = applyBasic(world, c, call);
   // step 10 §5.3: help from the one who hurt you — the victim perceives it with the attack still fresh
   if (result?.ok && ['treat', 'give', 'carry_person', 'feed'].includes(call.name) && world.physical) {

@@ -54,7 +54,7 @@ export function actionsFor(world, c, o, { held, flameHere, waterHere }) {
   if (p.water && mine && o.state !== 'full' && canGo(world, o, 'full') && waterHere) out.push('fill');
   if (p.water && mine && ['full', 'half'].includes(o.state) && canGo(world, o, 'empty')) out.push('pour');
   if (p.flammable && !p.burning && held.some((x) => x.id !== o.id && isFlame(world, x))) out.push('ignite');
-  if (p.burning && held.some((x) => phys(world, x).smother)) out.push('smother');
+  if (p.burning && (held.some((x) => phys(world, x).smother) || world.objects.inRoom(c.location).some((x) => x.id !== o.id && phys(world, x).smother && !x.data?.burning && !x.data?.burnt))) out.push('smother');
   return out;
 }
 
@@ -248,7 +248,7 @@ export function handle(world, c, call, h) {
       break;
     }
     case 'smother': {
-      const cloth = withObj && phys(world, withObj).smother ? withObj : held.find((x) => phys(world, x).smother);
+      const cloth = (withObj && phys(world, withObj).smother ? withObj : null) ?? held.find((x) => phys(world, x).smother) ?? world.objects.inRoom(c.location).find((x) => x.id !== o.id && phys(world, x).smother && !x.data?.burning && !x.data?.burnt);
       const r = world.physical.fire.smother(o, c);
       if (r !== 'out') {
         tell(`beats at the flames on ${name} with ${cloth ? world.objects.surfaceText(cloth) : 'a cloth'}, but the fire is too big.`, 7);
@@ -277,6 +277,22 @@ function why(world, c, o, action) {
     case 'push': return `${name} won't budge.`;
     default: return `You can't do that with ${name}.`;
   }
+}
+
+const FIGHT_FIRE = /\b(smother|beat (out|at)|put out|stamp (out|on)|douse|extinguish|quench|throw water|pour water|smother)\b/i;
+/**
+ * use(object, intent) or do(action, target) that means fighting a fire (a GLM fire day: "smother the flames on the burning
+ * rack with the cloth" went to the keeper and did nothing): → the handle call that does it, or null.
+ */
+export function fireIntent(world, c, objToken, text) {
+  if (!FIGHT_FIRE.test(String(text ?? ''))) return null;
+  const burning = world.physical.fire.burning(c.location);
+  if (!burning.length) return null;
+  const o = objToken ? world.objects.resolve(objToken) : null;
+  const target = o?.data?.burning ? o : burning.sort((a, b) => (world.maps.objectSpot(a) === c.spot ? -1 : 0) - (world.maps.objectSpot(b) === c.spot ? -1 : 0))[0];
+  const water = [o, ...world.objects.carriedBy(c.id)].find((x) => x && phys(world, x).water && ['full', 'half'].includes(x.state));
+  if (water && /water|douse|pour|quench/i.test(text)) return { name: 'handle', arguments: { object: world.objects.alias(water), action: 'pour', target: world.objects.alias(target) } };
+  return { name: 'handle', arguments: { object: world.objects.alias(target), action: 'smother', ...(o && phys(world, o).smother ? { with: world.objects.alias(o) } : {}) } };
 }
 
 /** Forcing a barricaded / locked / barred door from the other side: everyone pushing there adds their force. */

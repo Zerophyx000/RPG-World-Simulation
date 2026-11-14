@@ -95,7 +95,7 @@ export class Fire {
   smother(o, by) {
     const w = this.world;
     if (!o?.data?.burning) return 'nothing';
-    const small = (w.objects.type(o)?.size ?? 1) <= 1 || w.now - o.data.burning.since < 3;
+    const small = (w.objects.type(o)?.size ?? 1) <= 1 || w.now - o.data.burning.since < 5; // caught early, even a rack can be beaten out
     if (!small || w.rooms.get(o.roomId)?.onFire) return 'too big';
     this.extinguish(o, { by, how: 'smothered' });
     return 'out';

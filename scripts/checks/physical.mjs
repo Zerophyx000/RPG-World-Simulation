@@ -448,6 +448,12 @@ console.log('\n--- §4.4 fire');
   w.setActivity(C('greta'), { type: 'idle' });
   handle('greta', w.objects.get(basket.id), 'smother', { with: w.objects.alias(cloth) });
   ok(!w.objects.get(basket.id).data.burning, 'a cloth smothers a small fire');
+  // the free-form path: "use the cloth to smother the flames" (as a GLM fire day tried it) does it
+  w.physical.fire.ignite(w.objects.get(basket.id).data.burnt ? [...w.objects.inRoom(basket.roomId)].find((o) => phys(w, o).flammable && !o.data?.burning && !o.data?.burnt && (w.objects.type(o)?.size ?? 1) === 1) : w.objects.get(basket.id), { cause: 'test' });
+  const burningNow2 = w.physical.fire.burning(basket.roomId)[0];
+  w.setActivity(C('greta'), { type: 'idle' });
+  const ru = w.applyAction(C('greta'), { name: 'use', arguments: { object: w.objects.alias(cloth), intent: 'smother the flames with the cloth' } });
+  ok(ru.ok && burningNow2 && !w.objects.get(burningNow2.id).data.burning, 'use(cloth, "smother the flames") puts the fire out');
   // a knocked-over lantern
   move('tomas', 'tavern'); move('anselm', 'tavern');
   for (const id of ['tomas', 'anselm']) reset(id);
