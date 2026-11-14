@@ -101,7 +101,9 @@ export function handle(world, c, call, h) {
   const allowed = actionsFor(world, c, o, { held, flameHere, waterHere });
   if (!allowed.includes(action)) return h.stale(world, c, call, why(world, c, o, action));
   const withObj = a.with ? world.objects.resolve(a.with) : null;
-  if (withObj && withObj.holderId !== c.id) return h.stale(world, c, call, "You don't have that in your hands any more.");
+  // a cloth to smother with may be lying right here (a GLM fire day: Greta reached for the cloth on the counter)
+  const reachable = withObj && (withObj.holderId === c.id || (action === 'smother' && withObj.roomId === c.location));
+  if (withObj && !reachable) return h.stale(world, c, call, "You don't have that in your hands any more.");
   const here = citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((x) => x.alive);
   const person = a.target ? h.findPerson(world, c, here, a.target) : null;
   const targetObj = a.target && !person ? world.objects.resolve(a.target) : null;

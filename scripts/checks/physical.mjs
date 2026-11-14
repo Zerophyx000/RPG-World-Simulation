@@ -454,6 +454,13 @@ console.log('\n--- §4.4 fire');
   w.setActivity(C('greta'), { type: 'idle' });
   const ru = w.applyAction(C('greta'), { name: 'use', arguments: { object: w.objects.alias(cloth), intent: 'smother the flames with the cloth' } });
   ok(ru.ok && burningNow2 && !w.objects.get(burningNow2.id).data.burning, 'use(cloth, "smother the flames") puts the fire out');
+  // the cloth lying on the table, not in hand (as in the GLM fire day)
+  w.objects.change(cloth.id, { roomId: C('greta').location, placement: { relation: 'floor', of: null } }, { actorId: 'director', action: 'move', notify: false });
+  const fuel3 = [...w.objects.inRoom(C('greta').location)].find((o) => phys(w, o).flammable && !o.data?.burning && !o.data?.burnt && o.id !== cloth.id);
+  w.physical.fire.ignite(fuel3, { cause: 'test' });
+  w.setActivity(C('greta'), { type: 'idle' });
+  const rc = w.applyAction(C('greta'), { name: 'use', arguments: { object: w.objects.alias(w.objects.get(cloth.id)), intent: 'smother the fire with the cloth' } });
+  ok(rc.ok && !w.objects.get(fuel3.id).data.burning, 'a cloth lying within reach smothers it too');
   // a knocked-over lantern
   move('tomas', 'tavern'); move('anselm', 'tavern');
   for (const id of ['tomas', 'anselm']) reset(id);
