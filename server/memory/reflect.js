@@ -14,6 +14,7 @@ import { relationLine } from '../social/describe.js';
 import { emotionsSummary } from '../emotions/present.js';
 import { parseFeeling, applyFeeling, feelingItemSchema, feelingPeople } from '../emotions/report.js';
 import { addIntention } from '../agents/intentions.js';
+import { findLeaks } from '../social/leak.js';
 
 const FULL = { maxMemories: 3, clamp: 3 };
 const LIGHT = { maxMemories: 1, clamp: 1 };
@@ -298,6 +299,19 @@ async function remember(world, conv, c, limits, path) {
     } else if (n.news !== 'died') {
       c.knownNews = { ...(c.knownNews ?? {}), [who.id]: { news: n.news, from: from?.id ?? null, at: world.now, certainty: 'believed' } };
     }
+  }
+  // step 10: a safety net (seen in a GLM run: "Jonas is dead — Anselm says…" in a memory, learned_news left empty). If
+  // what they just laid down states a death they haven't registered, and the dead person was named in this very
+  // conversation, they learn it from whoever spoke last — their own mind already holds it.
+  const ownWords = [...(Array.isArray(args.memories) ? args.memories.map((m) => m?.text) : []), args.on_my_mind].filter(Boolean).join('\n');
+  const said = conv.lines.map((l) => l.text).join('\n');
+  for (const l of findLeaks(world, ownWords, c.id).filter((x) => x.kind === 'unknownDeath')) {
+    const dead = world.citizens.get(l.of);
+    if (!dead || dead.alive || world.deaths.knows(c, dead.id) || !new RegExp(`\\b${dead.name.split(/\s+/)[0]}\\b`, 'i').test(said)) continue;
+    const from = world.citizens.get(lastOtherSpeaker);
+    const trust = from ? world.memory.rel(c.id, from.id)?.trust ?? 0 : 0;
+    world.deaths.learn(c, dead.id, { how: from ? `told:${from.id}` : 'inferred', certainty: trust < 0 ? 'doubted' : 'believed', by: from?.id ?? null });
+    world.logEvent('learned_from_reflection', { actorId: c.id, deadId: dead.id, from: from?.id ?? null, conversationId: conv.id, text: l.text });
   }
   world.saveCitizen(c);
 }

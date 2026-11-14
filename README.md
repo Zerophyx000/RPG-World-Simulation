@@ -105,6 +105,17 @@ Every citizen is always in one activity: `idle`, `thinking`, `moving`, `doing`, 
 
 **UI.** Roster (left, always on: latest inner thought per citizen; click = inspector, shift-click = filter), inspector drawer (right), and views: Map (step 8: the living map, the default) and List (the old room cards), Conversations (live chat panels with each speaker's thought under their line; past conversations with transcripts), Timeline (SVG swimlanes; wheel = zoom, drag = pan), Relationships (SVG graph + time slider), Story (observer storylines), Events (readable sentences, filter chips), LLM, Director. Keys: space = pause/resume, 1–9 = views (map: arrows/WASD pan, +/- zoom, F follow, 0 fit), Esc = close.
 
+## Step 10 Part 0 in short (tuning from the 9.5 run)
+
+Measured on the real model before the rest of step 10 (fights, objects that do things) adds its many new full-tier moments.
+
+- **Tiers by change, not by level** (`agents/tiers.js`). "Any feeling ≥ 5 → full" made 78% of a calm day's decisions full, because the model keeps its characters' feelings high. Each decision now leaves a snapshot (`data.tierSnap`: emotions, stimulus ids already decided on, known deaths), and the next decision is **full** only for: the waking decision; a fight (target, aggressor or importance-8 bystander); a critical bleeding window in the room; the first decision after learning of a death or finding a body; a NEW stimulus of importance ≥ `TIER_FULL_IMPORTANCE` (6) that isn't routine; an emotion that rose by ≥ `TIER_EMOTION_JUMP` (3) or a new one at ≥ 5. Otherwise **light** (`none` stays for mechanical moments). At most `FULL_PER_GAME_HOUR` (2) full decisions per citizen per rolling game hour; beyond that it's light and logged as `tier_capped` — never for waking, fights, critical bleeding or importance ≥ `TIER_CAP_EXEMPT_IMPORTANCE` (8; addressed speech is 9). A decision's own stated feeling is folded into the snapshot, so it never counts as a jump. Sustained feelings still shape light decisions: HOW YOU FEEL and ON YOUR MIND are always there, plus "Still with you: grief for Greta (since yesterday)." for a strong feeling older than 6 hours.
+- **`llm_calls.tier_reason`** (migration 014): waking, altercation, critical, death_news, new_stimulus, emotion_jump, tier_capped, conversation, ordinary, routine, governor, retry_cutoff, retry_invalid. The Usage tab shows the share of full decisions and decisions by tier and reason; `node scripts/tokens.js 60 [--db file]` prints the same plus output tokens per citizen per real and per game hour.
+- **Habit calm check** (`agents/habits.js`). A due habit runs by code unless, in the last 30 game minutes, the citizen was spoken to (by name, or in their conversation), something of importance ≥ 5 happened in their own room, or they overheard talk that concerns them (their name, someone close, a death they know of) — recorded as `data.calmMarks` when the stimulus arrives. Chatter nearby no longer blocks. Still blocking: a body in the room, dread ≥ 4, an emotion ≥ 7 or one that just jumped, a pressing need, an urgent inbox (≥ 7), a conversation, two habits in a row. Every blocked due habit is logged as `habit_blocked` with its blocker. (Fixed on the way: need reminders compared the level's name with a number, so they never counted as routine.)
+- **Vigils in turns** (`death/customs.js`). `keep_vigil` lasts 3 game hours by default (at most 4); taking over the watch relieves whoever keeps it ("Lena takes over the watch over Jonas. You could rest now.", `vigil_relieved`); at the end the keeper is asked to stay, hand over or go. A body they know of in the room puts their hours awake ("You've been awake 19 hours.") and who else could take a turn (awake people close to the dead, here or nearby) into RIGHT NOW. Tiredness reminders speak one level earlier while keeping vigil or tending a body. ON WAKING names the unburied dead ("Greta lies in the chapel, not yet buried."). The customs text says watches are kept in turns and burial is on the second or third day. Digging a grave is kept on the body (`data.dug`): a `bury` broken off by tiredness, or a `do` that digs in the chapel yard, counts, and the next `bury` digs only the rest. A reflection that states a death named in that conversation, which the citizen hadn't registered, makes them learn it (`learned_from_reflection`).
+- **Live-world safety**: `WORLD_ROLE=live` (default `dev`) refuses to start under `--watch` (`npm run dev`): the live world runs with `npm start` and gets new code only through `scripts/deploy.sh`, which now takes a consistent backup (`VACUUM INTO`) before the restart. Development and test worlds use their own `DATA_DIR` and `PORT`.
+- **Checks**: `scripts/checks/step10.mjs`.
+
 ## Step 9.5 in short (reactive living, and death that matters)
 
 The day-15/16 run (Greta's and Jonas's deaths) showed citizens moving on like robots, everyone "knowing" a death the minute it happened, cheap grief, no customs and no fear for their own lives. Step 9.5 fixes that.
@@ -416,7 +427,7 @@ The world is never reset by a deploy:
 On the server, a deploy is:
 
 ```bash
-./scripts/deploy.sh       # git pull → restart → world saved → migrations → resumed
+./scripts/deploy.sh       # git pull → backup → restart → world saved → migrations → resumed
 ```
 
 One-time server setup: copy the project folder (or `git clone` it), install Node 22.13+, create `.env`, then install the systemd unit (instructions are at the top of `scripts/agent-world.service`).
@@ -469,7 +480,7 @@ Check your school's docs for the exact flag if that doesn't work.
 | GET | `/api/citizens/:id/consolidations` | the nights |
 | GET | `/api/citizens/:id/beliefs` | that citizen's relationship rows |
 | GET | `/api/llm/profiles` | profile health |
-| GET | `/api/llm/usage` | `?minutes=180&bucket=10`: tokens per bucket/purpose/profile, reflection paths, governor; step 7A: `cutoffs` per tier, `addressedBelowFull`, `retryCutoff` |
+| GET | `/api/llm/usage` | `?minutes=180&bucket=10`: tokens per bucket/purpose/profile, reflection paths, governor; step 7A: `cutoffs` per tier, `addressedBelowFull`, `retryCutoff`; step 10: `decide` (calls, fullShare, rows by tier and tier_reason), `tierCapped`, `habitRuns`, `habitBlocked` |
 | GET | `/api/director/test-days` | test-day scripts `[{name, description, actions}]` |
 | POST | `/api/director/test-days/run` | `{name, seed?}`: run a test day (seed returned; one run at a time) |
 | POST | `/api/director/test-days/stop` | stop the running test day |

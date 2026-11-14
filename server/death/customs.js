@@ -13,6 +13,9 @@
 //   bury       in a room with the `burial` service, with a digging tool here or in hand: 3 game hours alone, 1.5 with
 //              help. The body object is removed and a grave object is created by THIS code (origin 'code') — the one
 //              other thing code creates besides the body itself.
+//              step 10 (a GLM run: Tomas dug for two hours in pieces, every piece broken by an "exhausted" reminder, and
+//              each new bury started from nothing): the digging done is kept on the body (data.dug, minutes of one
+//              person's work) — from bury and from any 'do' that digs in a burial place — so a grave half dug stays half dug.
 //   gathering  propose_gathering: a notice to everyone who knows the proposer
 //
 // Corpse data: { citizenId, diedAt, spot, eyesClosed, covered, coverId, washed, laidOut, vigil: [ids], tendedBy: [] }
@@ -357,18 +360,41 @@ export function bury(world, c, call, { stale, logAction, remember }) {
   const tool = diggingTool(world, c);
   if (!tool) return stale(world, c, call, 'You have nothing to dig with. A spade is needed.');
   const helpers = citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((x) => x.activity.type === 'doing' && (x.activity.detail?.kind === 'bury' || /dig/i.test(x.activity.detail?.description ?? '')));
-  const minutes = helpers.length ? BURY_HELPED_MINUTES : BURY_MINUTES;
+  const dug = Math.max(0, Math.min(BURY_MINUTES - 15, Number(o.data?.dug) || 0));
+  const minutes = Math.max(10, Math.round((helpers.length ? BURY_HELPED_MINUTES : BURY_MINUTES) * (1 - dug / BURY_MINUTES)));
   const words = String(call.arguments.words ?? '').trim().slice(0, 80) || null;
   // a carried body is set down at the graves first
   if (o.holderId === c.id) world.objects.change(o.id, { holderId: null, roomId: c.location, placement: { relation: 'floor', of: null } }, { actorId: c.id, action: 'put', notify: false });
   logAction(world, c, call, { objectId: o.id, deadId: o.data?.citizenId ?? null, words });
-  world.setActivity(c, { type: 'doing', until: world.now + minutes, detail: { kind: 'bury', objectId: o.id, words, description: 'digging a grave', minutes } });
+  world.setActivity(c, { type: 'doing', until: world.now + minutes, detail: { kind: 'bury', objectId: o.id, words, description: dug ? 'digging on at the grave' : 'digging a grave', minutes, rate: helpers.length ? BURY_MINUTES / BURY_HELPED_MINUTES : 1 } });
   // helpers already digging finish together with the one who buries
   for (const h of helpers) if (h.activity.until > world.now + minutes) h.activity.until = world.now + minutes;
   const others = citizensIn(world.citizens, c.location, { exceptId: c.id });
   world.perceive(others.map((x) => x.id), { kind: 'action', text: `${ref(c)} begins to dig a grave.`, importance: 6, sourceId: c.id, roomId: c.location, data: { burial: o.id } });
-  remember(world, c, 'You began digging a grave.');
+  remember(world, c, dug ? `You took up the digging again (about ${dug >= BURY_MINUTES * 0.66 ? 'two thirds' : dug >= BURY_MINUTES * 0.45 ? 'half' : 'a third'} of the grave was dug).` : 'You began digging a grave.');
   return { ok: true };
+}
+
+/**
+ * step 10: someone stops digging (finished, interrupted, or a 'do' that dug in a burial place): the work done stays on
+ * the body as data.dug. Called from World.setActivity whenever an activity is left. Counted once per stretch of work.
+ */
+export function onActivityLeft(world, c, prev) {
+  if (prev?.type !== 'doing' || !c.location) return;
+  const d = prev.detail ?? {};
+  const room = world.rooms.get(c.location);
+  if (!room?.services?.burial) return;
+  const digging = d.kind === 'bury' || (!d.kind && /\b(dig|digs|digging|dug|grave|shovel\w*|spade)\b/i.test(d.description ?? ''));
+  if (!digging) return;
+  const o = d.kind === 'bury' ? world.objects.get(d.objectId) : world.objects.inRoom(c.location).find((x) => isCorpse(x));
+  if (!isCorpse(o) || o.roomId !== c.location) return;
+  const from = Math.max(prev.since ?? world.now, d.countedTo ?? -Infinity);
+  const to = Math.min(world.now, prev.until ?? world.now);
+  d.countedTo = world.now;
+  const worked = Math.max(0, to - from) * (d.rate ?? 1);
+  if (worked < 1) return;
+  const dug = Math.min(BURY_MINUTES, (Number(o.data?.dug) || 0) + worked);
+  world.objects.change(o.id, { data: { ...o.data, dug: Math.round(dug) } }, { actorId: 'code', action: 'edit', notify: false });
 }
 
 export function finishBury(world, c, a) {

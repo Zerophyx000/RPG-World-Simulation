@@ -33,6 +33,7 @@ import { applyEdits as applyIntentionEdits, touch as touchIntentions, fade as fa
 import { Deaths } from './death/index.js';
 import { isRoutineStimulus } from './agents/habits.js';
 import { refreshTierSnapshot } from './agents/tiers.js';
+import { onActivityLeft } from './death/customs.js';
 import { Stock } from './world/stock.js';
 import { getState } from './db.js';
 import { Memory } from './memory/index.js';
@@ -351,6 +352,7 @@ export class World {
       finishMeal(this, c, prev, { completed: false });
     }
     c.activity = { type, since: this.now, until, detail };
+    if (prev?.type === 'doing' && prev !== c.activity) onActivityLeft(this, c, prev); // step 10: digging done stays done
     this.saveCitizen(c);
     // Activity spans for the timeline are rebuilt from these events.
     if (!this.stopped && this.citizens.get(c.id) === c && (prev?.type !== type || !sameDetail(prev?.detail, detail))) {

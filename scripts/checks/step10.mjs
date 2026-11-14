@@ -222,6 +222,25 @@ console.log('\n--- 0.3 vigils in turns');
   t.inbox = [S({ kind: 'timer', text: 'You wake up.', importance: 6, data: { wakeUp: true, longSleep: true } })];
   const waking = buildMessages(w, t, { mode: 'decide' })[1].content;
   ok(/# ON WAKING[\s\S]*Jonas lies in [^\n]*, not yet buried\./.test(waking), `ON WAKING: "${(waking.match(/Jonas lies in[^\n]*/) ?? ['—'])[0]}"`);
+  // a grave half dug stays half dug (a GLM run: every piece of digging broken off, every bury from nothing)
+  move('tomas', 'chapel_yard'); w.setActivity(t, { type: 'idle' });
+  w.objects.change('body_jonas', { roomId: 'chapel_yard', holderId: null, placement: { relation: 'floor', of: null } }, { actorId: 'code', action: 'move', notify: false });
+  const spade = [...w.objects.byId.values()].find((o) => (w.objects.type(o)?.tags ?? []).includes('digging') && o.roomId === 'chapel_yard');
+  ok(Boolean(spade), 'a spade lies in the chapel yard');
+  let b = w.applyAction(t, { name: 'bury', arguments: { body: w.objects.alias(w.objects.get('body_jonas')) } });
+  ok(b.ok && t.activity.detail?.kind === 'bury' && Math.round(t.activity.until - w.now) === 180, `bury: 3 hours from nothing (${Math.round((t.activity.until ?? 0) - w.now)} min)`);
+  advance(60);
+  w.setActivity(t, { type: 'idle' }); // broken off (an exhausted reminder, a decision)
+  ok(Math.round(w.objects.get('body_jonas').data.dug) === 60, `an hour's digging stays on the body (dug ${w.objects.get('body_jonas').data.dug})`);
+  w.applyAction(t, { name: 'do', arguments: { action: 'digging the grave under the yew', minutes: 30 } });
+  advance(31);
+  ok(Math.round(w.objects.get('body_jonas').data.dug) === 90, `a 'do' that digs there counts too (dug ${w.objects.get('body_jonas').data.dug})`);
+  w.setActivity(t, { type: 'idle' });
+  b = w.applyAction(t, { name: 'bury', arguments: { body: w.objects.alias(w.objects.get('body_jonas')) } });
+  ok(b.ok && Math.round(t.activity.until - w.now) === 90 && t.activity.detail.description === 'digging on at the grave', `bury again: only the rest (${Math.round(t.activity.until - w.now)} min, "${t.activity.detail.description}")`);
+  t.needs.fatigue = 10;
+  advance(91);
+  ok(!w.objects.get('body_jonas') && w.objects.get('grave_jonas'), 'the grave is finished; Jonas is buried');
   ok(/turns of a few hours/.test(buildMessages(w, t)[0].content) && /second or third day/.test(buildMessages(w, t)[0].content), 'customs: vigils in turns, burial on the second or third day');
 }
 
