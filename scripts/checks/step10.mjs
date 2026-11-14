@@ -52,6 +52,15 @@ for (const id of ['greta', 'tomas', 'lena']) calmEmotions(id);
   ok(r.tier === 'full' && r.reason === 'new_stimulus', `addressed speech (9): full/new_stimulus (${r.tier}/${r.reason})`);
   r = tier('greta', [spoken]);
   ok(r.tier !== 'full', `the same stimulus again (already decided on): not full (${r.tier}/${r.reason})`);
+  advance(2);
+  r = tier('greta', [S({ kind: 'speech', text: 'Tomas says to you: "About the debt."', importance: 9, sourceId: 'tomas', roomId: 'bakery', data: { addressed: true, wake: true, interrupt: true } })]);
+  ok(r.tier === 'light', `the next turn of the same exchange: light (${r.tier}/${r.reason})`);
+  r = tier('greta', [S({ kind: 'speech', text: 'Lena says to you: "Greta!"', importance: 9, sourceId: 'lena', roomId: 'bakery', data: { addressed: true, wake: true, interrupt: true } })]);
+  ok(r.tier === 'full' && r.reason === 'new_stimulus', `someone else opening an exchange: full (${r.tier}/${r.reason})`);
+  advance(31);
+  r = tier('greta', [S({ kind: 'speech', text: 'Tomas says to you: "Me again."', importance: 9, sourceId: 'tomas', roomId: 'bakery', data: { addressed: true, wake: true, interrupt: true } })]);
+  ok(r.tier === 'full', `after half an hour, a new exchange: full (${r.tier}/${r.reason})`);
+  g.fullAt = [];
   r = tier('greta', [S({ kind: 'speech', text: 'Tomas says to Lena: "Nice weather."', importance: 5, sourceId: 'tomas', roomId: 'bakery', data: { addressed: false } })]);
   ok(r.tier === 'light' && r.reason === 'conversation', `chatter nearby (5): light/conversation (${r.tier}/${r.reason})`);
   // a sustained strong feeling that doesn't change → light

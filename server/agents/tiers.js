@@ -16,6 +16,12 @@
 //   light  (conversation | ordinary)   everything else. Sustained feelings still colour it: HOW YOU FEEL and ON YOUR
 //                         MIND are in every prompt, plus "Still with you: …" for an old strong feeling.
 //
+// Conversation turns (step 10, after the calm-day GLM run: 142 of 159 full decisions were someone speaking to them):
+// being spoken to counts as a new stimulus of its own importance (9) only when it OPENS an exchange — the first line
+// this person has addressed to them in the last OPENING_GAP_MINUTES (30). Later turns of the same exchange count as
+// importance 5 (light, and subject to the cap): a turn that changes how they feel is still full by emotion_jump, and
+// news of a death by death_news. c.addressedBy = { speakerId: last game minute they addressed this citizen }.
+//
 // Per-citizen cap: at most FULL_PER_GAME_HOUR (2) full decisions in a rolling game hour; beyond that → light, logged as
 // `tier_capped`. Exempt: waking, altercations, critical bleeding, and any fresh stimulus of importance >= TIER_CAP_EXEMPT_IMPORTANCE (8)
 // (addressed speech is 9, so being spoken to is always full).
@@ -36,6 +42,8 @@ export const TIER_RULES = {
 };
 const PROTECTED_MAX_TOKENS = n('LLM_MAX_TOKENS_PROTECTED', 4500);
 const SEEN_KEEP = 80;
+const OPENING_GAP_MINUTES = n('TIER_OPENING_GAP_MINUTES', 30);
+const TURN_IMPORTANCE = 5;
 const MECHANICAL = new Set(['timer']);
 /** Reasons that the per-hour cap never downgrades. */
 const CAP_EXEMPT = new Set(['waking', 'altercation', 'critical']);
@@ -78,9 +86,20 @@ export function chooseTier(c, trigger, world) {
   const seen = new Set(snap?.seen ?? []);
   const fresh = stimuli.filter((s) => !seen.has(s.id));
   const freshReal = fresh.filter((s) => !isRoutineStimulus(s));
-  const freshMax = freshReal.reduce((m, s) => Math.max(m, s.importance ?? 0), 0);
+  // addressed speech opens an exchange, or continues one (then it weighs like talk nearby)
+  const addressedBy = { ...(c.addressedBy ?? {}) };
+  const opening = new Set();
+  for (const s of freshReal) {
+    if (s.kind !== 'speech' || !s.data?.addressed || !s.sourceId) continue;
+    const last = addressedBy[s.sourceId] ?? -Infinity;
+    if ((s.gameTime ?? now) - last > OPENING_GAP_MINUTES) opening.add(s.id);
+    addressedBy[s.sourceId] = Math.max(last, s.gameTime ?? now);
+  }
+  for (const [id, at] of Object.entries(addressedBy)) if (now - at > 24 * 60) delete addressedBy[id];
+  const weight = (s) => (s.kind === 'speech' && s.data?.addressed && !opening.has(s.id) ? Math.min(s.importance ?? 0, TURN_IMPORTANCE) : s.importance ?? 0);
+  const freshMax = freshReal.reduce((m, s) => Math.max(m, weight(s)), 0);
   const maxImportance = stimuli.reduce((m, s) => Math.max(m, s.importance ?? 0), 0);
-  const addressed = stimuli.some((s) => s.kind === 'speech' && s.data?.addressed && s.data?.interrupt);
+  const addressed = freshReal.some((s) => opening.has(s.id) && s.data?.interrupt);
   const needLevel = Math.max(0, ...Object.values(c.needs?.levels ?? {}));
   const emotions = world.emotions?.of(c) ?? [];
   const topEmotion = emotions.reduce((m, e) => Math.max(m, e.intensity), 0);
@@ -135,7 +154,7 @@ export function chooseTier(c, trigger, world) {
   }
 
   const adj = world.governor ? world.governor.adjust({ tier, addressed, maxImportance, protect }) : { tier, maxTokens: null };
-  // step A6: addressed speech is a hard rule — it must be decided at tier full
+  // step A6 (step 10: the OPENING line of an exchange): addressed speech must be decided at tier full
   if (addressed && adj.tier !== 'full') {
     world.logEvent('tier_violation', { actorId: c.id, tier: adj.tier, reason: adj.reason ?? reason });
     if (config.debug.tierCheck) console.warn(`[tier] ASSERTION FAILED: ${c.id} addressed speech decided at "${adj.tier}" (wanted full)`);
@@ -146,6 +165,7 @@ export function chooseTier(c, trigger, world) {
 
   // the snapshot this decision leaves for the next one
   c.tierSnap = { at: now, emotions: emotionMap(world, c), seen: [...seen, ...stimuli.map((s) => s.id)].slice(-SEEN_KEEP), deaths: sig };
+  c.addressedBy = addressedBy;
   c.fullAt = adj.tier === 'full' ? [...recentFull, now] : recentFull;
 
   return { tier: adj.tier, maxTokens, reason, detail, addressed, maxImportance, protect, ...(params ? { params } : {}) };
