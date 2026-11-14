@@ -243,7 +243,7 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
   const bucketMs = bucket * 60_000;
   const start = Math.floor((now - minutes * 60_000) / bucketMs) * bucketMs;
   const since = new Date(start).toISOString();
-  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, status, duration_ms, prompt_tokens, completion_tokens, finish_reason
+  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, tier_reason, status, duration_ms, prompt_tokens, completion_tokens, finish_reason
     FROM llm_calls WHERE real_time >= ?`).all(since);
   const buckets = [];
   for (let t = start; t <= now; t += bucketMs) buckets.push({ t, output: {}, input: 0, calls: 0 });
@@ -289,10 +289,27 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
     if (r.finish_reason === 'length') cutoffs[r.tier].cutoff++;
   }
   for (const v of Object.values(cutoffs)) v.rate = v.calls ? Math.round((v.cutoff / v.calls) * 1000) / 1000 : 0;
+  // step 10 (0.1): decide calls by tier and by the reason for their tier (share of full is the cost driver)
+  const decide = { calls: 0, full: 0, fullShare: 0, rows: {} };
+  for (const r of rows) {
+    if (r.purpose !== 'decide' || !r.tier) continue;
+    decide.calls++;
+    if (r.tier === 'full') decide.full++;
+    const k = `${r.tier}|${r.tier_reason ?? '?'}`;
+    const v = (decide.rows[k] ??= { tier: r.tier, reason: r.tier_reason ?? '?', calls: 0, output: 0 });
+    v.calls++;
+    v.output += r.completion_tokens ?? 0;
+  }
+  decide.fullShare = decide.calls ? Math.round((decide.full / decide.calls) * 1000) / 1000 : 0;
+  decide.rows = Object.values(decide.rows).map((v) => ({ ...v, avgOutput: Math.round(v.output / v.calls) })).sort((a, b) => b.calls - a.calls);
   const countEvents = (type) => world.db.prepare('SELECT COUNT(*) AS n FROM events WHERE type = ? AND real_time >= ?').get(type, since).n;
   return {
     minutes, bucket, start, now, buckets, purposes, profiles, reflections,
     cutoffs,
+    decide,
+    tierCapped: countEvents('tier_capped'),
+    habitBlocked: countEvents('habit_blocked'),
+    habitRuns: countEvents('habit'),
     addressedBelowFull: countEvents('tier_violation'),
     retryCutoff: countEvents('retry_cutoff'),
     governor: world.governor?.view() ?? null,

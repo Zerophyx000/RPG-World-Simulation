@@ -32,6 +32,7 @@ import { Habits } from './agents/habits.js';
 import { applyEdits as applyIntentionEdits, touch as touchIntentions, fade as fadeIntentions, topIntention, intentionsView } from './agents/intentions.js';
 import { Deaths } from './death/index.js';
 import { isRoutineStimulus } from './agents/habits.js';
+import { refreshTierSnapshot } from './agents/tiers.js';
 import { Stock } from './world/stock.js';
 import { getState } from './db.js';
 import { Memory } from './memory/index.js';
@@ -417,6 +418,7 @@ export class World {
       }
       s.text = this.memory.resolveNames(c, s.text); // "Tomas" or "a broad and heavy-shouldered man", per viewer
       pushToInbox(c, s);
+      this.habits.onPerceived(c, s); // step 10 (0.2): what this stimulus means for the habit calm check
       this.emotions.appraisal.onPerceived(c, s); // first, so the memory is laid down with the feeling
       this.memory.onPerceived(c, s);
       this.saveCitizen(c);
@@ -490,8 +492,10 @@ export class World {
     c.lastDecisionAt = this.now;
     c.thinkCooldownUntil = this.now + (this.governor?.thinkGapMinutes() ?? THINK_COOLDOWN_MINUTES);
     c.lastTier = outcome.tier ?? null;
+    c.lastTierReason = outcome.tierReason ?? null;
     this.memory.recalled(outcome.recalled);
     this.#afterThought(c, outcome);
+    refreshTierSnapshot(this, c); // step 10 (0.1): their own stated feeling is no "jump" at the next decision
     // step 9.5: the decision ends an autopilot streak; edits to intentions ride along; a related act touches them
     this.habits.onDecision(c);
     c.habitNote = null;

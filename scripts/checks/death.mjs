@@ -138,7 +138,7 @@ act('anselm', 'examine', { object: alias(body) }); advance(3);
 act('anselm', 'tend_body', { body: alias(body), how: 'cover', with: alias(w.objects.get('bakery_cloth')) }); advance(3);
 ok(w.objects.get('body_greta').data.covered && w.objects.get('bakery_cloth').placement?.of === 'body_greta', 'tend_body cover: the cloth lies on the body');
 act('anselm', 'keep_vigil', { body: alias(body), hours: 2 });
-ok(C('anselm').activity.detail?.kind === 'vigil' && chooseTier(C('anselm'), { stimuli: [] }, w).tier === 'full', 'keep_vigil: a long watch (and a body in the room is a full decision)');
+ok(C('anselm').activity.detail?.kind === 'vigil' && chooseTier(C('anselm'), { stimuli: [] }, w).tier === 'full', 'keep_vigil: a watch over the body (and the first decision with a body in the room is full)');
 w.setActivity(C('anselm'), { type: 'idle' });
 // take Greta's things before the burial, with Lena watching
 move('lena', 'bakery'); w.applyAction(C('lena'), { name: 'wait', arguments: { reason: 'watching', minutes: 30 } });
@@ -210,7 +210,7 @@ ok(C('anselm').habits.length >= 3 && C('anselm').habits.every((h) => h.window &&
 const day0 = Math.floor(w.now / 1440) * 1440 + 1440;
 w.clock.gameMinutes = day0 + 12 * 60; // noon
 w.deaths.setDread(w.maps.maps[0].id, 0);
-const a = C('anselm'); move('anselm', 'tavern'); w.setActivity(a, { type: 'idle' }); a.emotions = []; a.inbox = []; a.lastStrongAt = null; a.lastAddressedAt = null; a.habitStreak = 0;
+const a = C('anselm'); move('anselm', 'tavern'); w.setActivity(a, { type: 'idle' }); a.emotions = []; a.inbox = []; a.calmMarks = {}; a.tierSnap = { at: w.now, emotions: {}, seen: [], deaths: '' }; a.habitStreak = 0;
 a.mortal = null;
 const calm = w.habits.calm(a);
 const due = w.habits.autopilot(a);

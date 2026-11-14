@@ -11,7 +11,7 @@ import { learnPlace, placeLabel, findPath, routeHint, servicesText, knows } from
 import { nowPhrase } from './time.js';
 import { CRAWL_FACTOR } from '../body/content.js';
 import { startTreatment, finishTreatment, startExamine, finishExamine as finishExaminePerson, refuseTreatment, acceptHelp, startCarry, putDownPerson, dropCarried, carryAlong, carryArrive, washClothes } from '../body/treat.js';
-import { ref } from '../memory/index.js';
+import { ref, plainRef } from '../memory/index.js';
 import { tendBody, finishTend, keepVigil, endVigil, bury, finishBury, proposeGathering } from '../death/customs.js';
 import { follow, followStep, tellNews } from './social-actions.js';
 import {
@@ -847,7 +847,19 @@ export function resolveTimers(world, now) {
       world.perceive([c.id], { kind: 'timer', text: `You finish ${ingOrQuote(what)}.${changed}`, importance: IMPORTANCE.timer, roomId: c.location });
     } else if (a.type === 'waiting') {
       const reason = a.detail?.reason;
-      if (a.detail?.kind === 'vigil') endVigil(world, c, a.detail.objectId); // step 9.5
+      if (a.detail?.kind === 'vigil') {
+        endVigil(world, c, a.detail.objectId); // step 9.5
+        // step 10 (0.3): the watch was kept in turns — stay, hand over, or go
+        const o = world.objects.get(a.detail.objectId);
+        const dead = o ? world.citizens.get(o.data?.citizenId) : null;
+        world.setActivity(c, { type: 'idle' });
+        const hours = Math.max(1, Math.round((a.detail.minutes ?? 180) / 60));
+        world.perceive([c.id], {
+          kind: 'timer', importance: IMPORTANCE.timer, roomId: c.location, data: { vigilEnd: a.detail.objectId },
+          text: `You've kept watch over ${dead ? plainRef(dead) : 'the dead'} for ${hours === 1 ? 'an hour' : `${hours} hours`}. You could stay longer, hand the watch to someone, or go and rest.`,
+        });
+        continue;
+      }
       if (a.detail?.following && c.following?.id === a.detail.following) { if (followStep(world, c, { applyAction })) continue; }
       world.setActivity(c, { type: 'idle' });
       if (a.detail?.silent) { world.scheduler.poke(); continue; } // a short wait while following someone: no stimulus

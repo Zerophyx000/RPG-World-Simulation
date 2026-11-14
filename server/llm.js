@@ -103,8 +103,8 @@ export class LLM {
     this.routeFilter = null; // (purpose, chain) => chain; the governor narrows routes under budget pressure
     this.insert = db.prepare(`INSERT INTO llm_calls
       (real_time, game_time, citizen_id, purpose, model, request, reasoning, content, tool_calls,
-       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier, finish_reason)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier, finish_reason, tier_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     this.healthTimer = setInterval(() => this.healthCheck(), HEALTH_EVERY_MS);
     this.healthTimer.unref?.();
     setTimeout(() => this.healthCheck(), 1000).unref?.();
@@ -176,6 +176,7 @@ export class LLM {
    * @param {string} opts.purpose          decides the route (profile chain) and timeout
    * @param {'full'|'light'|'none'} [opts.tier]  thinking on/off + max_tokens
    * @param {number} [opts.maxTokens]      overrides the tier's max_tokens
+   * @param {string} [opts.tierReason]     step 10 (0.1): why a decide call runs at its tier (llm_calls.tier_reason)
    * @param {object} [opts.responseSchema] { name, schema } → structured JSON output (result.json)
    * @param {string} [opts.citizenId]
    * @param {AbortSignal} [opts.signal]
@@ -229,7 +230,7 @@ export class LLM {
     return (tier === 'full' ? profile.thinking.full : tier === 'light' ? profile.thinking.light : profile.thinking.none) ?? {};
   }
 
-  async #call(profile, { messages, tools, purpose, citizenId = null, signal, params = {}, tier = null, maxTokens = null, responseSchema = null }) {
+  async #call(profile, { messages, tools, purpose, citizenId = null, signal, params = {}, tier = null, tierReason = null, maxTokens = null, responseSchema = null }) {
     const body = {
       model: profile.model,
       messages,
@@ -302,11 +303,11 @@ export class LLM {
     } finally {
       profile.sem.release();
       this.byPurpose.set(purpose, this.activeFor(purpose) - 1);
-      this.#log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile: profile.name, tier });
+      this.#log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile: profile.name, tier, tierReason });
     }
   }
 
-  #log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile, tier }) {
+  #log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile, tier, tierReason = null }) {
     try {
       const info = this.insert.run(
         new Date().toISOString(), gameTime, citizenId, purpose, body.model,
@@ -315,11 +316,11 @@ export class LLM {
         result ? JSON.stringify(result.toolCalls) : null,
         status, error, Date.now() - started,
         result?.usage?.prompt_tokens ?? null, result?.usage?.completion_tokens ?? null,
-        profile, tier, result?.finishReason ?? null,
+        profile, tier, result?.finishReason ?? null, tierReason,
       );
       if (result) result.callId = Number(info.lastInsertRowid);
       this.bus.emit('llm', {
-        id: Number(info.lastInsertRowid), citizenId, purpose, status, durationMs: Date.now() - started, profile, tier,
+        id: Number(info.lastInsertRowid), citizenId, purpose, status, durationMs: Date.now() - started, profile, tier, tierReason,
         outputTokens: result?.usage?.completion_tokens ?? 0, inputTokens: result?.usage?.prompt_tokens ?? 0,
       });
     } catch (err) {

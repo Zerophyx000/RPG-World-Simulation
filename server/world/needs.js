@@ -120,10 +120,14 @@ export class Needs {
     const n = c.needs;
     const unaware = UNAWARE.has(c.activity?.type);
     const out = [];
+    // step 10 (0.3): sitting up with the dead costs something they should notice — tiredness speaks one level earlier
+    const watchful = ['vigil', 'tend'].includes(c.activity?.detail?.kind);
     for (const kind of NEED_KINDS) {
       const idx = this.levelIndex(kind, n);
       const told = n.levels[kind] ?? 0;
-      const lvl = this.levels(kind)[idx];
+      const own = this.levels(kind)[idx];
+      const next = this.levels(kind)[idx + 1];
+      const lvl = kind === 'fatigue' && watchful && idx >= 1 && next ? { ...own, importance: next.importance, remindEvery: next.remindEvery ?? own.remindEvery } : own;
       if (idx > told) {
         n.levels[kind] = idx;
         n.lastReminderAt[kind] = now;
@@ -171,7 +175,7 @@ export class Needs {
     return {
       kind: 'body', text, importance: lvl.importance,
       // Body reminders never interrupt a think unless they are critical (>= 9).
-      data: { need: kind, level: lvl.name, reminder, interrupt: lvl.importance >= 9 },
+      data: { need: kind, level: lvl.name, levelIndex: Math.max(0, this.levels(kind).findIndex((l) => l.name === lvl.name)), reminder, interrupt: lvl.importance >= 9 },
     };
   }
 

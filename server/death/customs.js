@@ -6,7 +6,10 @@
 //   tend_body  close_eyes · check_breath (makes the death certain) · cover (a cloth, blanket or one's own garment, laid
 //              on the body: placement 'on', owner unchanged) · wash (water here or carried; 30 min) · lay_out (30 min;
 //              quicker with two). Each sets a flag on the body that everyone present sees.
-//   keep_vigil an ongoing watch over the body, up to 8 game hours, broken by anything of importance >= 7
+//   keep_vigil a watch over the body kept IN TURNS (step 10, 0.3): 3 game hours by default (at most 4), or until someone
+//              else takes over the watch (the one relieved is told and goes idle); broken by anything of importance >= 7.
+//              When it ends, the keeper decides: stay, hand over to someone here, or go. vigilLines() puts their
+//              tiredness and who else could take a turn in the prompt.
 //   bury       in a room with the `burial` service, with a digging tool here or in hand: 3 game hours alone, 1.5 with
 //              help. The body object is removed and a grave object is created by THIS code (origin 'code') — the one
 //              other thing code creates besides the body itself.
@@ -19,10 +22,13 @@ import { pronouns } from '../world/citizens.js';
 import { hasWater } from '../body/treat.js';
 import { DEATH_WORDS } from './index.js';
 import { setState } from '../db.js';
+import { travelMinutes } from '../world/places.js';
 
 export const TEND_HOW = ['close_eyes', 'check_breath', 'cover', 'wash', 'lay_out'];
 const TEND_MINUTES = { close_eyes: 1, check_breath: 2, cover: 2, wash: 30, lay_out: 30 };
-const VIGIL_MAX_MINUTES = 8 * 60;
+const VIGIL_MAX_MINUTES = 4 * 60;
+const VIGIL_DEFAULT_HOURS = 3;
+const TURN_NEAR_MINUTES = 10; // "nearby" for who could take a turn
 const BURY_MINUTES = 180;
 const BURY_HELPED_MINUTES = 90;
 const DAY = 1440;
@@ -154,9 +160,9 @@ export function customTools(world, c, fn, INNER) {
       ...(coverables.length ? { with: { type: 'string', enum: coverables, description: 'For cover: what you lay over the body, by its [handle].' } } : {}),
       inner_thought: INNER,
     }, ['body', 'how']));
-    tools.push(fn('keep_vigil', 'Stay with the dead and keep watch, so they are not alone (up to a whole night). Anything urgent will still catch your attention.', {
+    tools.push(fn('keep_vigil', 'Stay with the dead and keep watch, so they are not alone. Watches are kept in turns: a few hours, then someone else takes over (taking over from someone relieves them). Anything urgent will still catch your attention.', {
       body: { type: 'string', enum: handles, description: 'Whose body you watch over, by its [handle].' },
-      hours: { type: 'integer', minimum: 1, maximum: 8, description: 'Roughly how many hours.' },
+      hours: { type: 'integer', minimum: 1, maximum: 4, description: 'Roughly how many hours (usually about 3).' },
       inner_thought: INNER,
     }, ['body']));
     if (activeServices(room, world.now).burial || room?.services?.burial) {
@@ -270,10 +276,18 @@ export function keepVigil(world, c, call, { stale, logAction, remember }) {
   const o = world.objects.resolve(call.arguments.body);
   if (!isCorpse(o) || o.roomId !== c.location) return stale(world, c, call, 'The body you meant to watch over is not here.');
   const dead = world.citizens.get(o.data?.citizenId);
-  const minutes = Math.min(VIGIL_MAX_MINUTES, Math.max(60, (Number(call.arguments.hours) || 8) * 60));
+  const minutes = Math.min(VIGIL_MAX_MINUTES, Math.max(60, (Number(call.arguments.hours) || VIGIL_DEFAULT_HOURS) * 60));
   logAction(world, c, call, { objectId: o.id, deadId: dead?.id ?? null, minutes });
+  // step 10 (0.3): taking over the watch relieves whoever keeps it now
+  const relieved = (o.data?.vigil ?? []).map((id) => world.citizens.get(id))
+    .filter((k) => k && k.id !== c.id && k.alive && k.activity.type === 'waiting' && k.activity.detail?.kind === 'vigil' && k.activity.detail.objectId === o.id);
   world.setActivity(c, { type: 'waiting', until: world.now + minutes, detail: { kind: 'vigil', objectId: o.id, reason: `keeping vigil over ${dead ? plainRef(dead) : 'the dead'}`, minutes } });
-  world.objects.change(o.id, { data: { ...o.data, vigil: [...new Set([...(o.data?.vigil ?? []), c.id])] } }, { actorId: c.id, action: 'edit', notify: false });
+  world.objects.change(o.id, { data: { ...o.data, vigil: [...new Set([...(o.data?.vigil ?? []).filter((id) => !relieved.some((k) => k.id === id)), c.id])] } }, { actorId: c.id, action: 'edit', notify: false });
+  for (const k of relieved) {
+    world.setActivity(k, { type: 'idle' });
+    world.perceive([k.id], { kind: 'action', text: `${ref(c)} takes over the watch over ${dead ? plainRef(dead) : 'the dead'}. You could rest now.`, importance: 6, sourceId: c.id, roomId: c.location, data: { relieved: o.id } });
+    world.logEvent('vigil_relieved', { actorId: k.id, location: c.location, objectId: o.id, deadId: dead?.id ?? null, by: c.id });
+  }
   if (dead && world.deaths.knows(c, dead.id)) world.emotions.bump(c, { type: 'sadness', target: dead.id, delta: 0.5, cause: `keeping watch over ${ref(dead)}`, source: 'vigil', raw: true, data: { grief: true } });
   const others = citizensIn(world.citizens, c.location, { exceptId: c.id });
   world.perceive(others.map((x) => x.id), { kind: 'action', text: `${ref(c)} keeps vigil over ${dead ? plainRef(dead) : 'the dead'}.`, importance: 5, sourceId: c.id, roomId: c.location, data: { vigil: o.id } });
@@ -288,6 +302,38 @@ export function keepVigil(world, c, call, { stale, logAction, remember }) {
   remember(world, c, `You began keeping vigil over ${dead ? plainRef(dead) : 'the dead'}.`);
   world.logEvent('vigil', { actorId: c.id, location: c.location, objectId: o.id, deadId: dead?.id ?? null, minutes });
   return { ok: true };
+}
+
+/**
+ * step 10 (0.3): for the prompt's RIGHT NOW, when a body they know of lies here (or they keep watch): how long they've
+ * been awake, plainly, and who else could take a turn — awake people close to the dead, here or nearby.
+ */
+export function vigilLines(world, c) {
+  const bodies = world.objects.inRoom(c.location ?? '').filter((o) => isCorpse(o) && world.deaths.knows(c, o.data?.citizenId));
+  if (!bodies.length) return [];
+  const lines = [];
+  const awakeH = c.wokeAt != null ? Math.floor((world.now - c.wokeAt) / 60) : null;
+  const watching = c.activity.detail?.kind === 'vigil' || (c.inbox ?? []).some((s) => s.data?.vigilEnd);
+  if (awakeH != null && (awakeH >= 14 || (watching && awakeH >= 8))) lines.push(`You've been awake ${awakeH} hours.`);
+  for (const o of bodies) {
+    const dead = world.citizens.get(o.data?.citizenId);
+    if (!dead) continue;
+    const keepers = (o.data?.vigil ?? []).filter((id) => id !== c.id).map((id) => world.citizens.get(id)).filter((k) => k?.activity.detail?.kind === 'vigil');
+    if (keepers.length) lines.push(`${keepers.map((k) => world.memory.nameFor(c, k.id, { start: true })).join(' and ')} ${keepers.length > 1 ? 'keep' : 'keeps'} watch over ${plainRef(dead)} now.`);
+    const could = [];
+    for (const x of world.citizens.values()) {
+      if (x.id === c.id || x.id === dead.id || !x.alive || x.kind !== 'citizen' || !x.location) continue;
+      if (['sleeping', 'collapsed', 'unconscious'].includes(x.activity.type) || keepers.includes(x)) continue;
+      if (!world.memory.rel(c.id, x.id)?.nameKnown || !world.deaths.knows(x, dead.id)) continue;
+      const k = world.deaths.closeness(x, dead);
+      if (!(k.tie || k.affinity >= 2 || k.grief >= 6)) continue;
+      const m = x.location === c.location ? 0 : travelMinutes(world.rooms, c.location, x.location, world.now);
+      if (m == null || m > TURN_NEAR_MINUTES) continue;
+      could.push(`${world.memory.nameFor(c, x.id, { start: true })} (${m === 0 ? 'here' : 'nearby'})`);
+    }
+    if (could.length && (watching || awakeH == null || awakeH >= 14)) lines.push(`Who else could take a turn watching over ${plainRef(dead)}: ${could.join(', ')}.`);
+  }
+  return lines;
 }
 
 /** A vigil ends (timer, or something urgent): the body's vigil list forgets them. */

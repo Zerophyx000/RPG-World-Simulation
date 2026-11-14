@@ -106,6 +106,9 @@ const DEFAULT_ROUTES = {
 const dataDir = path.resolve(ROOT, env('DATA_DIR', 'data'));
 
 export const config = {
+  // step 10 (0.5): 'live' = the world meant to last. It refuses to start under --watch (npm run dev), so half-written code
+  // and new migrations never reach it while someone is editing server/. Update it only through scripts/deploy.sh.
+  worldRole: env('WORLD_ROLE', 'dev') === 'live' ? 'live' : 'dev',
   port: num('PORT', 3000),
   host: env('HOST', '0.0.0.0'),
   dataDir,

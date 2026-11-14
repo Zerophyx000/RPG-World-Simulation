@@ -27,6 +27,8 @@ import { SLOTS } from '../world/objects.js';
 import { relationLine } from '../social/describe.js';
 import { feelLines, moodFraming, whoIsHere, hereNotes, orderStimuli, instructionClause } from '../emotions/present.js';
 import { FEELING_RULE } from '../emotions/report.js';
+import { vigilLines, corpseOf } from '../death/customs.js';
+import { plainRef } from '../memory/index.js';
 
 export { clockTime, timeOfDay, relativeTime };
 
@@ -136,6 +138,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   const dread = world.deaths?.dreadFor(c) ?? 0;
   if (dread >= 3) right.push(dread >= 6 ? 'Since the deaths, the whole village is afraid; people look over their shoulders.' : 'Since the deaths, the whole village is on edge.');
   right.push(ownActivity(world, c));
+  right.push(...vigilLines(world, c).map((l) => mem.resolveNames(c, l))); // step 10 (0.3): tiredness, plainly, and who else could take a turn
   // step 9.5 (A3): what code did for them out of habit, so they can break it off
   if (c.habitNote && world.now - c.habitNote.at < 120) right.push(`Just now, ${c.habitNote.text}. You can carry on or do something else.`);
   const marks = (c.marks ?? []).filter((m) => m.until == null || m.until > now).map((m) => m.text);
@@ -272,6 +275,13 @@ function onWaking(world, c) {
   if (routine) lines.push(`Your usual day: ${routine}.`);
   const grief = world.deaths?.strongestGrief(c);
   if (grief && grief.intensity >= 3 && grief.target) lines.push(`For a moment you forget — then you remember: ${world.memory.nameFor(c, grief.target, { plain: true })} is gone.`);
+  // step 10 (0.3): what is still owed to the dead they know of (after a collapse, too)
+  for (const deadId of world.deaths?.knownDead(c) ?? []) {
+    const o = corpseOf(world, deadId);
+    const dead = world.citizens.get(deadId);
+    if (!o || !dead || !o.roomId) continue;
+    lines.push(world.memory.resolveNames(c, `${plainRef(dead)} lies in ${placeLabel(c, world.rooms.get(o.roomId))}, not yet buried.`));
+  }
   return lines.join('\n') || 'A new day.';
 }
 

@@ -10,12 +10,17 @@
 // Generation: purpose 'habits' (tier full), once per citizen without habits; a code default if no LLM is up.
 // Evolution: the nightly consolidation returns habit_changes (at most 2, each with a why; logged as habit_change).
 // Strength: done inside the window +0.05 (max 1), a window passed without it −0.1; below 0.2 it is dropped.
+// Calm (step 10, 0.2): blocked for 30 game minutes after being spoken to, an event >= 5 in their own room, or overheard
+// talk that concerns them (their name, someone close, a death they know of) — not by chatter nearby; also by a body in
+// the room, dread >= 4, an emotion >= 7 or one that just jumped (tiers.js), a pressing need, an urgent inbox (>= 7).
+// Every blocked due habit is logged (habit_blocked, with its blocker) so the rule can be tuned.
 import { clockTime } from '../world/time.js';
 import { activeServices } from '../world/rooms.js';
 import { knownWith, travelMinutes } from '../world/places.js';
 import { systemPrompt } from './prompt.js';
 import { chatForTool } from '../llm.js';
 import { maxImportance } from '../world/perception.js';
+import { emotionJump } from './tiers.js';
 
 export const KINDS = ['work', 'need', 'rest', 'social', 'care', 'other'];
 export const ACTIONS = ['travel_to', 'do', 'eat', 'sleep', 'wait', 'use'];
@@ -42,13 +47,52 @@ function inWindow(t, [a, b]) {
  */
 export function isRoutineStimulus(s) {
   if (s.kind === 'timer' && !s.data?.wakeUp) return true;
-  if (s.kind === 'body' && s.data?.need && (s.data.level ?? 0) < 3) return true;
+  // step 10: data.level is the level's NAME ("tired"); the index rides along as levelIndex (older stimuli: by importance)
+  if (s.kind === 'body' && s.data?.need && (s.data.levelIndex ?? (s.importance <= 5 ? 0 : 9)) < 3) return true;
   return s.kind === 'arrive' && /^You (arrive|reach)\b/.test(String(s.text ?? '')); // their own arrival, not someone walking in
+}
+
+const CALM_MINUTES = 30;
+const URGENT = 7;
+const CLOSE_GRIEF = 6;      // deaths.closeness(...).grief >= 6: someone they're close to
+const BLOCK_LOG_EVERY = 30; // game minutes between two identical habit_blocked events
+
+const escapeRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const nameRe = (name) => new RegExp(`\\b${escapeRe(String(name).split(/\s+/)[0])}\\b`, 'i');
+const quoted = (text) => (String(text).match(/"([^"]*)"/g) ?? []).join(' ') || String(text);
+
+/**
+ * step 10 (0.2): what a perceived stimulus means for the calm check, recorded at the moment it arrives (c.calmMarks).
+ *   addressed   spoken to (by name, or a line in a conversation they're part of)
+ *   room_event  something of importance >= 5 happened in their own room (not talk, not their own routine)
+ *   overheard   talk they overheard that mentions them, someone they're close to, or a death they know about
+ * Chatter that doesn't concern them marks nothing: in a village someone is always talking nearby.
+ */
+export function calmMarkFor(world, c, s) {
+  if (isRoutineStimulus(s)) return null;
+  if (s.data?.addressed || (s.kind === 'speech' && s.data?.conversationId && s.data.conversationId === c.conversationId)) return 'addressed';
+  if (s.kind === 'speech') return concernsThem(world, c, quoted(s.text)) ? 'overheard' : null;
+  if (s.importance >= 5 && (s.roomId == null || s.roomId === c.location)) return 'room_event';
+  return null;
+}
+
+function concernsThem(world, c, text) {
+  if (!text) return false;
+  if (nameRe(c.name).test(text)) return true;
+  for (const o of world.citizens.values()) {
+    if (o.id === c.id || o.kind !== 'citizen') continue;
+    if (!world.memory.rel(c.id, o.id)?.nameKnown) continue;
+    if (!nameRe(o.name).test(text)) continue;
+    if (!o.alive) { if (world.deaths?.knows(c, o.id)) return true; continue; }
+    if ((world.deaths?.closeness(c, o)?.grief ?? 0) >= CLOSE_GRIEF) return true;
+  }
+  return false;
 }
 
 export class Habits {
   constructor(world) {
     this.world = world;
+    this.blockedLog = new Map(); // citizen id -> { key, at }: habit_blocked is logged once per (habit, blocker) per half hour
     this.generating = new Set();
     this.lastGenTry = new Map();
     this.lastJudge = -Infinity;
@@ -218,16 +262,27 @@ export class Habits {
       .sort((a, b) => b.strength - a.strength)[0] ?? null;
   }
 
-  // ---------- A3: autopilot only when calm ----------
+  // ---------- A3: autopilot only when calm (step 10, 0.2: what blocks it) ----------
+  /** A stimulus arrived (world.perceive): remember what it means for the calm check. */
+  onPerceived(c, s) {
+    const kind = calmMarkFor(this.world, c, s);
+    if (!kind) return;
+    c.calmMarks = { ...(c.calmMarks ?? {}), [kind]: { at: this.world.now, text: String(s.text ?? '').slice(0, 120) } };
+  }
+
   calm(c) {
     const w = this.world;
     if (c.activity.type !== 'idle') return { ok: false, why: 'busy' };
     if ((c.habitStreak ?? 0) >= MAX_IN_A_ROW) return { ok: false, why: 'two habits in a row' };
     if (c.conversationId) return { ok: false, why: 'in a conversation' };
-    if (maxImportance((c.inbox ?? []).filter((x) => !isRoutineStimulus(x))) >= 5) return { ok: false, why: 'something to react to' };
-    if ((c.lastStrongAt ?? -Infinity) > w.now - 30) return { ok: false, why: 'something important lately' };
-    if ((c.lastAddressedAt ?? -Infinity) > w.now - 10) return { ok: false, why: 'spoken to lately' };
-    if (w.emotions.of(c).some((e) => e.intensity >= 5 || w.emotions.expressed(c, e) >= 5)) return { ok: false, why: 'a strong feeling' };
+    if (maxImportance((c.inbox ?? []).filter((x) => !isRoutineStimulus(x))) >= URGENT) return { ok: false, why: 'something urgent' };
+    const since = w.now - CALM_MINUTES;
+    const marks = c.calmMarks ?? {};
+    if ((marks.addressed?.at ?? -Infinity) > since) return { ok: false, why: 'spoken to lately' };
+    if ((marks.room_event?.at ?? -Infinity) > since) return { ok: false, why: 'something happened here lately' };
+    if ((marks.overheard?.at ?? -Infinity) > since) return { ok: false, why: 'overheard talk that concerns them' };
+    if (w.emotions.of(c).some((e) => e.intensity >= 7 || w.emotions.expressed(c, e) >= 7)) return { ok: false, why: 'a strong feeling' };
+    if (emotionJump(w, c)) return { ok: false, why: 'a feeling that just rose' };
     if (w.objects.inRoom(c.location).some((o) => o.typeId === 'corpse')) return { ok: false, why: 'a body here' };
     if (c.mortal?.state || w.body?.criticalHere(c)) return { ok: false, why: 'the body in danger' };
     if (Object.values(c.needs?.levels ?? {}).some((l) => l >= 3)) return { ok: false, why: 'a pressing need' };
@@ -235,11 +290,24 @@ export class Habits {
     return { ok: true };
   }
 
-  /** The scheduler asks: carry out a habit now, by code? → the habit, or null. */
+  /** The scheduler asks: carry out a habit now, by code? → the habit, or null. A due habit that is blocked is logged. */
   autopilot(c) {
     const h = this.due(c);
     if (!h) return null;
-    return this.calm(c).ok ? h : null;
+    const calm = this.calm(c);
+    if (calm.ok) return h;
+    this.#noteBlocked(c, h, calm.why);
+    return null;
+  }
+
+  #noteBlocked(c, h, why) {
+    const w = this.world;
+    const key = `${h.id}|${why}`;
+    const last = this.blockedLog.get(c.id);
+    if (last && last.key === key && w.now - last.at < BLOCK_LOG_EVERY) return;
+    this.blockedLog.set(c.id, { key, at: w.now });
+    const mark = { 'spoken to lately': 'addressed', 'something happened here lately': 'room_event', 'overheard talk that concerns them': 'overheard' }[why];
+    w.logEvent('habit_blocked', { actorId: c.id, location: c.location, id: h.id, what: h.what, blocker: why, ...(mark && c.calmMarks?.[mark] ? { cause: c.calmMarks[mark].text } : {}) });
   }
 
   /** Code carries out one habit step (no LLM). Returns true when something started. */

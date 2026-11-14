@@ -30,9 +30,10 @@ export async function think(world, c, { mode = 'decide' } = {}) {
   // EMOTION_PARAM_EFFECTS (off by default): a slightly higher temperature under overwhelming anger or fear.
   const params = tierInfo.params?.temperatureDelta ? { temperature: Number(process.env.EMOTION_PARAM_BASE_TEMPERATURE ?? 0.7) + tierInfo.params.temperatureDelta } : undefined;
   const callIds = []; // every LLM call of this think, so the action event can point at its reasoning (export)
-  const call = async (messages, tools, tier, maxTokens) => {
+  // step 10 (0.1): every decide call records why it ran at its tier (llm_calls.tier_reason); a retry says it is one
+  const call = async (messages, tools, tier, maxTokens, tierReason = tierInfo.reason) => {
     const r = await world.llm.chat({
-      purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, ...(params ? { params } : {}),
+      purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, tierReason, ...(params ? { params } : {}),
     });
     if (r?.callId) callIds.push(r.callId);
     return r;
@@ -54,6 +55,7 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     }
     outcome.tier = tierInfo.tier;
     outcome.tierReason = tierInfo.reason;
+    outcome.tierDetail = tierInfo.detail ?? null;
     outcome.callIds = callIds;
     world.completeThink(c, t, outcome);
   } catch (err) {
@@ -94,7 +96,7 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
         : TIER_MAX_TOKENS[toTier];
       world.logEvent('retry_cutoff', { actorId: c.id, location: c.location, fromTier: tier, toTier, maxTokens: retryTokens });
       const quick = buildMessages(world, c, { tier: toTier, mode, collect: null });
-      const retryRes = await call(quick, tools, toTier, retryTokens);
+      const retryRes = await call(quick, tools, toTier, retryTokens, 'retry_cutoff');
       if (!world.isCurrentThink(c, t)) return null;
       outcome = interpret(retryRes, tools);
       outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
@@ -102,7 +104,7 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
     } else {
       // plan mode: one cheap thinking-off attempt, as before
       const quick = buildMessages(world, c, { tier: 'none', mode, collect: null });
-      const retryRes = await call(quick, tools, 'none', RETRY_MAX.decide);
+      const retryRes = await call(quick, tools, 'none', RETRY_MAX.decide, 'retry_cutoff');
       if (!world.isCurrentThink(c, t)) return null;
       outcome = interpret(retryRes, tools);
       outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
@@ -113,7 +115,7 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
     // One retry, telling the model what was wrong — in the conversation the invalid call was made in.
     const base = ladder?.messages ?? messages;
     const turn = ladder?.res ?? first;
-    const second = await call([...base, ...correction(turn, outcome)], tools, ladder?.tier ?? tier, ladder?.maxTokens ?? maxTokens);
+    const second = await call([...base, ...correction(turn, outcome)], tools, ladder?.tier ?? tier, ladder?.maxTokens ?? maxTokens, 'retry_invalid');
     if (!world.isCurrentThink(c, t)) return null;
     const again = interpret(second, tools);
     again.reasoning = joinReasoning(outcome.reasoning, second.reasoning);

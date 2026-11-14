@@ -31,6 +31,7 @@ export function mount(el) {
         <h3>Profiles</h3><table class="tbl" id="u-profiles"></table>
         <h3 id="u-cutoffs-head" class="hidden">Cut-offs by tier</h3><table class="tbl" id="u-cutoffs"></table>
         <div id="u-cutoff-note" class="dim"></div>
+        <h3 id="u-tiers-head" class="hidden">Decisions by tier and reason</h3><div id="u-tiers-note" class="dim"></div><table class="tbl" id="u-tiers"></table>
         <h3>Reflections (gating paths)</h3><div id="u-refl"></div>
       </section>
     </div>`;
@@ -140,6 +141,16 @@ function render() {
     root.querySelector('#u-cutoff-note').innerHTML =
       `<p class="${below > 0 ? 'warn-red' : 'muted'}">Addressed speech handled below full: ${below}</p>
        <p class="${retries > 0 ? 'warn-red' : 'muted'}">Cut-off retries: ${retries}</p>`;
+  }
+  // ---- step 10 (0.1): decisions by tier and the reason for it (hidden on older servers) ----
+  const dec = data.decide;
+  const tt = root.querySelector('#u-tiers');
+  root.querySelector('#u-tiers-head').classList.toggle('hidden', !dec);
+  if (!dec) { tt.innerHTML = ''; root.querySelector('#u-tiers-note').textContent = ''; }
+  else {
+    root.querySelector('#u-tiers-note').innerHTML = `<p>${dec.calls} decisions · <b>${(dec.fullShare * 100).toFixed(0)}% full</b> · capped to light: ${data.tierCapped ?? 0} · habits run by code: ${data.habitRuns ?? 0} (blocked ${data.habitBlocked ?? 0}×)</p>`;
+    tt.innerHTML = `<tr><th>tier</th><th>reason</th><th>calls</th><th>output</th><th>avg out</th></tr>`
+      + (dec.rows.map((x) => `<tr><td>${esc(x.tier)}</td><td>${esc(x.reason)}</td><td>${x.calls}</td><td>${fmt(x.output)}</td><td>${x.avgOutput}</td></tr>`).join('') || '<tr><td colspan="5" class="dim">no decisions in this window</td></tr>');
   }
   const r = data.reflections ?? {};
   const total = (r.template ?? 0) + (r.light ?? 0) + (r.full ?? 0);

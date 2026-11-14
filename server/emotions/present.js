@@ -55,10 +55,32 @@ export function feelLines(world, c) {
     const masked = emo.isMasked(c, e.type) ? " You're keeping it off your face." : '';
     lines.push(`${body}${aimPhrase(world, c, e, def)}${cause ? ` — ${lowerStart(cause)}` : ''}.${masked}`);
   }
+  const still = stillWithYou(world, c);
+  if (still) lines.push(still);
   const m = emo.moodState(c);
   if (m.dir && m.lastingDays >= 2) lines.push(m.dir < 0 ? emo.moodText.lowLasting : emo.moodText.highLasting);
   else if (m.dir) lines.push(m.dir < 0 ? "You're in low spirits." : "You're in good spirits.");
   return lines.filter(Boolean);
+}
+
+// step 10 (0.1): an old strong feeling, named plainly. Decisions now run at full only when something CHANGES; this line
+// keeps a long grief or grudge in view at light decisions ("Still with you: grief for Greta (since yesterday).").
+const STILL_MIN_INTENSITY = 5;
+const STILL_AFTER_MINUTES = 6 * 60;
+const STILL_PREP = { anger: 'at', fear: 'of', disgust: 'at', shame: 'before', guilt: 'toward', envy: 'of', jealousy: 'over', gratitude: 'toward' };
+export function stillWithYou(world, c) {
+  const now = world.now;
+  const e = world.emotions.of(c)
+    .filter((x) => x.intensity >= STILL_MIN_INTENSITY && now - (x.since ?? now) >= STILL_AFTER_MINUTES)
+    .sort((a, b) => b.intensity - a.intensity)[0];
+  if (!e) return null;
+  const noun = e.type === 'sadness' && e.data?.grief ? 'grief' : e.type;
+  const who = e.target && world.citizens.has(e.target) ? ` ${e.type === 'sadness' || e.type === 'affection' || e.type === 'pride' || e.type === 'joy' ? 'for' : STILL_PREP[e.type] ?? 'about'} ${world.memory.nameFor(c, e.target, { plain: true })}` : '';
+  const days = Math.floor(now / 1440) - Math.floor(e.since / 1440);
+  const tod = ((e.since % 1440) + 1440) % 1440;
+  const when = days <= 0 ? (tod < 12 * 60 ? 'since this morning' : tod < 18 * 60 ? 'since this afternoon' : 'since this evening')
+    : days === 1 ? 'since yesterday' : `for ${days} days now`;
+  return `Still with you: ${noun}${who} (${when}).`;
 }
 
 export function moodFraming(world, c) {
