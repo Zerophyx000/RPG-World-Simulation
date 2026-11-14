@@ -10,7 +10,8 @@ export function findLeaks(world, prompt, citizenId) {
   if (!viewer) return leaks;
   for (const o of world.citizens.values()) {
     if (o.id === citizenId) continue;
-    for (const g of o.persona?.secretGoals ?? []) {
+    const secretAmbitions = world.scheming ? world.scheming.ambitions.of(o.id).filter((a) => a.secrecy === 'secret').map((a) => a.text) : [];
+    for (const g of [...(o.persona?.secretGoals ?? []), ...secretAmbitions]) {
       const needle = String(g).trim().toLowerCase();
       if (needle.length >= 12 && text.includes(needle)) leaks.push({ kind: 'secretGoal', of: o.id, text: g });
     }

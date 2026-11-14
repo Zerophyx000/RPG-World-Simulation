@@ -73,7 +73,7 @@ export function tellNews(world, c, call, { stale, findPerson, say }) {
   const text = `${(NEWS_TEXT[news] ?? NEWS_TEXT.died)(name, pronouns(subject))}${extra ? ` ${extra}` : ''}`;
   const volume = call.arguments.volume === 'whisper' ? 'whisper' : 'normal';
   // spoken as an ordinary line (a conversation turn), at the chosen volume
-  const r = say(world, c, { ...call, name: 'say', arguments: { to: call.arguments.to, text, volume, inner_thought: call.arguments.inner_thought }, news: { person: subject.id, news } });
+  const r = say(world, c, { ...call, name: 'say', arguments: { to: call.arguments.to, text, volume, inner_thought: call.arguments.inner_thought, ...(call.arguments.deceive ? { deceive: call.arguments.deceive } : {}) }, news: { person: subject.id, news } }); // step 11: a lie in the news is still a lie
   if (!r?.ok) return r;
   const listeners = volume === 'whisper' ? [to] : here.filter((o) => !['sleeping', 'collapsed'].includes(o.activity.type));
   const where = news === 'died' ? world.deaths.entry(c, subject.id)?.where ?? null : null;

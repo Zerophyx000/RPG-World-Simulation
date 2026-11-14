@@ -69,7 +69,8 @@ export async function consolidate(world, c) {
     gistCands.length ? `# OLD, MINOR MEMORIES (already fading)\n${gistCands.map(line).join('\n')}` : '',
     feelNow ? `# HOW YOU FELT GOING TO SLEEP\n${feelNow}` : '',
     world.habits ? world.habits.consolidationBlock(c) : '',
-    `# WHAT NOW\nYou are asleep. Your mind sorts the day. Rewrite your core memory (first person, at most 250 words: who you are now, what matters, your people, what you are working towards). Merge related memories from today into a few lasting ones (list the ids they merge). Let trivial ones fade. Turn the old, minor memories into vague gists. Update what you think of people whose place in your life changed. Under lingering, name the feelings that carry over into tomorrow (up to 3: emotion, who it is about, stronger or weaker, by how much 1–3), and under mood_shift say whether the day left you lower (−) or lighter (+) overall. Use only what is listed here.${world.deaths?.knownDead(c).length ? ' Deaths you know of belong in your core memory: who, and what they were to you.' : ''}${world.habits ? ' Under habit_changes, say if your daily routine has changed (at most 2: a habit to add, change or drop, with why), judging by what you actually did lately.' : ''} Call consolidate exactly once.`,
+    world.scheming ? world.scheming.consolidationBlock(c) : '', // step 11: ambitions, what you did, what was done to you
+    `# WHAT NOW\nYou are asleep. Your mind sorts the day. Rewrite your core memory (first person, at most 250 words: who you are now, what matters, your people, what you are working towards). Merge related memories from today into a few lasting ones (list the ids they merge). Let trivial ones fade. Turn the old, minor memories into vague gists. Update what you think of people whose place in your life changed. Under lingering, name the feelings that carry over into tomorrow (up to 3: emotion, who it is about, stronger or weaker, by how much 1–3), and under mood_shift say whether the day left you lower (−) or lighter (+) overall. Use only what is listed here.${world.deaths?.knownDead(c).length ? ' Deaths you know of belong in your core memory: who, and what they were to you.' : ''}${world.habits ? ' Under habit_changes, say if your daily routine has changed (at most 2: a habit to add, change or drop, with why), judging by what you actually did lately.' : ''}${world.scheming ? ' Under ambition_changes, say if what you want out of life changed today (at most one new want; a want grown stronger or weaker, achieved, given up or turned into something else — each with why). What was done to you may stay with you or not; that is yours to decide.' : ''} Call consolidate exactly once.`,
   ].filter(Boolean).join('\n\n');
 
   const labelList = [...labels.keys()];
@@ -102,6 +103,7 @@ export async function consolidate(world, c) {
           relationship_summaries: { type: 'array', items: { type: 'object', properties: { person: { type: 'string', enum: labelList.length ? labelList : ['nobody'] }, summary: { type: 'string' } }, required: ['person', 'summary'] } },
           lingering: { type: 'array', maxItems: 3, items: feelingItemSchema(world, [...feelLabels.keys()]), description: 'Feelings that carry into tomorrow.' },
           ...(world.habits ? { habit_changes: world.habits.changesSchema(c) } : {}),
+          ...(world.scheming ? { ambition_changes: world.scheming.consolidationSchema(c) } : {}),
           mood_shift: { type: 'integer', minimum: -2, maximum: 2, description: 'How the day left your mood overall: −2 much lower … +2 much lighter.' },
         },
         required: ['core_memory'],
@@ -119,6 +121,7 @@ export async function consolidate(world, c) {
   if (!c.alive || world.citizens.get(c.id) !== c) return null;
   const record = apply(world, c, a, { allowed, gistIds: new Set(gistCands.map((m) => m.id)), labels, recent, gistCands, feelLabels });
   if (world.habits && Array.isArray(a.habit_changes)) record.habitChanges = world.habits.applyChanges(c, a.habit_changes);
+  if (world.scheming && a.ambition_changes) record.ambitionChanges = world.scheming.applyConsolidation(c, a.ambition_changes); // step 11
   return record;
 }
 

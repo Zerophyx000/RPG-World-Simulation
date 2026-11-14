@@ -42,7 +42,11 @@ export function applyAction(world, c, call) {
     return stale(world, c, call, c.body.capacities.moving < 0.05 ? "You can't move at all." : "You can't walk on those injuries; you could only crawl.");
   }
   // step 10: physical acts on people and things (server/physical/)
-  if (['act_on', 'get_up', 'handle', 'force_door'].includes(call.name)) return world.physical.apply(c, call, { stale, logAction, remember, findPerson });
+  if (['act_on', 'get_up', 'handle', 'force_door'].includes(call.name)) {
+    const pr = world.physical.apply(c, call, { stale, logAction, remember, findPerson });
+    if (pr?.ok && call.name === 'handle' && args.deceive) objectLie(world, c, call, args.object);
+    return pr;
+  }
   // step 10: "use the cloth to smother the flames" / "do: beating out the fire" — the free-form path to the fire actions
   if ((call.name === 'use' || call.name === 'do') && world.physical) {
     const fx = fireIntent(world, c, args.object ?? args.target, args.intent ?? args.action);
@@ -56,11 +60,24 @@ export function applyAction(world, c, call) {
     if (!who && call.name === 'treat') { const m = /\[w(\d+)\]/.exec(String(args.wound ?? '')); who = m ? here.find((o) => world.body.conditionById(o.id, m[1])) : null; }
     if (who) world.physical.consequences.onCare(c, who, call.name, String(args.reason ?? '').trim() || null);
   }
+  // step 11: putting or giving something to make people believe what isn't so (planting, framing)
+  if (result?.ok && ['put', 'give'].includes(call.name) && args.deceive) objectLie(world, c, call, args.object);
   if (result?.ok && call.name === 'accept_help' && world.physical) {
     const helper = findPerson(world, c, citizensIn(world.citizens, c.location, { exceptId: c.id }), args.person ?? args.from);
     if (helper) world.physical.consequences.onAcceptedHelp(c, helper);
   }
   return result;
+}
+
+/** step 11: a put / give / handle meant to deceive → a lie row (object_history keeps the true actor). */
+function objectLie(world, c, call, token) {
+  const o = token ? world.objects.resolve(token) : null;
+  if (!o || !world.scheming) return;
+  const a = call.arguments ?? {};
+  const where = o.holderId ? `into ${world.citizens.get(o.holderId)?.name ?? 'someone'}'s hands` : `${o.placement?.relation && o.placement.relation !== 'floor' ? `${o.placement.relation} ${world.objects.get(o.placement.of) ? world.objects.surfaceText(world.objects.get(o.placement.of)) : 'something'}` : 'down'} in ${world.rooms.get(o.roomId)?.name ?? 'here'}`;
+  const description = `${call.name === 'give' ? 'gave' : call.name === 'handle' ? a.action : 'put'} ${world.objects.surfaceText(o)} ${where}`;
+  const witnesses = citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((x) => !['sleeping', 'collapsed'].includes(x.activity.type));
+  world.scheming.onObjectAct(c, { call, objectId: o.id, description, witnesses });
 }
 
 function applyBasic(world, c, call) {
@@ -372,6 +389,7 @@ function say(world, c, call, { released = false } = {}) {
   const hearers = present.filter((o) => canHear(o) && heardWords(world, c, o, volume, addressee));
   world.memory.hearSpeech(c, text, addressee, hearers);
   world.deaths?.onSpeech(c, text, hearers); // step 9.5: "she's dead — no breath in her" tells whoever hears it
+  world.scheming?.onSpeech(c, { text, args, addressee, hearers, eventId: ev?.id ?? null }); // step 11: lies, claims, tells, confiding, leaks
   // step 10: what they now mean toward the one they speak to ("none" lets it go)
   if (addressee && args.intent && world.physical) {
     if (args.intent === 'none') { if (c.intents?.[addressee.id]) { delete c.intents[addressee.id]; world.logEvent('intent', { actorId: c.id, location: c.location, targetId: addressee.id, intent: null }); } }

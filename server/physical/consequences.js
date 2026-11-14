@@ -308,6 +308,13 @@ export class Consequences {
     const now = w.now;
     const out = [];
     for (const d of (c.deeds ?? []).filter((x) => x.until > now).slice(-4)) {
+      // step 11: a false accusation or a framing stays with them like a serious act
+      if (d.lie) {
+        const to = (d.lie.to ?? []).map((id) => ref(w.citizens.get(id) ?? id)).join(' and ');
+        const v2 = w.citizens.get(d.victimId);
+        out.push(`- ${relativeTime(now - d.lastAt)} you ${d.lie.kind === 'frame' ? `made ${v2 ? ref(v2) : 'someone'} look guilty` : `blamed ${v2 ? ref(v2) : 'someone'} falsely`}${to ? ` to ${to}` : ''}: "${d.lie.said.slice(0, 90)}" — it isn't true (${d.lie.truth.slice(0, 80)}).`);
+        continue;
+      }
       const v = w.citizens.get(d.victimId);
       if (!v) continue;
       const P = pronouns(v);

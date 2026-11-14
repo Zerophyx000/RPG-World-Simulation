@@ -119,6 +119,9 @@ export function chooseTier(c, trigger, world) {
   const before = new Set(String(snap?.deaths ?? '').split(',').filter(Boolean));
   const deathNews = (snap != null && sig.split(',').filter(Boolean).some((x) => !before.has(x))) || fresh.some(deathStim);
   const jump = emotionJump(world, c);
+  // step 11: the first decision with a newly due scheme step; being asked to join a scheme
+  const schemeStep = Boolean(c.schemeStepNew);
+  const proposal = fresh.some((s) => s.data?.proposal);
 
   let tier;
   let reason;
@@ -127,6 +130,8 @@ export function chooseTier(c, trigger, world) {
   else if (altercation) { tier = 'full'; reason = 'altercation'; }
   else if (critical) { tier = 'full'; reason = 'critical'; }
   else if (deathNews) { tier = 'full'; reason = 'death_news'; }
+  else if (proposal) { tier = 'full'; reason = 'proposal'; }
+  else if (schemeStep) { tier = 'full'; reason = 'scheme_step'; }
   else if (freshMax >= TIER_RULES.fullImportance) { tier = 'full'; reason = 'new_stimulus'; detail = `importance ${freshMax}`; }
   else if (jump) { tier = 'full'; reason = 'emotion_jump'; detail = `${jump.type}${jump.target ? `→${jump.target}` : ''} ${jump.from}→${jump.to}`; }
   else if (stimuli.length > 0 && stimuli.every((s) => MECHANICAL.has(s.kind) && !s.data?.wakeUp && !s.data?.vigilEnd) && topEmotion < 3 && needLevel < 2 && !c.conversationId) {

@@ -365,6 +365,18 @@ export function buildTools(world, c) {
     const say = tools.find((t) => t.function.name === 'say');
     if (say) say.function.parameters.properties.intent = { type: 'string', enum: ['scare', 'subdue', 'hurt', 'kill', 'defend', 'care', 'none'], description: 'Optional: what you now mean toward the one you speak to (it changes what you came at them for; "none" lets it go).' };
   }
+  // step 11: deceive (speech, put / give / handle), confide and confess (say), scheme / proposal / trust_claim (any)
+  const sf = world.scheming?.toolFields(c);
+  if (sf) {
+    for (const t of tools) {
+      const n = t.function.name;
+      const props = t.function.parameters.properties;
+      Object.assign(props, sf.all);
+      if (n === 'say') Object.assign(props, sf.say);
+      if (['tell_news', 'tell_about_place'].includes(n)) props.deceive = sf.say.deceive;
+      if (['put', 'give', 'handle'].includes(n)) Object.assign(props, sf.object);
+    }
+  }
   // Step 7A: every action may carry the optional `feeling` self-report (an object; the enums are per citizen).
   const feeling = feelingParam(world, c);
   const intentions = intentionsParam(world, c); // step 9.5 (A1.3): edit what you mean to do, inside any decision

@@ -314,6 +314,7 @@ async function remember(world, conv, c, limits, path) {
     world.logEvent('learned_from_reflection', { actorId: c.id, deadId: dead.id, from: from?.id ?? null, conversationId: conv.id, text: l.text });
   }
   world.saveCitizen(c);
+  world.scheming?.onReflection(c); // step 11: accomplices' commitment, open proposals, maybe a plan (<= 1 a day)
 }
 
 function listJoin(items) {

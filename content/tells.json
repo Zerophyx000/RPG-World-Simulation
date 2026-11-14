@@ -1,0 +1,15 @@
+{
+  "_doc": "Step 11 §3.4: what a listener may notice when someone is nervous saying something (a lie, or a nervous truth). Never says 'lying'. {name} = the speaker, {poss} = their his/her/their.",
+  "cues": [
+    "{name} doesn't quite meet your eyes.",
+    "{name} answers a little too quickly.",
+    "{name}'s hands keep busy while {subj} talks.",
+    "{name} clears {poss} throat before saying it.",
+    "{name} smiles, but only with the mouth.",
+    "{name} glances at the door as {subj} says it.",
+    "{name} gives more detail than you asked for.",
+    "{name}'s voice goes a shade too even.",
+    "{name} looks at you a moment too long, as if to see whether you believe it.",
+    "{name} touches {poss} face while answering."
+  ]
+}

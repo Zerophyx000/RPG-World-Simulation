@@ -79,12 +79,13 @@ function whoYouAre(world, c) {
   const bits = [p.age != null ? `${p.age} years old` : null, p.sex, p.occupation ? `the ${p.occupation}` : null].filter(Boolean);
   const lines = [`You are ${c.name}${bits.length ? `, ${bits.join(', ')}` : ''}.`];
   if (p.appearance) lines.push(`Appearance: ${p.appearance}`);
-  const personality = [p.personality, ...traitsToWords(p.traits)].filter(Boolean).join(' ');
+  const personality = [p.personality, ...traitsToWords(p.traits), ...(world.scheming?.traitWords(c) ?? [])].filter(Boolean).join(' '); // step 11: honesty and cunning, in words
   if (personality) lines.push(`Personality: ${personality}`);
   if (p.speechStyle) lines.push(`How you tend to talk (use sparingly): ${p.speechStyle}`);
   if (p.backstory) lines.push(`Your story: ${p.backstory}`);
   if (p.goals.length) lines.push(`What you want:\n${p.goals.map((g) => `- ${g}`).join('\n')}`);
-  // Step 5.5: secret goals appear here and NOWHERE else (never in anyone else's prompt, never to the keeper).
+  // Step 5.5: secret goals appear here and NOWHERE else (never in anyone else's prompt, never to the keeper). Step 11: they
+  // became secret ambitions (YOUR AMBITIONS); a persona that still has some (not yet moved) shows them here.
   if (p.secretGoals?.length) lines.push(`Your private aims (nobody knows these):\n${p.secretGoals.map((g) => `- ${g}`).join('\n')}`);
   const home = world.rooms.get(c.home);
   lines.push(home ? `Your home: ${home.name}.` : 'You have no home here yet.');
@@ -156,6 +157,11 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   if (fight) blocks.push(`# ALTERCATION\n${mem.resolveNames(c, fight)}`);
   const done = world.physical ? deedsBlock(world, c) : null;
   if (done) blocks.push(`# WHAT YOU'VE DONE\n${mem.resolveNames(c, done)}`);
+  // step 11: what they want out of life, their secret plan, the stories they have told (short; full tier more)
+  const sch = world.scheming ? world.scheming.promptBlocks(c, tier) : null;
+  if (sch?.ambitions) blocks.push(`# YOUR AMBITIONS\n${sch.ambitions}`);
+  if (sch?.plan) blocks.push(`# YOUR PLAN\n${sch.plan}`);
+  if (sch?.stories) blocks.push(`# YOUR STORIES\n${sch.stories}`);
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {

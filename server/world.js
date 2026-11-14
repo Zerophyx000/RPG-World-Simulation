@@ -36,6 +36,7 @@ import { refreshTierSnapshot } from './agents/tiers.js';
 import { onActivityLeft } from './death/customs.js';
 import { Physical } from './physical/index.js';
 import { Altercations } from './physical/altercations.js';
+import { Scheming } from './scheming/index.js';
 import { Stock } from './world/stock.js';
 import { getState } from './db.js';
 import { Memory } from './memory/index.js';
@@ -83,6 +84,7 @@ export class World {
     this.habits = new Habits(this);       // step 9.5: routines code may carry out, in calm moments only
     this.physical = new Physical(this);   // step 10: acts on people and things, consequences, fire
     this.altercations = new Altercations(this); // step 10: fights, tracked like conversations
+    this.scheming = new Scheming(this);   // step 11: ambitions, schemes, deception
     this.debugLeakCheck = process.env.DEBUG_LEAK_CHECK === 'true'; // step 9.5: switchable by the director
     this.gatherings = [];
 
@@ -211,6 +213,7 @@ export class World {
     this.conversations.releaseDue((held) => applyHeldSay(this, held));
     this.conversations.tick(now);
     this.physical.tick(elapsed);     // step 10: holds and chokes, fights ending, fire and smoke, fear of discovery
+    this.scheming.tick();            // step 11: traits and ambitions jobs, due scheme steps, late contradictions
     this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
     this.deaths.tick(elapsed, now);   // step 9.5: bodies seen, news to break, own mortality, dread, decay
     this.habits.ensure();             // step 9.5: habits for whoever has none yet (LLM, a few at a time)
@@ -507,6 +510,8 @@ export class World {
     this.memory.recalled(outcome.recalled);
     this.#afterThought(c, outcome);
     refreshTierSnapshot(this, c); // step 10 (0.1): their own stated feeling is no "jump" at the next decision
+    if (outcome.call) this.scheming?.afterDecision(c, outcome.call); // step 11: scheme / proposal / trust_claim fields
+    c.schemeStepNew = null;
     // step 9.5: the decision ends an autopilot streak; edits to intentions ride along; a related act touches them
     this.habits.onDecision(c);
     c.habitNote = null;
