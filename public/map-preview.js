@@ -23,7 +23,7 @@ function draw() {
     const grid = buildGrid(map);
     const cv = document.createElement('canvas'); cv.width = grid.W * TILE * scale; cv.height = grid.H * TILE * scale;
     const g = cv.getContext('2d'); g.imageSmoothingEnabled = false; g.scale(scale, scale);
-    for (let cy = 0; cy * 16 < grid.H; cy++) for (let cx = 0; cx * 16 < grid.W; cx++) g.drawImage(CanvasTarget.canvasOf(tiles.chunk(grid, cx, cy, 16, 0)), cx * 512, cy * 512);
+    for (let cy = 0; cy * 16 < grid.H; cy++) for (let cx = 0; cx * 16 < grid.W; cx++) g.drawImage(CanvasTarget.canvasOf(tiles.chunkWithWalls(grid, cx, cy, 16, 0)), cx * 512, cy * 512); // every wall painted in
     g.font = '10px monospace'; g.lineWidth = 1.5;
     for (const room of mapRooms(map)) {
       const r = room.rect; const h = hue(room.roomId); const col = `hsl(${h} 85% 62%)`; const fill = `hsla(${h} 85% 62% / 0.3)`;

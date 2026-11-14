@@ -147,6 +147,7 @@ export const EVENT_CATEGORY = {
   rethink_stale: () => 'interrupt',
   action_stale: () => 'interrupt',
   activity: () => 'activity',
+  position: () => 'activity', // step 9: position changes (for map replay) sit with the raw activity events
   body: () => 'body',
   meal: () => 'body',
   wake: () => 'body',
@@ -256,6 +257,7 @@ export function eventHtml(e) {
     case 'action_stale': return `${who(actor)} <span class="dim">couldn't ${esc(d.tool)}: ${esc(detok(d.reason))}</span>`;
     case 'interrupt': return `${who(actor)} <span class="bad">is interrupted mid-thought</span>${d.cause ? ` <span class="dim">by: ${esc(truncate(detok(d.cause.text), 90))}</span>` : ''}`;
     case 'rethink_stale': return `${who(actor)} <span class="bad">rethinks</span> <span class="dim">(${esc(d.linesSince)} new lines while thinking)</span>`;
+    case 'position': return `${who(actor)} <span class="dim">${esc(d.kind ?? 'moves')}: ${esc(d.fromRoom ?? '?')}${d.fromSpot ? ` (${esc(d.fromSpot)})` : ''} → ${esc(d.toRoom ?? '?')}${d.toSpot ? ` (${esc(d.toSpot)})` : ''}</span>`;
     case 'activity': return `${who(actor)} <span class="dim">${esc(d.from ?? '?')} → ${esc(d.to)}${d.detail?.description ? `: ${esc(d.detail.description)}` : ''}</span>`;
     case 'damage': return `${who(actor)} <span class="bad">is hurt</span> <span class="dim">(−${esc(d.amount)} hp, now ${esc(d.hp)})</span>`;
     case 'body': return `${who(actor)} <span class="${d.importance >= 7 ? 'bad' : 'dim'}">feels ${esc(d.level)}${d.reminder ? ' (still)' : ''}:</span> <span class="ithought">${esc(d.text)}</span>`;

@@ -619,3 +619,5 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .map-ui { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .map-ui > div > * { pointer-events: auto; }
 .map-caption { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: #14171dee; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 12px; font-size: 13px; z-index: 5; pointer-events: none; }
+.pill.crit { background: #5a1d1d; color: #ffb4a8; border-color: #e06666; cursor: pointer; animation: critpulse 1.2s ease-in-out infinite; }
+@keyframes critpulse { 50% { box-shadow: 0 0 0 3px #e0666655; } }

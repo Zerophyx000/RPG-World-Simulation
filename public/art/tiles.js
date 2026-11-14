@@ -8,6 +8,7 @@ import { TILE } from './mapdata.js';
 const N = 1; const E = 2; const S = 4; const W = 8; // neighbour mask bits
 
 export const WATER_FRAMES = 4;
+export const WALL_H = 18; // step 9: how far a front wall rises above its own tile
 
 /** Is this ground material "path-like" for autotiling (blends with neighbours of the same family)? */
 const FAMILY = { dirt_path: 'path', cobble: 'path', dirt: 'path', wood_floor: 'floor', stone_floor: 'floor', grass: 'grass', water: 'water' };
@@ -266,20 +267,56 @@ export function makeTiles(pal) {
     return null;
   }
 
+  /**
+   * step 9: a FRONT wall is the south wall of a building (a wall or door tile with the room's floor right behind it,
+   * to the north). In the 3/4 view it stands in front of the people inside: the scene draws it as a tall y-sorted
+   * entity (wallFront) instead of painting it into the ground chunk.
+   */
+  function isFrontWall(grid, tx, ty) {
+    const s = grid.structure[ty]?.[tx];
+    if (s !== 'stone_wall' && s !== 'timber_wall' && s !== 'door') return false;
+    const n = grid.structure[ty - 1]?.[tx];
+    return grid.roomAt[ty - 1]?.[tx]?.kind === 'building' && n !== 'stone_wall' && n !== 'timber_wall' && n !== 'door';
+  }
+
+  /** The tall version of a front-wall tile: the face continues WALL_H px upward, so it hides the legs behind it. */
+  function wallFront(grid, tx, ty) {
+    const base = structure(grid, tx, ty);
+    if (!base) return null;
+    const s = grid.structure[ty][tx];
+    const key = `front|${s}|${tx * 7 + ty * 13 & 3}|${grid.structure[ty][tx - 1]}|${grid.structure[ty][tx + 1]}`;
+    let img = cache.get(key);
+    if (img) return { img, h: img.h };
+    img = new Img(TILE, TILE + WALL_H);
+    // the face material: for a door, the wall next to it
+    const faceKind = s === 'door' ? (['stone_wall', 'timber_wall'].includes(grid.structure[ty][tx - 1]) ? grid.structure[ty][tx - 1] : grid.structure[ty][tx + 1] ?? 'timber_wall') : s;
+    const face = s === 'door' ? (structure({ ...grid, structure: grid.structure.map((row, y) => (y === ty ? row.map((v, x) => (x === tx ? faceKind : v)) : row)) }, tx, ty) ?? base) : base;
+    const cap = 10;
+    img.blit(face.crop(0, 0, TILE, cap), 0, 0);                          // the top of the wall
+    for (let y = cap; y < cap + WALL_H; y++) img.blit(face.crop(0, cap + ((y - cap) % 18), TILE, 1), 0, y); // the face, repeated upward
+    img.blit(base, 0, WALL_H);                                            // the tile itself (with the door opening)
+    cache.set(key, img);
+    return { img, h: img.h };
+  }
+
   /** A full chunk of tiles (cx, cy in chunk units of `size` tiles) rendered into one canvas-sized Img. */
-  function chunk(grid, cx, cy, size = 16, frame = 0) {
+  function chunk(grid, cx, cy, size = 16, frame = 0, opts = {}) {
+    const skipFront = opts.skipFrontWalls !== false;
     const img = new Img(size * TILE, size * TILE);
     for (let j = 0; j < size; j++) {
       for (let i = 0; i < size; i++) {
         const tx = cx * size + i; const ty = cy * size + j;
         if (tx >= grid.W || ty >= grid.H) continue;
         img.blit(ground(grid, tx, ty, frame), i * TILE, j * TILE);
-        const st = structure(grid, tx, ty);
+        const st = skipFront && isFrontWall(grid, tx, ty) ? null : structure(grid, tx, ty);
         if (st) img.blit(st, i * TILE, j * TILE);
       }
     }
     return img;
   }
 
-  return { ground, structure, chunk, cache };
+  /** The old chunk with every wall painted in (the map preview). */
+  const chunkWithWalls = (grid, cx, cy, size = 16, frame = 0) => chunk(grid, cx, cy, size, frame, { skipFrontWalls: false });
+
+  return { ground, structure, chunk, chunkWithWalls, wallFront, isFrontWall, cache };
 }

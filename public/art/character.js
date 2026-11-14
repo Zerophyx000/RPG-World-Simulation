@@ -9,7 +9,14 @@
 import { Img, mix, rngFor } from './pixels.js';
 
 export const DIRS = ['down', 'up', 'left', 'right'];
-export const POSES = { idle: 2, walk: 4, sit: 1, lie: 1, crawl: 2, work: 2, carry: 4 };
+export const POSES = { idle: 2, walk: 8, run: 8, sit: 1, sitHigh: 1, lie: 1, crawl: 2, work: 2, carry: 8, kneel: 1, crouch: 2, hammer: 3, knead: 2, sweep: 2, eat: 2, read: 1, talk: 3, push: 1 };
+
+/** step 9: the intermediate direction for a 180-degree turn (or null). */
+export function turnVia(from, to) {
+  if ((from === 'left' && to === 'right') || (from === 'right' && to === 'left')) return 'down';
+  if ((from === 'up' && to === 'down') || (from === 'down' && to === 'up')) return 'left';
+  return null;
+}
 
 // region codes (grid cells)
 export const R = { none: 0, head: 1, neck: 2, chest: 3, abdomen: 4, uL: 5, uR: 6, fL: 7, fR: 8, kL: 9, kR: 10, tL: 11, tR: 12, sL: 13, sR: 14, oL: 15, oR: 16 };
@@ -44,112 +51,165 @@ export const FRAME_H = 48;
 const FEET_Y = 46; // the baseline of a standing character
 
 // ---------- 1. templates ----------
+// step 9: 8-frame walk and run cycles; working poses (hammer, knead, sweep, eat, read, kneel, crouch), talking gestures,
+// a shout (push) and sitting on a high bench (sitHigh). `geo` carries the shape modifiers that change the template
+// (headDy, slump, lean, crossArms, tilt); the purely colour ones (blink, look, fists, sway, held) are applied later.
+const WALK8 = [0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5];
+const SITTING = new Set(['sit', 'sitHigh', 'eat', 'read']);
+
 /** Parts of one frame as drawable rects: { code, x, y, w, h } in painter's order (later paints over earlier). */
-function skeleton(build, dir, pose, frame) {
+function skeleton(build, dir, pose, frame, geo = {}) {
   const B = BUILDS[build] ?? BUILDS.average;
   const side = dir === 'left' || dir === 'right';
   const tw = side ? Math.max(9, Math.round(B.torsoW * 0.8)) : B.torsoW; // seen from the side the body is a little narrower, not a stick
   const cx = 16;
   const ls = B.legShort;
-  const phase = [0, 1, 0, -1][frame % 4];                 // walk cycle: -1, 0, 1
-  const bob = pose === 'walk' || pose === 'carry' ? (frame % 2 ? -1 : 0) : pose === 'idle' ? (frame % 2 ? -1 : 0) : 0;
-  let top = 0;                                              // extra drop of the upper body (sitting)
-  let thighH = 7; let shinH = 6; let footH = 3;
+  const moving = pose === 'walk' || pose === 'run' || pose === 'carry';
+  const phase = moving ? WALK8[frame % 8] : 0;                 // the stride: -1 .. 1
+  const amp = pose === 'run' ? 1.6 : 1;
+  const bob = pose === 'run' ? (frame % 4 === 2 ? -2 : -1) : moving ? (frame % 4 === 2 ? -1 : 0) : pose === 'idle' ? (frame % 2 ? -1 : 0) : 0;
+  let top = 0;                                              // extra drop of the upper body (sitting, kneeling, crouching)
+  let thighH = 7; let footLift = 0;
+  const footH = 3;
   const parts = [];
-  const add = (code, x, y, w, h) => parts.push({ code, x: Math.round(x), y: Math.round(y), w, h });
+  const add = (code, x, y, w, h) => { if (w > 0 && h > 0) parts.push({ code, x: Math.round(x), y: Math.round(y), w, h }); };
 
-  if (pose === 'sit') { top = 7; thighH = 4; }
-  const headY = 2 + ls + top + bob; const headH = B.headH;
-  const neckY = headY + headH; const chestY = neckY + 2; const absY = chestY + 7; const hipY = absY + 6;
-  const legTop = pose === 'sit' ? hipY - 1 : hipY;
-  const thighY = legTop + (ls ? 0 : 0); const shinY = thighY + thighH; const footY = FEET_Y - footH + 1;
+  if (SITTING.has(pose)) { top = 7; thighH = 4; }
+  if (pose === 'sitHigh') footLift = 3;                     // feet dangling above the floor
+  if (pose === 'kneel') { top = 9; thighH = 4; }
+  if (pose === 'crouch') { top = 7; thighH = 4; }
+  const lean = side ? (geo.lean ?? 0) + (pose === 'run' ? 1 : 0) : 0;
+  const headDy = geo.headDy ?? 0;
+  const slump = geo.slump ? 1 : 0;
+  const tilt = geo.tilt ?? 0;
+  const headY = 2 + ls + top + bob + headDy; const headH = B.headH;
+  const neckY = 2 + ls + top + bob + headH; const chestY = neckY + 2; const absY = chestY + 7; const hipY = absY + 6;
+  const legTop = SITTING.has(pose) ? hipY - 1 : hipY;
+  const thighY = legTop; const shinY = thighY + thighH; const footY = FEET_Y - footH + 1 - footLift;
   const shinHeff = footY - shinY;
   const lw = B.legW; const aw = B.armW;
-  const swing = pose === 'walk' || pose === 'carry' ? phase : 0;
+  const swing = moving ? phase : 0;
 
   const leg = (sideSign, off, code3) => {
     // sideSign: -1 left of the figure (anatomical right in front view), +1 right
-    const x = side ? cx - Math.floor(lw / 2) : cx + (sideSign > 0 ? 1 : -lw - 1);
+    const wide = pose === 'push' ? sideSign : 0;            // a shout plants the feet apart
+    const x = (side ? cx - Math.floor(lw / 2) : cx + (sideSign > 0 ? 1 : -lw - 1)) + wide;
+    if (pose === 'kneel') {
+      // one knee down: the near leg folded under, the far one bent with the foot forward
+      if (side) {
+        add(code3[0], x + (sideSign > 0 ? 2 : -1), thighY, lw, thighH);
+        add(code3[1], x + (sideSign > 0 ? -3 : 1), shinY, sideSign > 0 ? lw + 3 : lw, sideSign > 0 ? 3 : Math.max(2, FEET_Y - shinY - 2));
+        add(code3[2], x + (sideSign > 0 ? -4 : 2), sideSign > 0 ? shinY + 1 : footY, lw, footH);
+      } else {
+        add(code3[0], x, thighY, lw, thighH);
+        add(code3[1], x, shinY, lw, sideSign > 0 ? 3 : Math.max(2, FEET_Y - shinY - 2));
+        add(code3[2], x, sideSign > 0 ? shinY + 2 : footY, lw + 1, footH);
+      }
+      return;
+    }
     if (side) {
       // a stride: the legs swing forward and back, both feet stay on the baseline
-      const dx = off * 3;
+      const dx = Math.round(off * 3 * amp);
       add(code3[0], x + Math.round(dx * 0.5), thighY, lw, thighH);
       add(code3[1], x + dx, shinY, lw, shinHeff);
       add(code3[2], x + dx + 1, footY, lw + 1, footH);
     } else {
       // front / back: the stepping leg lifts its foot (never drops below the baseline: that read as a glitch)
-      const lift = off > 0 ? 2 : 0;
+      const lift = off > 0 ? Math.round(off * 2 * amp) : 0;
       add(code3[0], x, thighY, lw, thighH);
       add(code3[1], x, shinY, lw, Math.max(2, shinHeff - lift));
       add(code3[2], x, footY - lift, lw + 1, footH);
     }
   };
   // far leg first, so the near leg paints over it
-  const legs = () => {
-    if (side) {
-      const far = -swing; const near = swing;
-      leg(-1, far, [R.tR, R.sR, R.oR]);
-      leg(+1, near, [R.tL, R.sL, R.oL]);
-    } else {
-      leg(+1, swing, [R.tL, R.sL, R.oL]);
-      leg(-1, -swing, [R.tR, R.sR, R.oR]);
-    }
-  };
-  if (pose !== 'sit' || !side) legs();
-  else legs();
+  if (side) { leg(-1, -swing, [R.tR, R.sR, R.oR]); leg(+1, swing, [R.tL, R.sL, R.oL]); } else { leg(+1, swing, [R.tL, R.sL, R.oL]); leg(-1, -swing, [R.tR, R.sR, R.oR]); }
 
-  // torso
+  // torso (slumped shoulders: the chest starts 1 px lower and is 1 px narrower at the top)
+  const ux0 = lean; // the upper body leans forward in side views
   const torso = () => {
-    add(R.abdomen, cx - tw / 2, absY, tw, 6);
-    add(R.chest, cx - tw / 2, chestY, tw, 7);
+    add(R.abdomen, cx - tw / 2 + Math.round(lean / 2), absY, tw, 6);
+    add(R.chest, cx - tw / 2 + ux0 + (slump && !side ? 0.5 : 0), chestY + slump, tw - (slump && !side ? 1 : 0), 7 - slump);
   };
 
   // arms: { upper, fore, hand } along the side of the torso; swing / raise per pose
   const arm = (sideSign, sw) => {
     const isL = sideSign > 0; // anatomical left = viewer's right (front view)
-    const ux = side ? cx - aw / 2 + (isL ? 1 : -1) : cx + (sideSign > 0 ? tw / 2 : -tw / 2 - aw);
+    const ux = (side ? cx - aw / 2 + (isL ? 1 : -1) : cx + (sideSign > 0 ? tw / 2 : -tw / 2 - aw)) + ux0;
     const codes = isL ? [R.uL, R.fL, R.kL] : [R.uR, R.fR, R.kR];
-    const sy = chestY + 1;
-    let upperY = sy; let foreY = sy + 6; let handY = foreY + 5; let foreX = ux; let handX = ux; let fh = 5; let uh = 6;
-    if (pose === 'work') {
-      const up = (frame % 2 === 0) === isL;
-      foreY = sy + 4; fh = 4; handY = up ? sy - 1 : sy + 5; foreX = ux + (side ? 3 : 0); handX = foreX;
+    const sy = chestY + 1 + slump;
+    const fwd = side ? 3 : 0;          // "in front of the body" in side views
+    const inward = side ? 0 : (isL ? -2 : 2);
+    let upperY = sy; let foreY = sy + 6; let handY = foreY + 5; let foreX = ux; let handX = ux; let fh = 5; const uh = 6;
+    let fw = aw; let hidden = false;
+    const f = frame;
+    if (geo.crossArms && !moving) {
+      if (dir === 'down') { foreY = sy + 5; fh = 3; fw = tw - 2; foreX = cx - tw / 2 + 1 + ux0; handX = isL ? cx - tw / 2 - 1 : cx + tw / 2 - aw + 1; handY = sy + 5; }
+      else hidden = true; // behind the body
+    } else if (pose === 'work') {
+      const up = (f % 2 === 0) === isL;
+      foreY = sy + 4; fh = 4; handY = up ? sy - 1 : sy + 5; foreX = ux + fwd; handX = foreX;
     } else if (pose === 'carry') {
       foreY = sy + 4; fh = 4; handY = sy + 6; foreX = ux + (side ? 3 : isL ? -1 : 1); handX = foreX + (isL ? -1 : 1);
-    } else if (pose === 'walk' || pose === 'idle') {
-      const dy = side ? 0 : -sw * 2 * (isL ? 1 : -1) * -1;
+    } else if (pose === 'hammer') {
+      // the near (left) arm swings the hammer: raised, mid, impact; the other steadies the work
+      if (isL) {
+        const stage = f % 3;
+        if (stage === 0) { foreY = sy - 5; fh = 5; handY = sy - 8; foreX = ux + (side ? 1 : 1); handX = foreX; }
+        else if (stage === 1) { foreY = sy; fh = 4; handY = sy + 1; foreX = ux + fwd + 1; handX = foreX + 1; }
+        else { foreY = sy + 4; fh = 4; handY = sy + 8; foreX = ux + fwd + 2; handX = foreX + 1; }
+      } else { foreY = sy + 4; fh = 4; handY = sy + 8; foreX = ux + fwd + inward; handX = foreX; }
+    } else if (pose === 'knead') {
+      const push = f % 2;
+      foreY = sy + 4; fh = 4; handY = sy + 7 + push * 2; foreX = ux + fwd + inward + (side ? push : 0); handX = foreX + (side ? 1 : 0);
+    } else if (pose === 'sweep') {
+      const toLeft = f % 2 === 0;
+      foreY = sy + 5; fh = 5; handY = sy + 10; foreX = ux + (side ? (toLeft ? 2 : 4) : (toLeft ? -2 : 2)); handX = foreX;
+    } else if (pose === 'eat') {
+      if (isL && f % 2 === 0) { foreY = sy + 1; fh = 4; handY = headY + 9; foreX = ux + fwd + inward * 2; handX = cx + (side ? 4 : 0) + ux0 - 1; }
+      else { foreY = sy + 4; fh = 4; handY = sy + 7; foreX = ux + fwd + inward; handX = foreX; }
+    } else if (pose === 'read') {
+      foreY = sy + 3; fh = 4; handY = sy + 5; foreX = ux + fwd + inward * 1.5; handX = foreX + (side ? 1 : inward);
+    } else if (pose === 'talk') {
+      const g = f % 3;
+      const raised = (g === 0 && isL) || (g === 2 && !isL) || g === 1;
+      if (raised) { foreY = sy + 2; fh = 4; handY = g === 1 ? sy + 3 : sy; foreX = ux + fwd + (side ? 0 : (isL ? 1 : -1)); handX = foreX + (side ? 1 : (isL ? 1 : -1)); }
+    } else if (pose === 'push') {
+      foreY = sy + 1; fh = 4; handY = sy; foreX = ux + (side ? 4 : (isL ? 3 : -3)); handX = foreX + (side ? 2 : (isL ? 2 : -2));
+    } else if (pose === 'kneel' || pose === 'crouch') {
+      const rummage = pose === 'crouch' ? (f % 2 === 0) === isL : false;
+      foreY = sy + 4; fh = 4; handY = sy + 8 + (rummage ? 2 : 0); foreX = ux + fwd + 1 + inward; handX = foreX + (side ? 1 : 0);
+    } else if (moving || pose === 'idle') {
+      const k = pose === 'run' ? 2 : 1;
+      const dy = side ? 0 : sw * 2 * k * (isL ? 1 : -1);
       foreY += Math.round(dy / 2); handY += Math.round(dy);
-      if (side) { foreX = ux + sw * 2 * (isL ? 1 : -1); handX = foreX + sw * (isL ? 1 : -1); }
-    } else if (pose === 'sit') {
+      if (side) { foreX = ux + Math.round(sw * 2 * k) * (isL ? 1 : -1); handX = foreX + Math.round(sw * k) * (isL ? 1 : -1); }
+    } else if (SITTING.has(pose)) {
       handY = foreY + 3;
     }
-    return [
-      { code: codes[0], x: ux, y: upperY, w: aw, h: uh },
-      { code: codes[1], x: foreX, y: foreY, w: aw, h: fh },
-      { code: codes[2], x: handX, y: handY, w: aw, h: 3 },
-    ];
-  };
-  const armPieces = (sw) => {
-    const out = [];
-    // far arm first in side views (it sits behind the torso), then torso, then near arm
-    if (side) {
-      for (const p of arm(-1, -sw)) add(p.code, p.x, p.y, p.w, p.h);
-      torso();
-      for (const p of arm(+1, sw)) add(p.code, p.x, p.y, p.w, p.h);
-    } else {
-      torso();
-      for (const p of arm(+1, sw)) add(p.code, p.x, p.y, p.w, p.h);
-      for (const p of arm(-1, -sw)) add(p.code, p.x, p.y, p.w, p.h);
-    }
+    const out = [{ code: codes[0], x: ux, y: upperY, w: aw, h: uh }];
+    if (!hidden) out.push({ code: codes[1], x: foreX, y: foreY, w: fw, h: fh }, { code: codes[2], x: handX, y: handY, w: aw, h: 3 });
     return out;
   };
-  armPieces(swing);
+  // far arm first in side views (it sits behind the torso), then torso, then near arm
+  if (side) {
+    for (const p of arm(-1, -swing)) add(p.code, p.x, p.y, p.w, p.h);
+    torso();
+    for (const p of arm(+1, swing)) add(p.code, p.x, p.y, p.w, p.h);
+  } else {
+    torso();
+    const crossed = geo.crossArms && dir === 'down' && !moving;
+    // crossed arms: the forearms lie over the chest, drawn after both upper arms
+    const a1 = arm(+1, swing); const a2 = arm(-1, -swing);
+    if (crossed) { add(a1[0].code, a1[0].x, a1[0].y, a1[0].w, a1[0].h); add(a2[0].code, a2[0].x, a2[0].y, a2[0].w, a2[0].h); for (const p of [...a1.slice(1), ...a2.slice(1)]) add(p.code, p.x, p.y, p.w, p.h); }
+    else for (const p of [...a1, ...a2]) add(p.code, p.x, p.y, p.w, p.h);
+  }
 
-  // neck and head
-  add(R.neck, cx - 2, neckY, 4, 2);
+  // neck and head (lowered for a nod or in sadness; shifted for a head tilt)
+  const hx = cx + lean + (side ? Math.sign(lean) : 0) + tilt;
+  add(R.neck, hx - 2, neckY + Math.min(1, headDy), 4, Math.max(1, 2 - Math.min(1, headDy)));
   const hw = side ? B.headW - 1 : B.headW;
-  add(R.head, cx - hw / 2, headY, hw, headH);
-  return { parts, head: { x: Math.round(cx - hw / 2), y: headY, w: hw, h: headH }, B, tw };
+  add(R.head, hx - hw / 2, headY, hw, headH);
+  return { parts, head: { x: Math.round(hx - hw / 2), y: headY, w: hw, h: headH }, B, tw };
 }
 
 function rasterize(parts, w = FRAME_W, h = FRAME_H) {
@@ -168,17 +228,18 @@ function rasterize(parts, w = FRAME_W, h = FRAME_H) {
 
 const templateCache = new Map();
 /** The region grid for one frame: { w, h, cells, head } (left = the right-facing grid mirrored; lie / crawl = the standing grid turned). */
-export function template(build, dir, pose, frame = 0) {
-  const key = `${build}|${dir}|${pose}|${frame}`;
+export function template(build, dir, pose, frame = 0, geo = null) {
+  const gk = geo ? `${geo.headDy | 0}${geo.slump ? 1 : 0}${geo.lean | 0}${geo.crossArms ? 1 : 0}${geo.tilt | 0}` : '';
+  const key = `${build}|${dir}|${pose}|${frame}|${gk}`;
   let t = templateCache.get(key);
   if (t) return t;
   if (dir === 'left') {
-    const r = template(build, 'right', pose, frame);
+    const r = template(build, 'right', pose, frame, geo);
     const cells = new Uint8Array(r.w * r.h);
     for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) cells[y * r.w + (r.w - 1 - x)] = r.cells[y * r.w + x];
     t = { w: r.w, h: r.h, cells, head: { ...r.head, x: r.w - r.head.x - r.head.w }, mirrored: true, base: r };
   } else if (pose === 'lie' || pose === 'crawl') {
-    const src = template(build, 'down', pose === 'lie' ? 'idle' : 'walk', pose === 'lie' ? 0 : frame * 2);
+    const src = template(build, 'down', pose === 'lie' ? 'idle' : 'walk', pose === 'lie' ? 0 : (frame % 2 ? 6 : 2));
     // turn counter-clockwise: the head goes left, the feet right; crop to the used rows
     const w = src.h; const h = src.w;
     const cells = new Uint8Array(w * h);
@@ -192,7 +253,7 @@ export function template(build, dir, pose, frame = 0) {
     const hd = src.head;
     t = { w: cw, h: ch, cells: out, head: { x: hd.y - x0, y: src.w - 1 - (hd.x + hd.w - 1) - y0, w: hd.h, h: hd.w }, lying: true };
   } else {
-    const sk = skeleton(build, dir, pose, frame);
+    const sk = skeleton(build, dir, pose, frame, geo ?? {});
     const g = rasterize(sk.parts);
     t = { ...g, head: sk.head };
   }
@@ -251,13 +312,14 @@ function hairPixels(style, dir, head) {
   return out;
 }
 
-function expressionFace(img, dir, head, expr, ink, skinShadow, mouthCol, closed = false) {
+function expressionFace(img, dir, head, expr, ink, skinShadow, mouthCol, closed = false, look = 0) {
   const { x, y, w } = head;
   const cxh = x + Math.floor(w / 2);
   const side = dir === 'left' || dir === 'right';
   if (dir === 'up') return;
   const eyeY = y + 6;
-  const pts = side ? [[dir === 'right' ? x + w - 4 : x + 3, eyeY]] : [[cxh - 4, eyeY], [cxh + 2, eyeY]];
+  const lk = side ? 0 : Math.max(-1, Math.min(1, look | 0)); // step 9: a glance moves the eyes
+  const pts = side ? [[dir === 'right' ? x + w - 4 : x + 3, eyeY]] : [[cxh - 4 + lk, eyeY], [cxh + 2 + lk, eyeY]];
   const wideE = expr === 'afraid' || expr === 'surprised';
   for (const [ex, ey] of pts) {
     if (closed) { img.rect(ex, ey + 1, 2, 1, ink); continue; }
@@ -293,8 +355,9 @@ function expressionFace(img, dir, head, expr, ink, skinShadow, mouthCol, closed 
  *   missing: [partIds], aids: [types], pallor (0..1), expression, carried?: Img }
  * → { img, anchor: [x, y] (feet / body centre), w, h }
  */
-export function composeFrame(pal, spec, dir, pose, frameIndex = 0) {
-  const t = template(spec.build ?? 'average', dir, pose, frameIndex);
+export function composeFrame(pal, spec, dir, pose, frameIndex = 0, mods = null) {
+  const geo = mods && (mods.headDy || mods.slump || mods.lean || mods.crossArms || mods.tilt) ? { headDy: Math.max(0, Math.min(2, mods.headDy | 0)), slump: Boolean(mods.slump), lean: Math.max(-2, Math.min(2, mods.lean | 0)), crossArms: Boolean(mods.crossArms), tilt: Math.max(-1, Math.min(1, mods.tilt | 0)) } : null;
+  const t = template(spec.build ?? 'average', dir, pose, frameIndex, geo);
   const img = new Img(t.w, t.h);
   const look = spec.look ?? {};
   const skinRamp = look.skin ?? 'skin_light';
@@ -470,7 +533,10 @@ export function composeFrame(pal, spec, dir, pose, frameIndex = 0) {
   // face
   const ink = pal.color('hair_black', 0); const skinShadow = pal.color(skinRamp, 0);
   const closed = pose === 'lie' && (spec.asleep || spec.dead || spec.unconscious);
-  if (!lying) expressionFace(img, dir, t.head, spec.expression ?? 'neutral', ink, skinShadow, pal.color(skinRamp, 0).map((v, i) => (i < 3 ? Math.round(v * 0.7) : 255)), false);
+  if (!lying) expressionFace(img, dir, t.head, spec.expression ?? 'neutral', ink, skinShadow, pal.color(skinRamp, 0).map((v, i) => (i < 3 ? Math.round(v * 0.7) : 255)), Boolean(mods?.blink) || Boolean(spec.asleep && pose !== 'lie'), mods?.look ?? 0);
+
+  // step 9: colour-level modifiers: clenched fists, a trailing cape and hair, things in the hands
+  if (mods && !lying) applyMods(img, t, pal, spec, mods, dir, pose, garments, ownGarmentPixels, skinRamp);
   else expressionFaceLying(img, t, ink, closed || spec.dead, spec.expression ?? 'neutral');
 
   // dead: the colour drains
@@ -536,14 +602,81 @@ export function characterSprite(pal, spec) {
     sheetCache.set(key, sheet);
   }
   return {
-    frame(dir, pose, index = 0, expression = 'neutral') {
-      const poseFrames = POSES[pose] ?? 1;
-      const idx = index % poseFrames;
+    frame(dir, pose, index = 0, expression = 'neutral', mods = null) {
+      if (!POSES[pose]) pose = 'idle';
+      const poseFrames = POSES[pose];
+      const idx = ((index % poseFrames) + poseFrames) % poseFrames;
       const d = pose === 'lie' ? (dir === 'left' ? 'left' : 'right') : dir;
-      const k = `${d}|${pose}|${idx}|${pose === 'lie' || dir === 'up' ? '' : expression}`;
+      const mk = modsKey(mods);
+      const k = `${d}|${pose}|${idx}|${pose === 'lie' || dir === 'up' ? '' : expression}|${mk}`;
       let f = sheet.get(k);
-      if (!f) { f = composeFrame(pal, { ...spec, expression }, d, pose, idx); sheet.set(k, f); }
+      if (!f) {
+        if (sheet.size > 600) sheet.clear(); // many modifier combinations: keep each sheet bounded
+        f = composeFrame(pal, { ...spec, expression }, d, pose, idx, mk ? mods : null); sheet.set(k, f);
+      }
       return f;
     },
   };
+}
+
+// ---------- step 9: modifiers, portraits ----------
+/** A stable key for the modifiers that change pixels ('' when none). */
+function modsKey(m) {
+  if (!m) return '';
+  const k = `${m.blink ? 'b' : ''}${m.look ? `l${m.look}` : ''}${m.headDy ? `h${m.headDy}` : ''}${m.slump ? 's' : ''}${m.lean ? `n${m.lean}` : ''}${m.fists ? 'f' : ''}${m.crossArms ? 'x' : ''}${m.sway ? `w${m.sway}` : ''}${m.tilt ? `t${m.tilt}` : ''}${m.held ? `H${m.held}` : ''}`;
+  return k;
+}
+
+function applyMods(img, t, pal, spec, mods, dir, pose, garments, ownGarmentPixels, skinRamp) {
+  const at = (x, y) => (x < 0 || y < 0 || x >= t.w || y >= t.h ? 0 : t.cells[y * t.w + x]);
+  // clenched fists: the hands darker and squarer
+  if (mods.fists) for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const c = at(x, y); if ((c === R.kL || c === R.kR) && img.alphaAt(x, y)) img.set(x, y, pal.color(skinRamp, 0)); }
+  // a trailing cape / long hair: a copy shifted by the sway, only onto empty pixels (the tail flows behind)
+  const sway = Math.max(-2, Math.min(2, mods.sway | 0));
+  if (sway) {
+    const shoulder = t.head.y + t.head.h;
+    const keys = [];
+    garments.forEach((g, gi) => { if (g.type === 'cloak') for (const k of ownGarmentPixels.get(gi) ?? []) keys.push(k); });
+    for (let y = shoulder; y < t.h; y++) for (let x = 0; x < t.w; x++) if (!at(x, y) && img.alphaAt(x, y)) keys.push(y * t.w + x); // hair hanging outside the body
+    const moves = [];
+    for (const k of keys) { const x = k % t.w; const y = (k / t.w) | 0; if (y < shoulder) continue; const c = img.get(x, y); if (c && c[3]) moves.push([x + sway, y, c]); }
+    for (const [x, y, c] of moves) if (!img.alphaAt(x, y)) img.set(x, y, c);
+  }
+  // things in the hands
+  if (mods.held) {
+    const anchor = (code) => { let sx = 0; let sy = 0; let n = 0; for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (at(x, y) === code) { sx += x; sy += y; n++; } return n ? [Math.round(sx / n), Math.round(sy / n)] : null; };
+    const hand = anchor(R.kL) ?? anchor(R.kR);
+    if (hand) {
+      const [hx, hy] = hand;
+      const c = (r, tn) => pal.color(r, tn);
+      switch (mods.held) {
+        case 'bowl': img.ellipse(hx - 3, hy - 1, 7, 4, c('wood', 1)); img.rect(hx - 2, hy - 1, 5, 1, c('flour', 1)); break;
+        case 'spoon': img.line(hx, hy, hx + 1, hy - 4, c('iron', 2)); break;
+        case 'cup': img.rect(hx - 1, hy - 3, 3, 4, c('wood', 1)); img.rect(hx - 1, hy - 3, 3, 1, c('wood', 2)); break;
+        case 'book': img.rect(hx - 2, hy - 2, 5, 4, c('leather', 1)); img.rect(hx - 1, hy - 2, 3, 1, c('linen', 2)); break;
+        case 'paper': img.rect(hx - 2, hy - 3, 4, 5, c('linen', 2)); img.set(hx - 1, hy - 1, c('linen', 0)); break;
+        case 'hammer': img.line(hx, hy, hx, hy - 5, c('wood', 1)); img.rect(hx - 2, hy - 7, 5, 2, c('iron', 1)); break;
+        case 'broom': {
+          const bx = hx + 2;
+          img.line(bx, hy - 3, bx + (pose === 'sweep' ? 3 : 1), FEET_Y - 2, c('wood', 1));
+          img.rect(bx + (pose === 'sweep' ? 1 : -1), FEET_Y - 3, 5, 3, c('straw', 1));
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+}
+
+const portraitCache = new Map();
+/** step 9: head and shoulders of a character, upscaled (watch list now, a dialogue box later). */
+export function portrait(pal, spec, expression = 'neutral', scale = 3) {
+  const key = `${appearanceKey(spec)}|${expression}|${scale}`;
+  let img = portraitCache.get(key);
+  if (img) return img;
+  if (portraitCache.size > 200) portraitCache.clear();
+  const f = characterSprite(pal, spec).frame('down', 'idle', 0, expression);
+  img = f.img.crop(0, 0, f.img.w, 24).scale(scale);
+  portraitCache.set(key, img);
+  return img;
 }

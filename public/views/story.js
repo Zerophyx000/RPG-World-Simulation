@@ -1,6 +1,6 @@
 // Story: the observer's storylines as cards (active first), with a one-sentence headline on top.
 // Observer output is for the UI only; citizens never see it.
-import { store, subscribe, subscribeMany } from '../store.js';
+import { store, subscribe, subscribeMany, emit } from '../store.js';
 import { api, esc, gameTime, dot, who, showEvent } from '../util.js';
 
 const ORDER = { active: 0, dormant: 1, resolved: 2 };
@@ -13,6 +13,16 @@ export function mount(el) {
   el.addEventListener('click', async (e) => {
     const km = e.target.closest('[data-ev]');
     if (km) return showEvent(km.dataset.ev);
+    // step 9: highlight a storyline's people and places on the map (click again to clear)
+    const onMap = e.target.closest('[data-onmap]');
+    if (onMap) {
+      const id = onMap.dataset.onmap;
+      store.storylineFocus = store.storylineFocus === id ? null : id;
+      emit('storyline', store.storylineFocus);
+      if (store.storylineFocus) emit('navigate', { view: 'map' });
+      else render();
+      return;
+    }
     if (e.target.closest('#story-refresh')) {
       busy = true;
       message = 'observer is thinking…';
@@ -55,7 +65,7 @@ function render() {
 
 function card(t) {
   return `<article class="thread ${esc(t.status)}">
-    <header><h3>${esc(t.title)}</h3><span class="pill ${esc(t.status)}">${esc(t.status)}</span></header>
+    <header><h3>${esc(t.title)}</h3><span class="pill ${esc(t.status)}">${esc(t.status)}</span><button class="link" data-onmap="${esc(t.id)}">${store.storylineFocus === t.id ? 'shown on map ✓' : 'show on map'}</button></header>
     <div class="people">${(t.involved ?? []).map((id) => `${dot(id)}${who(id)}`).join(' ')}</div>
     <p>${esc(t.summary)}</p>
     ${(t.keyMoments ?? []).length ? `<ul class="moments">${t.keyMoments.map((k) => `<li>${k.eventId ? `<a href="#" data-ev="${k.eventId}">#${k.eventId}</a> ` : ''}${esc(k.text)}</li>`).join('')}</ul>` : ''}

@@ -1040,6 +1040,7 @@ export class World {
 
   stop() {
     this.#flushNeeds();
+    try { this.wear?.save(); } catch { /* step 9: worn paths are a visual record; never block a shutdown */ }
     this.governor?.stop();
     this.llm.stop();
     this.#cancelAllThinks('shutdown'); // citizens stay stored as `thinking` and simply think again after restart

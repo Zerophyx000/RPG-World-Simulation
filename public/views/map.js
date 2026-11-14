@@ -143,7 +143,7 @@ export function mount(el) {
 
   // ---------- step 9: controllers, polling, the api the on-map UI modules use ----------
   const fetchJson = (url) => api.get(url);
-  const directorCam = createDirectorCam({ fetchJson });
+  const directorCam = createDirectorCam({ fetchJson, roomCentre: (id) => roomCentre(id) });
   const replay = createReplay({ fetchJson });
   const caption = $('#mp-caption');
   const uis = [];
@@ -328,7 +328,11 @@ export function mount(el) {
     let html = '';
     if (h.type === 'citizen') {
       const c = store.citizens.get(h.id);
-      html = `<b style="color:${colorOf(h.id)}">${esc(c?.name ?? h.id)}</b><br>${esc(c ? activityLabel(c.activity) : '')}${c?.spot ? `<br><span class="dim">at ${esc(c.spot)}</span>` : ''}`;
+      // step 9 hover card: name, activity, the feeling that shows, who they talk with
+      const dom = c?.emotion?.dominant;
+      const conv = c?.conversationId ? store.conversations.get(c.conversationId) : null;
+      const partners = (conv?.participants ?? []).filter((x) => x !== h.id).map((x) => store.citizens.get(x)?.name ?? x);
+      html = `<b style="color:${colorOf(h.id)}">${esc(c?.name ?? h.id)}</b><br>${esc(c ? activityLabel(c) : '')}${c?.spot ? `<br><span class="dim">at ${esc(c.spot)}</span>` : ''}${dom && dom.intensity >= 2 ? `<br>feels ${esc(dom.type)} (${Math.round(dom.intensity)})` : ''}${partners.length ? `<br><span class="dim">talking with ${esc(partners.join(', '))}</span>` : ''}`;
     } else if (h.type === 'object') {
       const o = store.objects.get(h.id);
       html = `<b>${esc(o?.typeName ?? h.id)}</b> <span class="dim">${esc(o?.state ?? '')}</span><br>${esc(opt.objView === 'surface' ? (o?.surface ?? '') : (o?.trueText ?? o?.surface ?? o?.label ?? ''))}`;

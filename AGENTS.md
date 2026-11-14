@@ -9,6 +9,7 @@ A persistent LLM-driven RPG world: plain Node.js ESM server, SQLite via built-in
 - `npm start` · `npm run dev` (auto-restart, watches **`server/` only**) · `npm run mock-llm` (second terminal: fake OpenAI-compatible LLM on :4000 that picks random valid tool calls).
 - Never experiment against the default `data/world.db` (it is live world state, gitignored). Use a throwaway world: `DATA_DIR=some/tmp/folder npm start`.
 - Mock knobs: `MOCK_DELAY_MS` (5000 to test interrupts), `MOCK_FAIL_RATE`, `MOCK_INVALID_RATE` (exercise retry paths).
+- Self-checks (step 9): `node --disable-warning=ExperimentalWarning scripts/checks/<name>.mjs .` (motion, traces-server, visual): small scripts with PASS/FAIL lines, throwaway data dirs, no LLM.
 - Smoke test: UI at http://localhost:3000 starts paused on day 1 06:00 → resume via `POST /api/clock {"action":"resume"}` or the Resume button.
 - `node scripts/tokens.js 60` prints per-purpose/profile LLM usage (calls, tokens, duration) for the last N real minutes — quick sanity check without the Usage tab. Read-only, but reads `data/world.db`, so run it from the repo root and don't point it at a throwaway world by accident.
 

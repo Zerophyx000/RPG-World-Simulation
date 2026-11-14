@@ -565,6 +565,7 @@ export class Body {
     if (room.effects.some((e) => e.id === id)) return;
     // step 8: the map draws it (position = the spot where they bled) and fades it over the three days it lasts
     room.effects.push({ id, text: `A dark bloodstain has soaked into the floor where ${c.name} bled.`, until: this.world.now + 4320, source: 'body', visual: { kind: 'bloodstain', spot: c.spot ?? null, at: this.world.now } });
+    this.world.decals?.add({ kind: 'blood', roomId: c.location, spot: c.spot ?? null, intensity: Math.min(1, 0.5 + drain / 20), source: id }); // step 9: a lasting mark on the map
     this.world.saveRoom(room);
     st.stain.lost = 0;
   }

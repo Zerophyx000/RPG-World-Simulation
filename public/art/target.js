@@ -5,9 +5,12 @@
 //                 acceptance checks. Slow, exact, no browser needed.
 // Interface (all coordinates are SCREEN pixels):
 //   blit(img, x, y, { scale = 1, flipX, alpha })   rect(x, y, w, h, color, alpha)   ellipse(cx, cy, rx, ry, color, alpha)
-//   ring(cx, cy, rx, ry, color)                      ambient(color, alpha, lights[{ x, y, r, k }])
+//   ring(cx, cy, rx, ry, color)                      ambient(color, alpha, lights[{ x, y, r, k }]) (banded)
+//   warm(x, y, r, color, alpha) (added warm light near fires)
 import { Img } from './pixels.js';
 
+// step 9: light falls off in bands: [radius fraction, share of the darkness removed]
+const BANDS = [[1, 0.25], [0.78, 0.5], [0.56, 0.75], [0.34, 1]];
 const rgba = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${((c[3] ?? 255) / 255) * a})`;
 
 export class CanvasTarget {
@@ -74,7 +77,10 @@ export class CanvasTarget {
     c.beginPath(); c.ellipse(Math.round(cx), Math.round(cy), rx, ry, 0, 0, Math.PI * 2); c.stroke();
   }
 
-  /** Night tint with holes for light sources (a darkness layer cut by radial gradients, then a warm glow on top). */
+  /**
+   * Night tint with holes for light sources (step 9: cut in stepped bands, so light falls off like pixel art).
+   * Each light removes 25 / 62 / 91 / 100 % of the darkness in four rings.
+   */
   ambient(color, alpha, lights = []) {
     if (alpha <= 0.01) return;
     if (!this.layer || this.layer.width !== this.w || this.layer.height !== this.h) {
@@ -86,18 +92,25 @@ export class CanvasTarget {
     L.fillStyle = rgba(color, alpha); L.fillRect(0, 0, this.w, this.h);
     L.globalCompositeOperation = 'destination-out';
     for (const l of lights) {
-      const g = L.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r);
-      g.addColorStop(0, `rgba(0,0,0,${Math.min(1, l.k ?? 1)})`); g.addColorStop(1, 'rgba(0,0,0,0)');
-      L.fillStyle = g; L.beginPath(); L.arc(l.x, l.y, l.r, 0, Math.PI * 2); L.fill();
+      const k = Math.min(1, l.k ?? 1);
+      for (const [f, s] of BANDS) {
+        L.fillStyle = `rgba(0,0,0,${Math.min(1, k * s)})`;
+        L.beginPath(); L.arc(Math.round(l.x), Math.round(l.y), Math.max(1, l.r * f), 0, Math.PI * 2); L.fill();
+      }
     }
     this.ctx.drawImage(this.layer, 0, 0);
-    this.ctx.globalCompositeOperation = 'lighter';
-    for (const l of lights) {
-      const g = this.ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.r * 0.8);
-      g.addColorStop(0, `rgba(255,170,70,${0.22 * Math.min(1, l.k ?? 1) * Math.min(1, alpha * 2)})`); g.addColorStop(1, 'rgba(255,170,70,0)');
-      this.ctx.fillStyle = g; this.ctx.beginPath(); this.ctx.arc(l.x, l.y, l.r * 0.8, 0, Math.PI * 2); this.ctx.fill();
+  }
+
+  /** A warm glow around a light (stepped discs, added light). */
+  warm(x, y, r, color, alpha) {
+    if (alpha <= 0.005 || r <= 1) return;
+    const c = this.ctx;
+    c.globalCompositeOperation = 'lighter';
+    for (const f of [1, 0.66, 0.36]) {
+      c.fillStyle = rgba(color, alpha * 0.45);
+      c.beginPath(); c.arc(Math.round(x), Math.round(y), r * f, 0, Math.PI * 2); c.fill();
     }
-    this.ctx.globalCompositeOperation = 'source-over';
+    c.globalCompositeOperation = 'source-over';
   }
 }
 
@@ -169,16 +182,36 @@ export class ImgTarget {
     const d = this.img.data;
     for (let j = 0; j < this.h; j++) {
       for (let i = 0; i < this.w; i++) {
-        let hole = 0; let warm = 0;
+        let hole = 0;
         for (const l of lights) {
           const dist = Math.hypot(i - l.x, j - l.y);
-          if (dist < l.r) { const f = (1 - dist / l.r) * (l.k ?? 1); hole = Math.max(hole, f); warm = Math.max(warm, f * f); }
+          if (dist >= l.r) continue;
+          // stepped bands with a dithered edge between them (checkerboard on the boundary)
+          const f = 1 - dist / l.r; const k = Math.min(1, l.k ?? 1);
+          const dith = (i + j) % 2 ? 0.04 : -0.04;
+          let h = 0;
+          for (const [rf, s] of BANDS) if (f + dith >= 1 - rf) h = 1 - (1 - h) * (1 - k * s);
+          hole = Math.max(hole, h);
         }
         const k = alpha * (1 - Math.min(1, hole));
         const di = (j * this.w + i) * 4;
         for (let q = 0; q < 3; q++) d[di + q] = Math.round(color[q] * k + d[di + q] * (1 - k));
-        if (warm > 0) { d[di] = Math.min(255, d[di] + warm * 40); d[di + 1] = Math.min(255, d[di + 1] + warm * 24); }
+      }
+    }
+  }
+
+  warm(x, y, r, color, alpha) {
+    if (alpha <= 0.005 || r <= 1) return;
+    const d = this.img.data;
+    for (let j = Math.max(0, Math.floor(y - r)); j < Math.min(this.h, Math.ceil(y + r)); j++) {
+      for (let i = Math.max(0, Math.floor(x - r)); i < Math.min(this.w, Math.ceil(x + r)); i++) {
+        const f = 1 - Math.hypot(i - x, j - y) / r;
+        if (f <= 0) continue;
+        const a = alpha * 0.45 * (f > 0.64 ? 3 : f > 0.34 ? 2 : 1);
+        const di = (j * this.w + i) * 4;
+        for (let q = 0; q < 3; q++) d[di + q] = Math.min(255, d[di + q] + color[q] * a);
       }
     }
   }
 }
+

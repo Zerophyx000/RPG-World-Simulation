@@ -1,0 +1,34 @@
+{
+  "_doc": "Step 9: how a `do` looks. First by the targeted object's type (or tags), then by keywords in the description (first match wins), then the fallback. pose = a character pose (public/art/character.js POSES), particles = emitted on the impact frame, held = something drawn in the hands.",
+  "objects": {
+    "anvil": { "pose": "hammer", "particles": "spark", "held": "hammer" },
+    "forge": { "pose": "hammer", "particles": "spark", "held": "hammer" },
+    "oven": { "pose": "knead", "particles": "flour" },
+    "counter": { "pose": "work" },
+    "rack": { "pose": "work" },
+    "bench": { "pose": "sitHigh" },
+    "table": { "pose": "sit" },
+    "bed": { "pose": "lie" },
+    "broom": { "pose": "sweep", "held": "broom" },
+    "ledger": { "pose": "read", "held": "book" },
+    "letter": { "pose": "read", "held": "paper" },
+    "chest": { "pose": "crouch" },
+    "hearth": { "pose": "crouch" },
+    "barrel": { "pose": "work" },
+    "@supply": { "pose": "kneel" }
+  },
+  "keywords": [
+    { "match": "hammer|forge|smith|anvil|horseshoe|nail", "pose": "hammer", "particles": "spark", "held": "hammer" },
+    { "match": "knead|dough|bake|bread|loaf|loaves|flour", "pose": "knead", "particles": "flour" },
+    { "match": "sweep|clean|tidy|scrub|wipe", "pose": "sweep", "held": "broom" },
+    { "match": "eat|meal|soup|stew|porridge|breakfast|supper|dinner", "pose": "eat", "held": "bowl" },
+    { "match": "drink|ale|beer|wine|tea", "pose": "sit", "held": "cup" },
+    { "match": "read|letter|ledger|write|reckon|count|tally", "pose": "read", "held": "paper" },
+    { "match": "search|rummage|look for|dig|sort through|hunt for", "pose": "crouch" },
+    { "match": "treat|bandage|tend|wound|splint|stitch|dress", "pose": "kneel" },
+    { "match": "pray|kneel", "pose": "kneel" },
+    { "match": "sit|rest|wait|watch|listen", "pose": "sit" },
+    { "match": "mend|sew|repair|fix|carve|whittle|sharpen", "pose": "work" }
+  ],
+  "fallback": { "pose": "work" }
+}

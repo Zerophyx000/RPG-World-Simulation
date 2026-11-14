@@ -243,15 +243,21 @@ export function createScene({ pal, recipes = [], maps = [], art = null, quality 
       if (F.hide.has(id)) continue;
       const concealed = ['hidden', 'concealed'].includes(o.visibility) || ['under', 'behind'].includes(o.placement?.relation);
       if (concealed && !showHidden) continue;
-      // light sources are collected even when slightly off screen
-      for (const g of sp.glows) lights.push({ wx: p.x - sp.ax + g.x, wy: p.y - sp.ay + g.y, r: g.radius, k: 0.9, objectId: id, roomId: p.roomId });
+      // light sources are collected even when slightly off screen; a fire someone is tending burns brighter
+      const tended = sp.glows.length && [...S.citizens.values()].some((c) => c.activity?.detail?.targetId === id && c.location === p.roomId);
+      for (const g of sp.glows) lights.push({ wx: p.x - sp.ax + g.x, wy: p.y - sp.ay + g.y, r: g.radius * (tended ? 1.35 : 1), k: tended ? 1 : 0.9, objectId: id, roomId: p.roomId });
       if (!inView(p.x, p.y)) continue;
       const alpha = (concealed ? 0.55 : 1) * (F.fade.get(id) ?? 1);
       ents.push({
         y: p.y, id, draw: () => {
+          // step 9: a door swings open while someone walks through it
+          let img = sp.img;
+          if (o.typeId === 'door' && o.state !== 'open' && o.state !== 'broken' && p.wall) {
+            for (const q of F.people.values()) if (q.moving && Math.abs(q.x - p.x) < TILE * 1.1 && Math.abs(q.y - p.y) < TILE * 1.2) { const op = objs.sprite('door', { states: ['open'] }); if (op) img = (p.wall === 'side' ? sideOn(op) : op).img; break; }
+          }
           const x = X(p.x - sp.ax); const y = Y(p.y - sp.ay);
           if (!lod && !p.wall) F.dropShadow(p.x, p.y - 1, sp.w / 2 - 2, 3, 0.22);
-          target.blit(sp.img, x, y, { scale: z, alpha });
+          target.blit(img, x, y, { scale: z, alpha });
           for (const f of sp.flames) target.blit(objs.flame(f.w, f.h, Math.floor(ms / 110) + (hash32(o.id) & 3)), x + f.x * z, y + f.y * z, { scale: z, alpha });
           hits.push({ type: 'object', id, x, y, w: sp.w * z, h: sp.h * z });
         },

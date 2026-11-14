@@ -67,6 +67,19 @@ function renderGovernor() {
   el.title = `token governor: ${g.state} (${g.budgetPerHour} output tokens per real hour)`;
 }
 
+// step 9: the critical-moment indicator: someone in a critical bleeding window, with the minutes left (click: jump there)
+function renderCritical() {
+  const el = $('#crit');
+  if (!el) return;
+  const crit = [...store.citizens.values()].filter((c) => c.alive !== false && c.body?.critical != null).sort((a, b) => a.body.critical - b.body.critical);
+  el.classList.toggle('hidden', !crit.length);
+  if (!crit.length) return;
+  el.className = 'pill crit';
+  el.textContent = `⏳ ${crit[0].name} ${Math.round(crit[0].body.critical)} min${crit.length > 1 ? ` +${crit.length - 1}` : ''}`;
+  el.dataset.citizen = crit[0].id;
+}
+subscribe('citizens', renderCritical);
+
 // ---------- router ----------
 let current = null; // { id, unmount }
 

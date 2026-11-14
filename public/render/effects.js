@@ -35,7 +35,7 @@ export function createEffects(ctx) {
         if (!inView(s.x, s.y)) continue;
         for (let k = 0; k < 6; k++) {
           const ph = ((ms / 5200) * (s.strong ? 1 : 0.6) + k / 6) % 1;
-          const px = s.x + Math.sin(ph * 5 + k * 1.7) * 7 + ph * 10 * (1 + (F.wind?.x ?? 0) * 3); const py = s.y - ph * 64;
+          const px = s.x + Math.sin(ph * 5 + k * 1.7) * 7 + ph * 8 + ph * 64 * (F.wind?.x ?? 0) * 0.6; const py = s.y - ph * 64; // drifts with the wind
           target.ellipse(X(px), Y(py), (3 + ph * 7) * z, (2.5 + ph * 5) * z, pal.color('smoke', ph < 0.5 ? 1 : 2), (1 - ph) * 0.55);
         }
       }
@@ -72,6 +72,11 @@ export function createEffects(ctx) {
     },
     screen(F) {
       const { target, cam, ms } = F;
+      if (F.S.rain && !F.lod) {
+        // splashes on the ground (particles, if on)
+        const v = F.view;
+        for (let i = 0; i < 3; i++) F.emit('splash', v.x0 + Math.random() * (v.x1 - v.x0), v.y0 + Math.random() * (v.y1 - v.y0));
+      }
       if (F.S.rain) {
         const rr = rngFor('rain');
         for (let i = 0; i < Math.round(cam.w * cam.h / 6000); i++) {
