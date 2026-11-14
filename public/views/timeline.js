@@ -7,7 +7,7 @@ import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const LABEL_W = 96;
-const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸', learned_death: '🕯', habit: '↺', gathering: '📣', burial: '⚱', news: '✉' };
+const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸', learned_death: '🕯', habit: '↺', gathering: '📣', burial: '⚱', news: '✉', physical: '✊', crime: '⚖', fire_start: '🔥', room_fire: '🔥', altercation_start: '⚔', barricade: '🚪' };
 const LANE_H = 34;
 const TOP = 26;
 const MIN_SPAN = 15;
@@ -283,7 +283,8 @@ function render(provisional = false) {
         <title>${esc(title)}</title><rect x="${px - 3}" y="${yy}" width="6" height="9" fill="transparent"/>
         <line x1="${px}" y1="${yy + 1}" x2="${px}" y2="${yy + 8}" stroke="${colorOf(p.citizenId)}" stroke-width="2"/></g>`);
     } else if (POINT_ICONS[p.type]) {
-      out.push(`<g class="tick" data-ev="${p.eventId}"${dimmed(p.citizenId)}><title>${esc(`${p.type.replace('_', ' ')}${p.text ? `: ${p.text}` : ''}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="11">${POINT_ICONS[p.type]}</text></g>`);
+      const icon = p.type === 'physical' ? ['', '✊', '🩸', '☠'][p.severity ?? 1] ?? '✊' : POINT_ICONS[p.type]; // step 10: violence by severity
+      out.push(`<g class="tick" data-ev="${p.eventId}"${dimmed(p.citizenId)}><title>${esc(`${p.type.replace('_', ' ')}${p.text ? `: ${p.text}` : ''}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="${p.severity >= 3 ? 13 : 11}">${icon}</text></g>`);
     } else if (p.type === 'whisper') {
       out.push(`<g class="tick" data-ev="${p.eventId}"><title>${esc(`Whisper: ${p.text}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="11">🤫</text></g>`);
     } else {

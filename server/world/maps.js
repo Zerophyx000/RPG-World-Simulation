@@ -105,6 +105,36 @@ export class Maps {
     return null;
   }
 
+  /** step 10: the door object between two rooms (whatever its state), with the room it belongs to (its inside). */
+  doorBetween(fromRoom, toRoom) {
+    for (const [inside, other] of [[toRoom, fromRoom], [fromRoom, toRoom]]) {
+      const r = this.byRoom.get(inside)?.room;
+      if (!r) continue;
+      for (const d of r.doors ?? []) {
+        const to = Array.isArray(d.to) ? d.to : [d.to];
+        if (!to.includes(other)) continue;
+        for (const f of r.furniture ?? []) {
+          if (!f.wall || f.wall[0] !== d.tile[0] || f.wall[1] !== d.tile[1]) continue;
+          const o = this.world.objects.get(f.object);
+          if (o && o.roomId === inside) return { door: o, insideRoom: inside, otherRoom: other };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** step 10: the room on the other side of a door object. */
+  doorTarget(door) {
+    const r = this.byRoom.get(door?.roomId)?.room;
+    if (!r) return null;
+    for (const d of r.doors ?? []) {
+      if (!(r.furniture ?? []).some((f) => f.object === door.id && f.wall && f.wall[0] === d.tile[0] && f.wall[1] === d.tile[1])) continue;
+      const to = Array.isArray(d.to) ? d.to : [d.to];
+      return to.find((x) => x !== door.roomId) ?? null;
+    }
+    return null;
+  }
+
   doorSpot(roomId) {
     const r = this.byRoom.get(roomId);
     return [...(r?.spots.values() ?? [])].find((s) => /^(door|doorway)$/.test(s.id))?.id ?? null;

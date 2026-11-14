@@ -126,6 +126,23 @@ export function mount(el) {
         <div class="result" id="dn-result"></div>
       </div>
 
+      <div class="card" id="phys-card">
+        <h3>Fights, fire &amp; the law (step 10)</h3>
+        <p class="muted">Levers only: nobody is made to act. A provoked citizen is angry with a cause; whether they hit anyone is theirs to decide.</p>
+        <div class="row"><select id="ph-a" title="who"></select><select id="ph-b" title="toward whom"></select>
+          <input id="ph-cause" placeholder="cause (first person, e.g. he cheated me at dice)" style="flex:1"><input id="ph-amount" type="number" min="1" max="8" value="4" style="width:50px" title="anger">
+          <button type="button" id="ph-provoke">Provoke</button></div>
+        <div class="row"><select id="ph-intent"><option>hurt</option><option>scare</option><option>subdue</option><option>kill</option></select>
+          <button type="button" id="ph-start" title="A squares up to B (an altercation starts; no blow is struck)">Start fight</button><button type="button" id="ph-end" title="end A's fight">End fight</button></div>
+        <div class="row"><select id="ph-weapon"><option value="knife">knife</option><option value="sword">sword</option><option value="axe">axe</option><option value="club">club</option><option value="iron_bar">iron bar</option><option value="bottle">bottle</option><option value="torch">torch</option><option value="rope">rope</option></select>
+          <input id="ph-quality" type="number" min="0" max="1" step="0.1" value="0.5" style="width:60px" title="quality">
+          <button type="button" id="ph-give" title="into A's hands">Give to A</button>
+          <select id="ph-object" title="something flammable" style="max-width:220px"></select><button type="button" id="ph-ignite">Set alight</button></div>
+        <div class="result" id="ph-result"></div>
+        <details><summary>Coherence log (reversals, retries, intents)</summary><div id="ph-coherence" class="mono small"></div></details>
+        <details><summary>Crimes (for the law step)</summary><div id="ph-crimes" class="mono small"></div></details>
+      </div>
+
       <div class="card">
         <h3>Active room changes</h3>
         <div id="fx-list"></div>
@@ -272,6 +289,7 @@ export function mount(el) {
   el.querySelector('#f-event').addEventListener('submit', sendEvent);
   el.querySelector('#f-whisper').addEventListener('submit', sendWhisper);
   bindLifeCard(el);
+  bindPhysical(el);
   el.querySelector('#f-create').addEventListener('submit', createCitizen);
   el.querySelector('#f-object').addEventListener('submit', createObject);
   bindSocial(el);
@@ -601,8 +619,43 @@ function fillSelects() {
     el.innerHTML = head + list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
     if (prev) el.value = prev;
   }
+  // step 10: fight levers
+  for (const [sel, list] of [['#ph-a', living], ['#ph-b', living]]) {
+    const e = root.querySelector(sel);
+    if (!e) continue;
+    const prev = e.value;
+    e.innerHTML = list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if (prev) e.value = prev;
+  }
+  const po = root.querySelector('#ph-object');
+  if (po && document.activeElement !== po) {
+    const prev = po.value;
+    const burnable = [...(store.objects?.values() ?? [])].filter((o) => o.roomId && !o.data?.burning && !o.data?.burnt && o.typeId !== 'corpse' && /table|bench|bed|chest|barrel|flour|basket|cart|rack|counter|door|shutters|stool|broom|ledger|letter|rope|blanket|cloth|crate|haystack/.test(o.typeId));
+    po.innerHTML = burnable.map((o) => `<option value="${esc(o.id)}">${esc(o.label ?? o.typeName)} (${esc(roomName(o.roomId))})</option>`).join('');
+    if (prev) po.value = prev;
+  }
   const dv = root.querySelector('#dr-value');
   if (dv && document.activeElement !== dv) dv.value = Object.values(store.dread ?? {})[0]?.value ?? 0;
+}
+
+// step 10: fights, fire and the law
+function bindPhysical(el) {
+  const go = (fn, msg) => async () => { try { const r = await fn(); result('#ph-result', true, msg(r)); loadPhysLogs(el); } catch (err) { result('#ph-result', false, err.message); } };
+  el.querySelector('#ph-provoke')?.addEventListener('click', go(() => api.post('/api/director/provoke', { a: val('#ph-a'), b: val('#ph-b'), cause: val('#ph-cause') || null, amount: Number(val('#ph-amount')) }), (r) => `${citizenName(val('#ph-a'))} is angry with ${citizenName(val('#ph-b'))} (${r.anger?.toFixed?.(1) ?? '?'}).`));
+  el.querySelector('#ph-start')?.addEventListener('click', go(() => api.post('/api/director/altercation', { action: 'start', a: val('#ph-a'), b: val('#ph-b'), intent: val('#ph-intent') }), (r) => `Fight ${r.altercation} started.`));
+  el.querySelector('#ph-end')?.addEventListener('click', go(() => api.post('/api/director/altercation', { action: 'end', citizenId: val('#ph-a') }), () => 'Fight ended.'));
+  el.querySelector('#ph-give')?.addEventListener('click', go(() => api.post('/api/director/weapon', { type: val('#ph-weapon'), to: val('#ph-a'), quality: Number(val('#ph-quality')) }), (r) => `${citizenName(val('#ph-a'))} now holds ${r.object?.surface ?? 'it'}.`));
+  el.querySelector('#ph-ignite')?.addEventListener('click', go(() => api.post('/api/director/ignite', { objectId: val('#ph-object') }), () => 'It is burning.'));
+  loadPhysLogs(el);
+}
+
+async function loadPhysLogs(el) {
+  const name = (n) => esc(n ?? '');
+  const [coh, crimes] = await Promise.all([api.get('/api/coherence?limit=60').catch(() => []), api.get('/api/crimes?limit=60').catch(() => [])]);
+  const c = el.querySelector('#ph-coherence');
+  if (c) c.innerHTML = coh.length ? coh.map((x) => `<div>${esc(gameTime(x.gameTime))} <b>${name(x.actor)}</b> ${esc(x.type === 'intent' ? `intent → ${x.victim ?? ''}: ${x.intent ?? 'none'}${x.from ? ` (was ${x.from})` : ''}` : `${x.kind ?? x.type} ${x.action ?? ''}${x.victim ? ` → ${x.victim}` : ''}`)}${x.reason ? ` — "${esc(x.reason)}"` : ''}</div>`).join('') : '<span class="muted">Nothing yet.</span>';
+  const k = el.querySelector('#ph-crimes');
+  if (k) k.innerHTML = crimes.length ? crimes.map((x) => `<div>${esc(gameTime(x.gameTime))} <b>${esc(x.kind)}</b> (${x.severity}) ${name(x.actor)}${x.victim ? ` → ${name(x.victim)}` : ''} <span class="dim">${esc(roomName(x.location))}${x.witnesses?.length ? ` · seen by ${esc(x.witnesses.join(', '))}` : ' · unseen'}</span></div>`).join('') : '<span class="muted">None.</span>';
 }
 
 // step 9.5: dread, the leak check, death news

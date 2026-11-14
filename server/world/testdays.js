@@ -6,7 +6,9 @@
 //   at      game minutes after the run starts (number), or "HH:MM" = that time on the day the run
 //           started (already past → the action is skipped and logged)
 //   type    event | apply | whisper | memory | relationship | emotion | mood | needs |
-//           objects-create | objects-patch | objects-reset | activate
+//           objects-create | objects-patch | objects-reset | activate |
+//           provoke { a, b, cause, amount } | weapon { weaponType, to | room, quality } | ignite { objectId } |
+//           altercation { a, b, intent }   (step 10: levers only — nobody is made to act)
 //   chance  0..1 — the action only fires when the seeded roll is below it
 //   pick    [alternatives] — the seeded roll fires exactly one alternative (own type + fields)
 //   The action body is otherwise exactly the body the director route would take.
@@ -17,6 +19,7 @@
 // Scheduling is on GAME time through a clock tick handler. The clock's horizon hook
 // (clock.horizonFn, normally quiet.nextEventAt) is wrapped for the duration of the run so the
 // quiet-time fast-forward cannot jump far past the next scheduled action; it is restored on stop.
+import { provoke, giveWeapon, igniteObject, startAltercation } from '../physical/director.js'; // step 10
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_DIR, loadDirectorPresets } from './scenarios.js';
@@ -111,6 +114,11 @@ function typeProblems(a) {
     case 'heal': return missing(a, 'citizenId');
     case 'kill': return missing(a, 'citizenId');
     case 'activate': return missing(a, 'id');
+    // step 10
+    case 'provoke': return missing(a, 'a', 'b');
+    case 'weapon': return [...missing(a, 'weaponType'), ...(!a.to && !a.room ? ['needs "to" (a citizen) or "room"'] : [])];
+    case 'ignite': return missing(a, 'objectId');
+    case 'altercation': return missing(a, 'a', 'b');
     default: return [];
   }
 }
@@ -182,6 +190,11 @@ function runAction(world, a) {
     case 'heal': return world.body.heal(a.citizenId, { conditionId: a.conditionId ?? null, partId: a.partId ?? null, all: a.conditionId == null && !a.partId, amount: a.amount ?? 10, source: 'director' });
     case 'kill': return world.body.kill(a.citizenId, a.cause ?? 'a test day');
     case 'activate': return world.activateCitizen({ id: a.id, location: a.location });
+    // step 10: levers only (nobody is made to act)
+    case 'provoke': return provoke(world, { a: a.a, b: a.b, cause: a.cause, amount: a.amount });
+    case 'weapon': return giveWeapon(world, { type: a.weaponType, to: a.to ?? null, room: a.room ?? null, quality: a.quality ?? null });
+    case 'ignite': return igniteObject(world, { objectId: a.objectId });
+    case 'altercation': return startAltercation(world, { a: a.a, b: a.b, intent: a.intent ?? 'hurt' });
     default: throw new Error(`unknown type "${a.type}"`); // filtered out at load
   }
 }

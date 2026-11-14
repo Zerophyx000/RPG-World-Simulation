@@ -139,7 +139,7 @@ export function timeline(world, { from = null, to = null } = {}) {
   const points = [];
   const pointRows = db.prepare(`SELECT id, type, actor_id, game_time, location, data FROM events
     WHERE game_time >= ? AND game_time <= ?
-      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news')
+      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news', 'physical', 'crime', 'fire_start', 'room_fire', 'altercation_start', 'barricade')
            OR (type = 'body' AND json_extract(data, '$.importance') >= 7)
            OR (type = 'action' AND json_extract(data, '$.tool') IN ('say', 'leave_conversation', 'tell_about_place', 'eat')))
     ORDER BY id`).all(from, to);
@@ -201,8 +201,17 @@ export function timeline(world, { from = null, to = null } = {}) {
         : r.type === 'gathering' ? `calls a gathering: ${d.purpose} (${d.time})`
         : r.type === 'burial' ? `buries ${world.citizens.get(d.deadId)?.name ?? 'the dead'}`
         : r.type === 'news' ? `tells ${world.citizens.get(d.to)?.name ?? d.to}: ${world.citizens.get(d.person)?.name ?? d.person} ${d.news}`
+        // step 10: violence by severity, crimes, fires, fights, barricades
+        : r.type === 'physical' ? `${d.act.replace('_', ' ')} ${world.citizens.get(d.targetId)?.name ?? d.targetId}${d.hit === false ? ' (missed)' : (d.effects ?? []).length ? ` — ${d.effects.join(', ')}` : ''}`
+        : r.type === 'crime' ? `${d.kind.replace('_', ' ')}${d.victimId ? ` (${world.citizens.get(d.victimId)?.name ?? d.victimId})` : ''}, severity ${d.severity}`
+        : r.type === 'fire_start' ? `fire: ${world.objects.get(d.objectId) ? world.objects.surfaceText(world.objects.get(d.objectId)) : d.objectId} (${d.cause})`
+        : r.type === 'room_fire' ? 'the whole room is on fire'
+        : r.type === 'altercation_start' ? `goes at ${world.citizens.get(d.targetId)?.name ?? d.targetId} (${d.intent})`
+        : r.type === 'barricade' ? 'barricades the door'
         : d.reason ?? d.cause?.text ?? d.cause ?? null;
-      points.push({ ...base, type: r.type, text, ...(r.type === 'death' ? { cause: d.cause ?? null } : {}) });
+      if (r.type === 'physical' && !['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act)) continue; // caring touches stay off the timeline
+      const severity = r.type === 'physical' ? ((d.effects ?? []).some((f) => ['dead', 'unconscious', 'bone broken'].includes(f)) ? 3 : (d.effects ?? []).some((f) => ['bleeding', 'knocked down', 'choking'].includes(f)) || d.with ? 2 : 1) : r.type === 'crime' ? d.severity : null;
+      points.push({ ...base, type: r.type, text, ...(r.type === 'death' ? { cause: d.cause ?? null } : {}), ...(severity != null ? { severity } : {}) });
     }
   }
 

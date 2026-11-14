@@ -121,6 +121,22 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
     again.reasoning = joinReasoning(outcome.reasoning, second.reasoning);
     outcome = again.invalid ? { ...again, fallback: true } : again;
   }
+  // step 10 §5.3: the plausibility guard — turning to care for someone they meant to hurt, with no remorse felt and no
+  // change of mind stated, is asked once more ("You meant to hurt him. If you've changed your mind, say why.")
+  const incoherent = outcome.call && mode === 'decide' ? world.physical?.consequences.coherenceCheck(c, outcome.call) : null;
+  if (incoherent) {
+    world.logEvent('coherence_retry', { actorId: c.id, location: c.location, tool: outcome.call.name, args: outcome.call.arguments, message: incoherent });
+    const rawCall = { id: 'call_1', name: outcome.call.name, arguments: outcome.call.arguments };
+    const turn = ladder?.res ?? first;
+    const base = ladder?.messages ?? messages;
+    const third = await call([...base, ...correction(turn, { rawCall, error: incoherent })], tools, ladder?.tier ?? tier, ladder?.maxTokens ?? maxTokens, 'coherence_retry');
+    if (!world.isCurrentThink(c, t)) return null;
+    const again = interpret(third, tools);
+    if (!again.invalid && (again.call || again.text)) {
+      again.reasoning = [outcome.reasoning, again.reasoning].filter(Boolean).join('\n\n--- asked again: you meant to hurt them ---\n\n') || null;
+      outcome = again;
+    }
+  }
   outcome.recalled = collect.recalled;
   return outcome;
 }

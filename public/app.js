@@ -176,6 +176,7 @@ async function loadWorld() {
   store.dread = w.dread ?? {};
   store.stock = w.stock ?? {};
   store.gatherings = w.gatherings ?? [];
+  store.altercations = w.altercations ?? []; // step 10
   renderDread();
   api.get('/api/governor').then((g) => { store.governor = g; renderGovernor(); }).catch(() => {});
   if (store.selectedId && !store.citizens.has(store.selectedId)) select(null);
@@ -258,6 +259,7 @@ function connect() {
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
   es.addEventListener('dread', (m) => { store.dread = JSON.parse(m.data); renderDread(); emit('dread', store.dread); });
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
+  es.addEventListener('altercation', (m) => { store.altercations = JSON.parse(m.data).list ?? []; emit('altercation', store.altercations); }); // step 10
   es.addEventListener('group', () => emit('groups'));
   es.addEventListener('emotion_room', (m) => emit('emotion_room', JSON.parse(m.data)));
   es.addEventListener('relationship', (m) => emit('relationship', JSON.parse(m.data)));

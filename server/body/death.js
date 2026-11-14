@@ -63,6 +63,7 @@ export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {
     w.saveCitizen(c);
     // step 9.5: awake witnesses know at once (grief and fear for them now); everyone else finds out later
     w.deaths.onDeath(c, { roomId, cause, witnesses: others });
+    w.physical?.consequences.onDeath(c); // step 10: a death from someone's blows is theirs (murder, deeds, fear of discovery)
     for (const o of others) {
       if (['sleeping', 'collapsed'].includes(o.activity.type)) continue;
       if (/bled|blood|killed|slain|wound|stab|cut|blast|burn|fell/i.test(cause)) {

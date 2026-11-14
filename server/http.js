@@ -13,7 +13,8 @@ import { socialView } from './ui/social.js';
 import { replay } from './ui/replay.js';
 import { exportOptions, exportFilename, streamExport } from './ui/export.js';
 import { intentionsView, setIntentions } from './agents/intentions.js';
-import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
+import { testDayRoutes, startTestDay } from './world/testdays.js';
+import { provoke, giveWeapon, igniteObject, startAltercation, endAltercation, coherenceLog, crimes } from './physical/director.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +43,7 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('observer', (o) => broadcast('observer', o));
   world.bus.on('governor', (g) => broadcast('governor', g));
   world.bus.on('memory', (m) => broadcast('memory', m));
+  world.bus.on('altercation', (a) => broadcast('altercation', a)); // step 10
   world.bus.on('relationship', (r) => broadcast('relationship', r));
   world.bus.on('object', (o) => broadcast('object', o));
   world.bus.on('group', (g) => broadcast('group', g));
@@ -143,6 +145,16 @@ export function createServer(world, { observer = null } = {}) {
       return { conditions: r.conditions.map((x) => world.body.conditionView(x)), garments: r.garments };
     }],
     ['POST', /^\/api\/director\/heal$/, (_req, body) => world.body.heal(body.citizenId, { conditionId: body.conditionId ?? null, partId: body.partId ?? null, all: body.conditionId == null && !body.partId, amount: body.amount ?? 10, source: 'director', allowPermanent: false })],
+    // ---- step 10: action and reaction ----
+    ['GET', /^\/api\/altercations$/, () => world.altercations.view()],
+    ['GET', /^\/api\/fires$/, () => world.physical.fire.view()],
+    ['GET', /^\/api\/crimes$/, (req) => crimes(world, { limit: qs(req).get('limit') })],
+    ['GET', /^\/api\/coherence$/, (req) => coherenceLog(world, { limit: qs(req).get('limit') })],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/physical$/, (_req, _body, [id]) => world.physical.profileView(found(world.citizens.get(id)))],
+    ['POST', /^\/api\/director\/provoke$/, (_req, body) => provoke(world, body)],
+    ['POST', /^\/api\/director\/weapon$/, (_req, body) => giveWeapon(world, body)],
+    ['POST', /^\/api\/director\/ignite$/, (_req, body) => igniteObject(world, body)],
+    ['POST', /^\/api\/director\/altercation$/, (_req, body) => (body.action === 'end' ? endAltercation(world, body) : startAltercation(world, body))],
     ['POST', /^\/api\/director\/kill$/, (_req, body) => ({ ok: world.body.kill(body.citizenId, body.cause ?? 'the director') })],
     ['POST', /^\/api\/director\/regen$/, (_req, body) => world.body.setRegen(body.citizenId, body.multiplier, { source: 'director', until: body.until ?? null })],
     ['GET', /^\/api\/body\/rates$/, () => ({ ...config.body })],

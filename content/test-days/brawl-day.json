@@ -1,0 +1,66 @@
+{
+  "name": "brawl-day",
+  "description": "Step 10 test day (times are minutes after the run starts): a provoked brawl in the Tilted Cup. Tomas has a hammer and a grievance against Kael (the stranger), who has been winning at dice; Anselm, Lena and Jonas are there. Nothing makes anyone strike. Watch whether Tomas goes at Kael, who holds whom back, WHAT YOU'VE DONE and his intent in his next prompts, whether he turns to help (with a reason) and how Kael takes it, the relationship events, the crime events, and whether anyone bars a door afterwards.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern",
+      "comment": "the stranger is in the tavern"
+    },
+    {
+      "at": 2,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "anselm",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "an evening at the Cup"
+    },
+    {
+      "at": 4,
+      "type": "weapon",
+      "weaponType": "hammer",
+      "to": "tomas",
+      "quality": 0.6,
+      "comment": "he came straight from the forge"
+    },
+    {
+      "at": 6,
+      "type": "provoke",
+      "a": "tomas",
+      "b": "kael",
+      "amount": 7,
+      "cause": "The stranger Kael took my last coins at dice with loaded bones, and he laughed in my face about it."
+    },
+    {
+      "at": 10,
+      "type": "whisper",
+      "citizenId": "tomas",
+      "text": "Kael is grinning at you across the room, rattling the dice he cheated you with."
+    }
+  ]
+}

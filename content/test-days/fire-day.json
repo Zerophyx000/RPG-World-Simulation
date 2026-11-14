@@ -1,0 +1,43 @@
+{
+  "name": "fire-day",
+  "description": "Step 10 test day (times are minutes after the run starts): a night fire in the bakery. Greta and Jonas are working late; a sack by the oven catches (a director event, no culprit). Watch whether they fight it (buckets from the well, smothering), call for help, flee, the smoke, the whole timber room catching, soot and dread afterwards.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "greta",
+          "to": "bakery",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "bakery",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "square",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "well",
+          "notify": false
+        }
+      ],
+      "comment": "late baking for the market"
+    },
+    {
+      "at": 15,
+      "type": "ignite",
+      "objectId": "bakery_rack",
+      "comment": "a spark from the oven door"
+    }
+  ]
+}

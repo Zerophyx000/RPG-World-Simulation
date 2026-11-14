@@ -938,6 +938,8 @@ export class Objects {
 }
 
 // ---------- types ----------
+const PHYSICAL_FIELDS = ['durability', 'breakable', 'heavy', 'pushable', 'throwable', 'flammable', 'lockable', 'light', 'fireSource', 'seat', 'bed', 'smother', 'key', 'accelerant', 'spills', 'weapon', 'stateTags', 'quality'];
+
 export function loadTypes() {
   const file = path.join(CONTENT_DIR, 'object-types.json');
   const map = new Map();
@@ -967,6 +969,8 @@ export function loadTypes() {
       concealable: Boolean(raw.concealable), container: Boolean(raw.container),
       tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [], // step 5.5: weapon | tool | valuable | holy … (perception only)
       covers: Array.isArray(raw.covers) ? raw.covers.map(String) : [], // step 7B: the body parts a garment covers
+      // step 10: what the thing physically is (server/physical/props.js) and, for weapons, its profile
+      ...Object.fromEntries(PHYSICAL_FIELDS.filter((k) => raw[k] !== undefined).map((k) => [k, raw[k]])),
     });
   }
   return map;

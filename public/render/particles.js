@@ -13,6 +13,11 @@ const KINDS = {
   mote: { n: [1, 1], life: [4000, 6000], v: [2, 5], up: 0, g: -1, size: 1, color: ['flour', 2], a: 0.35 },
   fly: { n: [1, 2], life: [700, 1100], v: [10, 22], up: 0.2, g: 0, size: 1, color: ['black', 0], a: 0.9 }, // step 9.5: over a decaying body
   soot: { n: [2, 3], life: [900, 1100], v: [2, 6], up: -0.5, g: 12, size: 1, color: ['black', 0], a: 0.8 },
+  // step 10: fire, debris from breaking things, blood from a blow
+  flame: { n: [2, 3], life: [300, 600], v: [6, 14], up: 1, g: -40, size: 2, color: ['fire', 2], a: 0.95 },
+  ember: { n: [1, 2], life: [600, 1000], v: [10, 24], up: 1, g: -20, size: 1, color: ['fire', 1], a: 1 },
+  debris: { n: [4, 6], life: [300, 500], v: [30, 70], up: 0.7, g: 260, size: 1, color: ['wood', 1], a: 1 },
+  blood: { n: [2, 4], life: [250, 400], v: [20, 45], up: 0.4, g: 200, size: 1, color: ['blood', 1], a: 1 },
 };
 const Z_COLOR = [150, 180, 245, 255];
 

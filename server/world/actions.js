@@ -32,6 +32,7 @@ export function applyAction(world, c, call) {
     if (moving < 0.05) {
       if (prox.must) return stale(world, c, call, "You can't get over there.");
     } else {
+      world.physical?.comingAt(c, call); // step 10: "Kael comes at you" before the blow lands
       return startWalk(world, c, call, prox);
     }
   }
@@ -39,6 +40,25 @@ export function applyAction(world, c, call) {
   if ((call.name === 'move_to' || call.name === 'travel_to') && (c.body?.capacities?.moving ?? 1) < 0.35) {
     return stale(world, c, call, c.body.capacities.moving < 0.05 ? "You can't move at all." : "You can't walk on those injuries; you could only crawl.");
   }
+  // step 10: physical acts on people and things (server/physical/)
+  if (['act_on', 'get_up', 'handle', 'force_door'].includes(call.name)) return world.physical.apply(c, call, { stale, logAction, remember, findPerson });
+  const result = applyBasic(world, c, call);
+  // step 10 §5.3: help from the one who hurt you — the victim perceives it with the attack still fresh
+  if (result?.ok && ['treat', 'give', 'carry_person', 'feed'].includes(call.name) && world.physical) {
+    const here = citizensIn(world.citizens, c.location, { exceptId: c.id });
+    let who = findPerson(world, c, here, args.to ?? args.person ?? args.who);
+    if (!who && call.name === 'treat') { const m = /\[w(\d+)\]/.exec(String(args.wound ?? '')); who = m ? here.find((o) => world.body.conditionById(o.id, m[1])) : null; }
+    if (who) world.physical.consequences.onCare(c, who, call.name, String(args.reason ?? '').trim() || null);
+  }
+  if (result?.ok && call.name === 'accept_help' && world.physical) {
+    const helper = findPerson(world, c, citizensIn(world.citizens, c.location, { exceptId: c.id }), args.person ?? args.from);
+    if (helper) world.physical.consequences.onAcceptedHelp(c, helper);
+  }
+  return result;
+}
+
+function applyBasic(world, c, call) {
+  const args = call.arguments ?? {};
   switch (call.name) {
     case 'move_to': return moveTo(world, c, call);
     case 'travel_to': return travelTo(world, c, call);
@@ -160,6 +180,18 @@ function cantGo(world, room, toId) {
     return barred.insideRoom === room.id
       ? () => `The door is barred; you would have to unbar it first.`
       : () => 'The door is barred from the inside.';
+  }
+  // step 10: a locked door blocks both ways (its key unlocks it); furniture pushed against it blocks from outside
+  const between = world.maps.doorBetween?.(room.id, toId);
+  if (between) {
+    const { door, insideRoom } = between;
+    if (door.state === 'locked') return () => (insideRoom === room.id ? 'The door is locked; you would need its key.' : 'The door is locked.');
+    const blocking = world.objects.inRoom(insideRoom).filter((x) => x.data?.barricade === door.id);
+    if (blocking.length) {
+      return insideRoom === room.id
+        ? () => `${blocking.map((x) => world.objects.surfaceText(x)).join(' and ')} ${blocking.length > 1 ? 'are' : 'is'} pushed against the door; you would have to move ${blocking.length > 1 ? 'them' : 'it'} first.`
+        : () => "The door won't give: something heavy is pushed against it from the inside.";
+    }
   }
   return null;
 }
@@ -334,6 +366,11 @@ function say(world, c, call, { released = false } = {}) {
   const hearers = present.filter((o) => canHear(o) && heardWords(world, c, o, volume, addressee));
   world.memory.hearSpeech(c, text, addressee, hearers);
   world.deaths?.onSpeech(c, text, hearers); // step 9.5: "she's dead — no breath in her" tells whoever hears it
+  // step 10: what they now mean toward the one they speak to ("none" lets it go)
+  if (addressee && args.intent && world.physical) {
+    if (args.intent === 'none') { if (c.intents?.[addressee.id]) { delete c.intents[addressee.id]; world.logEvent('intent', { actorId: c.id, location: c.location, targetId: addressee.id, intent: null }); } }
+    else world.physical.consequences.setIntent(c, addressee, args.intent);
+  }
   if (call.introduce) for (const o of hearers) world.memory.learnName(o.id, c.id, 1);
   if ((call.teach || call.introduce) && rec?.conv) {
     rec.conv.flags ??= {};
@@ -473,6 +510,8 @@ function proximityTarget(world, c, call) {
     case 'take': case 'use': case 'examine': { const o = obj(a.object); spot = o ? M.objectSpot(o) : null; break; }
     case 'tend_body': case 'keep_vigil': { const o = obj(a.body); spot = o ? M.objectSpot(o) : null; break; } // step 9.5
     case 'follow': case 'tell_news': { const p = person(a.to ?? a.person); spot = p?.spot ?? null; must = false; break; }
+    case 'act_on': { if (a.action === 'throw_at' || a.action === 'yield' || a.action === 'plead') return null; const p = person(a.person); spot = p?.spot ?? null; break; } // step 10
+    case 'handle': { if (a.action === 'throw' || a.action === 'pour') return null; const o = obj(a.object); spot = o ? M.objectSpot(o) : null; must = false; break; }
     case 'search': { const o = obj(a.target); spot = o ? M.objectSpot(o) : null; break; }
     case 'put': { const o = obj(a.anchor); spot = o ? M.objectSpot(o) : null; break; }
     case 'do': case 'wait': {
@@ -834,6 +873,7 @@ export function resolveTimers(world, now) {
       if (a.detail?.kind === 'conceal') { finishConceal(world, c, a.detail.token, null); continue; }
       if (a.detail?.kind === 'tend') { finishTend(world, c, a); continue; }   // step 9.5
       if (a.detail?.kind === 'bury') { finishBury(world, c, a); continue; }
+      if (a.detail?.kind && world.physical?.finishes(a.detail.kind)) { world.physical.finish(c, a); continue; } // step 10
       if (a.detail?.kind === 'eat') {
         a.detail.done = true;
         finishMeal(world, c, a, { completed: true });

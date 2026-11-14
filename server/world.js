@@ -34,6 +34,8 @@ import { Deaths } from './death/index.js';
 import { isRoutineStimulus } from './agents/habits.js';
 import { refreshTierSnapshot } from './agents/tiers.js';
 import { onActivityLeft } from './death/customs.js';
+import { Physical } from './physical/index.js';
+import { Altercations } from './physical/altercations.js';
 import { Stock } from './world/stock.js';
 import { getState } from './db.js';
 import { Memory } from './memory/index.js';
@@ -79,6 +81,8 @@ export class World {
     this.deaths = new Deaths(this);       // step 9.5: who knows of which death; grief, mortality, dread, news
     this.stock = new Stock(this);         // step 9.5: services need people (bakery, tavern)
     this.habits = new Habits(this);       // step 9.5: routines code may carry out, in calm moments only
+    this.physical = new Physical(this);   // step 10: acts on people and things, consequences, fire
+    this.altercations = new Altercations(this); // step 10: fights, tracked like conversations
     this.debugLeakCheck = process.env.DEBUG_LEAK_CHECK === 'true'; // step 9.5: switchable by the director
     this.gatherings = [];
 
@@ -143,6 +147,7 @@ export class World {
     this.objects.load(this.scenario); // types from content, new content instances seeded, invariant checked
     this.body.load();                 // step 7B: body state for everyone (HP → vitality), garments seeded once
     this.deaths.load();               // step 9.5: dread per region, knownDeaths defaults
+    this.altercations.load();         // step 10: fights in progress
     this.stock.load();
     this.gatherings = getState(this.db, 'gatherings', []) ?? [];
 
@@ -205,6 +210,7 @@ export class World {
     expireDirectorState(this, now);
     this.conversations.releaseDue((held) => applyHeldSay(this, held));
     this.conversations.tick(now);
+    this.physical.tick(elapsed);     // step 10: holds and chokes, fights ending, fire and smoke, fear of discovery
     this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
     this.deaths.tick(elapsed, now);   // step 9.5: bodies seen, news to break, own mortality, dread, decay
     this.habits.ensure();             // step 9.5: habits for whoever has none yet (LLM, a few at a time)
@@ -341,6 +347,9 @@ export class World {
       mortality: Math.round((this.deaths?.mortalityFear(c) ?? 0) * 10) / 10,
       habit: c.habitNote && this.now - c.habitNote.at < 30 ? c.habitNote.text : null,
       following: c.following?.id ?? null,
+      // step 10: what the map needs to pose them (on the floor, held, tied, choking) and the fight they're in
+      phys: c.phys ? { prone: Boolean(c.phys.prone), restraint: c.phys.restraint?.kind ?? null, by: c.phys.restraint?.by ?? null, choking: (c.phys.asphyxia ?? 0) >= 1, smoke: (c.phys.smoke ?? 0) >= 1, touched: c.phys.touchedBy?.until > this.now ? c.phys.touchedBy.id : null } : null,
+      altercation: this.altercations?.of(c)?.id ?? null,
     };
   }
 
@@ -918,6 +927,7 @@ export class World {
       dread: this.deaths.dreadView(),
       stock: this.stock.view(),
       gatherings: (this.gatherings ?? []).slice(-10),
+      altercations: this.altercations?.view() ?? [], // step 10
     };
   }
 
@@ -973,6 +983,7 @@ export class World {
       ...this.#objectsOf(c),
       emotionsView: this.emotions.view(c),
       bodyView: this.body.view(c.id), // step 7B
+      physical: this.physical?.profileView(c) ?? null, // step 10: combat profile, weapons, deeds, intents, holds
       promptPreview: buildMessages(this, c),
       toolsPreview: buildTools(this, c).map((t) => t.function.name),
       conversation: conv && { ...this.conversations.view(conv), participantNames: conv.participants.map(name) },

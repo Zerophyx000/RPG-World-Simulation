@@ -35,6 +35,15 @@ const DEFAULT_POSES = {
   fallback: { pose: 'work' },
 };
 const SEATED = new Set(['sit', 'sitHigh', 'eat', 'read']);
+// step 10: physical acts onto the poses the character art has (push = an arm thrown out)
+const ACT_POSE = {
+  shove: 'push', slap: 'push', punch: 'push', kick: 'push', strike: 'hammer', throw_at: 'push', grab: 'push', snatch: 'push', hold_back: 'push',
+  choke: 'push', pin_down: 'kneel', tie_up: 'kneel', drag: 'crouch', help_up: 'crouch', free: 'kneel', dodge: 'crouch', block: 'idle',
+  break_free: 'work', pull_away: 'idle', yield: 'kneel', plead: 'kneel', embrace: 'idle', hold_hand: 'idle', comfort: 'idle', support: 'walk', get_up: 'kneel',
+};
+const BLOWS = new Set(['shove', 'slap', 'punch', 'kick', 'strike', 'throw_at']);
+const HANDLE_POSE = { push: 'push', break: 'hammer', throw: 'push', pour: 'work', fill: 'crouch', ignite: 'crouch', light: 'work', douse: 'work', smother: 'work', open: 'work', close: 'work', lock: 'work', unlock: 'work', bar: 'work', unbar: 'work', put_in: 'crouch', take_out: 'crouch', sit_on: 'sitHigh', lie_on: 'lie', force: 'push' };
+const HANDLE_FX = { break: 'debris', pour: 'splash', smother: 'smoke', ignite: 'ember', force: 'dust' };
 // frame period (ms) of the looping work poses
 const PERIOD = { hammer: 230, knead: 380, sweep: 420, eat: 650, crouch: 320, work: 300, talk: 380, idle: 900, kneel: 600 };
 const IMPACT = { hammer: 2, knead: 1, sweep: 1, crouch: 1 };
@@ -56,6 +65,7 @@ export function createAnimator(ctx) {
   const table = () => ctx.art?.activityPoses ?? DEFAULT_POSES;
   const regex = new Map();
   const quality = ctx.quality;
+  const seenExchanges = new Map(); // step 10: altId -> exchanges already seen
 
   function stateOf(id, ms) {
     let st = state.get(id);
@@ -136,6 +146,18 @@ export function createAnimator(ctx) {
         if (!cur || b.born > cur.born) speakerOf.set(b.conversationId, { id, ...b });
       }
 
+      // step 10: a new blow in any fight makes its target stagger (and bleed, when it drew blood)
+      for (const alt of S.altercations ?? []) {
+        const n = alt.exchanges?.length ?? 0;
+        const seenN = seenExchanges.get(alt.id) ?? n;
+        seenExchanges.set(alt.id, n);
+        for (const e of (alt.exchanges ?? []).slice(Math.max(0, n - (n - seenN)))) {
+          if (!e.hit || !BLOWS.has(e.action) && !['grab', 'choke', 'pin_down'].includes(e.action)) continue;
+          const st = stateOf(e.target, ms); st.hitAt = ms; st.hitFrom = e.actor;
+          const tp = F.people.get(e.target);
+          if (tp && quality?.get?.('particles') !== false) { F.emit('dust', tp.x, tp.y - 14); if ((e.effects ?? []).includes('bleeding')) F.emit('blood', tp.x, tp.y - 16); }
+        }
+      }
       for (const p of F.people.values()) {
         const c = p.c; const id = c.id;
         const st = stateOf(id, ms);
@@ -170,12 +192,36 @@ export function createAnimator(ctx) {
 
         // ---- 1. pose
         let entry = null;
+        // step 10: on the floor, pinned, tied, in the middle of an act
+        const ph = c.phys ?? null;
+        const act = a.type === 'doing' && a.detail?.kind === 'act' ? a.detail.act : null;
+        const hnd = a.type === 'doing' && a.detail?.kind === 'handle' ? a.detail.handle : null;
+        const actTarget = act && a.detail?.targetId ? F.people.get(a.detail.targetId) : null;
+        const physDown = !p.moving && (ph?.prone || ph?.restraint === 'pinned');
+        const tied = !p.moving && ph?.restraint === 'tied';
         if (lying) out.pose = 'lie';
         else if (p.moving && cantWalk) out.pose = 'crawl';
-        else if (downOnFloor) out.pose = 'lie';
+        else if (downOnFloor || physDown) out.pose = 'lie';
+        else if (tied) { out.pose = 'sit'; mods.crossArms = true; }
         else if (sitsDown) out.pose = 'sit';
         st.fearRun = Boolean(p.moving && !limping && fear && fear.intensity >= 6);
-        if (lying || downOnFloor || sitsDown || out.pose === 'crawl') { /* chosen above */ }
+        if (lying || downOnFloor || physDown || tied || sitsDown || out.pose === 'crawl') { /* chosen above */ }
+        else if (act && !p.moving) {
+          out.pose = ACT_POSE[act] ?? 'push';
+          if (actTarget) {
+            out.dir = dirToward(p, actTarget);
+            const toward = Math.sign(actTarget.x - p.x) || 0;
+            if (BLOWS.has(act)) { const t = ((ms - (st.actAt ?? ms)) % 600) / 600; out.dx += toward * Math.round(3 * Math.sin(Math.PI * t)); }
+            else if (['embrace', 'hold_hand', 'comfort', 'hold_back', 'grab', 'choke'].includes(act)) out.dx += toward * Math.min(6, Math.max(0, Math.abs(actTarget.x - p.x) - 6));
+          }
+          if (act === 'dodge') out.dy += 1;
+          if (st.lastAct !== act) { st.lastAct = act; st.actAt = ms; }
+        }
+        else if (hnd && !p.moving) {
+          out.pose = HANDLE_POSE[hnd] ?? 'work';
+          const fx = HANDLE_FX[hnd];
+          if (fx && ms - (st.lastFx ?? 0) > 450) { st.lastFx = ms; F.emit(fx, p.x + 8 * (sideSign(out.dir) || 1), p.y - 10); }
+        }
         else if (p.moving) out.pose = S.holding?.has(id) ? 'carry' : (st.speed > 160 || st.fearRun) ? 'run' : 'walk';
         else if (a.type === 'doing' && a.detail?.kind !== 'walk') { entry = activityEntry(a, S); out.pose = entry.pose ?? 'work'; }
         else if (a.type === 'waiting' && /sit|rest/.test(String(a.detail?.reason ?? ''))) out.pose = 'sit';
@@ -184,6 +230,14 @@ export function createAnimator(ctx) {
         if (out.pose === 'idle' && speaking) {
           if (myBubble.volume === 'shout' && ms - myBubble.born < 600) out.pose = 'push';
           else out.pose = 'talk';
+        }
+        // step 10: held or choked: a struggle; a fresh blow: a stagger away from the one who struck
+        if (!lying && (ph?.restraint === 'held' || ph?.choking)) { mods.tilt = Math.floor(ms / 170) % 2 ? 1 : -1; out.dx += Math.floor(ms / 240) % 2 ? 1 : -1; }
+        if (!lying && st.hitAt && ms - st.hitAt < 450) {
+          const from = F.people.get(st.hitFrom);
+          const away = from ? (Math.sign(p.x - from.x) || 1) : 1;
+          const k = 1 - (ms - st.hitAt) / 450;
+          out.dx += away * Math.round(4 * k); mods.tilt = away;
         }
         // leaving a conversation: turn away first, then walk
         if (c.conversationId) { st.convId = c.conversationId; st.partner = S.faceOf?.get(id) ?? st.partner; st.awayDone = false; }

@@ -92,7 +92,7 @@ export class Scheduler {
     const w = this.world;
     if (c.activity.type === 'thinking' && s.data?.interrupt && w.clock.running) {
       const last = w.runtime(c.id).lastInterruptAt;
-      if (w.now - last >= INTERRUPT_EVERY_MINUTES) w.interruptThink(c, s);
+      if (w.now - last >= INTERRUPT_EVERY_MINUTES || s.data?.altercation || s.data?.fire) w.interruptThink(c, s); // step 10: blows and flames always get through
     }
     this.poke();
   }

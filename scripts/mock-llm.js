@@ -131,6 +131,46 @@ function chooseTool(tools, prompt = '', stimulus = '') {
     }
     return { tool, args };
   }
+  // Step 10: physical acts. Prone → get up; held or tied → struggle or give up; afraid → dodge, yield or flee;
+  // angry (anger >= 6 shows as "your jaw is clenched" / "fury" wording) → go at someone; now and then a reversal with a reason.
+  if (byName.get_up && Math.random() < 0.7) return { tool: byName.get_up, args: {} };
+  const act = byName.act_on;
+  const acts = act?.function.parameters.properties.action.enum ?? [];
+  const actArgs = (action, extra = {}) => ({ person: pick(act.function.parameters.properties.person.enum), action, ...extra });
+  if (act && acts.includes('break_free') && Math.random() < 0.7) return { tool: act, args: actArgs(pick(['break_free', 'break_free', 'plead', 'yield'].filter((a) => acts.includes(a)))) };
+  if (act && /ALTERCATION/.test(prompt)) {
+    const afraid = /afraid|fear|terrif|panic|heart is racing/i.test(prompt);
+    if (afraid && Math.random() < 0.5) {
+      const flee = byName.move_to;
+      if (flee && Math.random() < 0.4) return { tool: flee, args: genArgs(flee) };
+      const d = ['dodge', 'block', 'yield', 'plead'].filter((a) => acts.includes(a));
+      if (d.length) return { tool: act, args: actArgs(pick(d)) };
+    }
+    const hit = ['shove', 'punch', 'kick', 'grab', 'strike', 'slap'].filter((a) => acts.includes(a));
+    if (hit.length && Math.random() < 0.6) return { tool: act, args: actArgs(pick(hit), { intent: pick(['scare', 'subdue', 'hurt', 'hurt']), ...(acts.includes('strike') && Math.random() < 0.5 ? { action: 'strike', with: pick(act.function.parameters.properties.with.enum) } : {}) }) };
+    if (Math.random() < 0.15) {
+      const care = ['help_up', 'comfort', 'embrace'].filter((a) => acts.includes(a));
+      if (care.length) return { tool: act, args: actArgs(pick(care), { reason: "I didn't mean for it to go this far.", intent: 'care' }) };
+    }
+  }
+  if (act && /anger|furious|fury|jaw is (tight|clenched)|blood is up/i.test(prompt) && Math.random() < 0.12) {
+    const hit = ['shove', 'punch', 'slap', 'grab'].filter((a) => acts.includes(a));
+    if (hit.length) return { tool: act, args: actArgs(pick(hit), { intent: pick(['scare', 'hurt']), words: 'Enough!' }) };
+  }
+  if (act && Math.random() < 0.04) {
+    const kind = ['embrace', 'comfort', 'hold_hand'].filter((a) => acts.includes(a));
+    if (kind.length) return { tool: act, args: actArgs(pick(kind), { intent: 'care' }) };
+  }
+  if (byName.handle && Math.random() < (/Fire!|on fire|Smoke/i.test(prompt + stimulus) ? 0.8 : 0.06)) {
+    const h = byName.handle;
+    const args = genArgs(h);
+    const allowed = h.function.parameters.properties.action.enum;
+    if (/Fire!|on fire|Smoke/i.test(prompt + stimulus)) args.action = ['pour', 'smother', 'fill', 'push'].find((a) => allowed.includes(a)) ?? args.action;
+    else args.action = pick(allowed.filter((a) => ['throw', 'push', 'pour', 'open', 'close', 'light', 'douse', 'sit_on', 'bar', 'ignite'].includes(a))) ?? args.action;
+    delete args.target;
+    return { tool: h, args };
+  }
+  if (byName.force_door && Math.random() < 0.3) return { tool: byName.force_door, args: genArgs(byName.force_door) };
   if (byName.refuse_treatment && Math.random() < 0.25) return { tool: byName.refuse_treatment, args: genArgs(byName.refuse_treatment) };
   if (byName.accept_help && Math.random() < 0.6) return { tool: byName.accept_help, args: genArgs(byName.accept_help) };
   if (byName.examine_person && Math.random() < 0.5) return { tool: byName.examine_person, args: genArgs(byName.examine_person) };

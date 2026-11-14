@@ -19,6 +19,7 @@ import { createDirectorCam } from '../render/directorcam.js';
 import { createReplay } from '../render/replay.js';
 import { onEvent as audioEvent } from '../render/audio.js';
 import * as convPanelUi from './map-ui/convpanel.js';
+import * as altPanelUi from './map-ui/altpanel.js'; // step 10: fights
 import * as hudUi from './map-ui/hud.js';
 import * as toastsUi from './map-ui/toasts.js';
 import * as watchlistUi from './map-ui/watchlist.js';
@@ -27,7 +28,7 @@ import * as settingsUi from './map-ui/settings.js';
 import * as replaybarUi from './map-ui/replaybar.js';
 
 // step 9: the on-map UI modules, each mounted into its own layer over the canvas
-const UI_MODULES = [['convpanel', convPanelUi], ['hud', hudUi], ['toasts', toastsUi], ['watchlist', watchlistUi], ['search', searchUi], ['settings', settingsUi], ['replaybar', replaybarUi]];
+const UI_MODULES = [['convpanel', convPanelUi], ['altpanel', altPanelUi], ['hud', hudUi], ['toasts', toastsUi], ['watchlist', watchlistUi], ['search', searchUi], ['settings', settingsUi], ['replaybar', replaybarUi]];
 
 let assets = null; // { pal, scene, maps }
 async function loadAssets() {
@@ -449,6 +450,7 @@ export function mount(el) {
     S.now = est < S.now && S.now - est < 30 ? S.now : est;
     S.uiScale = dpr;
     S.rooms = store.rooms; S.citizens = store.citizens; S.objects = store.objects; // loadWorld() replaces these Maps on every resync
+    S.altercations = store.altercations ?? []; // step 10: fights (blows, staggers)
     S.faceOf = faces();
     S.events = store.events; S.observer = store.observer; S.god = opt.god === 'god'; S.storylineFocus = store.storylineFocus;
     S.subjective = subjectiveOn && S.selectedId ? { id: S.selectedId, perception: perception?.citizenId === S.selectedId ? perception : null } : null;

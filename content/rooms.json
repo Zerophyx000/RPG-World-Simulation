@@ -105,7 +105,8 @@
     "y": 30,
     "detail": "rich",
     "kind": "tavern",
-    "danger": 0
+    "danger": 0,
+    "construction": "timber"
   },
   {
     "id": "bakery",
@@ -157,7 +158,8 @@
     "y": 30,
     "detail": "normal",
     "kind": "bakery",
-    "danger": 0
+    "danger": 0,
+    "construction": "timber"
   },
   {
     "id": "smithy",
@@ -193,7 +195,8 @@
     "y": 75,
     "detail": "normal",
     "kind": "smithy",
-    "danger": 1
+    "danger": 1,
+    "construction": "stone"
   },
   {
     "id": "well",
@@ -259,7 +262,8 @@
     "detail": "normal",
     "kind": "house",
     "danger": 0,
-    "owner": "greta"
+    "owner": "greta",
+    "construction": "timber"
   },
   {
     "id": "house_tomas",
@@ -297,7 +301,8 @@
     "detail": "sparse",
     "kind": "cottage",
     "danger": 0,
-    "owner": "tomas"
+    "owner": "tomas",
+    "construction": "timber"
   },
   {
     "id": "house_lena",
@@ -333,7 +338,8 @@
     "detail": "rich",
     "kind": "herbalist's cottage",
     "danger": 0,
-    "owner": "lena"
+    "owner": "lena",
+    "construction": "timber"
   },
   {
     "id": "old_mine_entrance",

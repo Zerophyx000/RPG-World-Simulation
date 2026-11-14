@@ -94,8 +94,10 @@ export function computeBody(content, state) {
   const shock = vitality < 30 || pain >= 8;
   const concussed = conds.some((c) => c.type === 'concussion');
   const fever = sev('fever');
+  // step 10: choking steps and smoke (c.phys.asphyxia + c.phys.smoke): about 3 → senseless
+  const asph = Math.max(0, Number(state.asphyxia) || 0);
   const cons = clamp(
-    brain + stage.consciousness - (shock ? 0.3 : 0) - (concussed ? 0.15 : 0) - (fever >= 6 ? 0.05 * (fever - 5) : 0)
+    brain - 0.25 * asph + stage.consciousness - (shock ? 0.3 : 0) - (concussed ? 0.15 : 0) - (fever >= 6 ? 0.05 * (fever - 5) : 0)
       - ((state.fatigue ?? 0) >= 93 ? 0.05 : 0) - (vitality < 15 ? 0.2 : 0),
     0, 1,
   );
@@ -106,7 +108,7 @@ export function computeBody(content, state) {
   const hearing = clamp(0.5 * frac('ear_left') + 0.5 * frac('ear_right'), 0, 1);
   const speech = clamp(Math.min(frac('jaw'), frac('tongue')) * (cons < 0.5 ? cons * 2 : 1), 0, 1);
   const lungs = (frac('lung_left') + frac('lung_right')) / 2;
-  const breathing = clamp(lungs * (0.6 + 0.4 * frac('chest')) * (0.5 + 0.5 * frac('neck')), 0, 1);
+  const breathing = clamp(lungs * (0.6 + 0.4 * frac('chest')) * (0.5 + 0.5 * frac('neck')) * (1 - 0.3 * Math.min(3, asph)), 0, 1);
   const bloodPumping = frac('heart');
 
   // limbs

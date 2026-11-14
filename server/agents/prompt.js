@@ -4,7 +4,7 @@
 //   [system] world rules · common knowledge · WHO YOU ARE · WHAT YOU KNOW ABOUT YOURSELF (core memory;
 //            only changes at night, so the system prefix is identical all game day)
 //   [user]   (own-mortality line, step 9.5) (urgency line) · ON WAKING (the first decision after a real sleep) ·
-//            RIGHT NOW (dread, "out of habit, you …") · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · ON YOUR MIND ·
+//            RIGHT NOW (dread, "out of habit, you …", darkness) · ALTERCATION · WHAT YOU'VE DONE (step 10) · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · ON YOUR MIND ·
 //            WHO IS HERE (shared grief) · YOU REMEMBER · PLACES YOU KNOW (with travel times and last known state, step 7A)
 //            · CONVERSATION · WHAT JUST HAPPENED · THINGS YOU'D MEANT TO DO (intentions, step 9.5) · instruction
 // Step 9.5: no more YOUR PLAN — day plans are gone; intentions are listed softly and only the citizen acts on them.
@@ -29,6 +29,7 @@ import { feelLines, moodFraming, whoIsHere, hereNotes, orderStimuli, instruction
 import { FEELING_RULE } from '../emotions/report.js';
 import { vigilLines, corpseOf } from '../death/customs.js';
 import { plainRef } from '../memory/index.js';
+import { altercationBlock, deedsBlock, physLines, darkLine, waryNote } from '../physical/prompt.js';
 
 export { clockTime, timeOfDay, relativeTime };
 
@@ -134,6 +135,9 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   } else if (c.activity.type === 'moving') {
     right.push(`You are on your way to ${placeLabel(c, world.rooms.get(c.activity.detail?.to))}.`);
   }
+  // step 10: no light at night
+  const dark = world.physical ? darkLine(world, c) : null;
+  if (dark) right.push(dark);
   // step 9.5 (B3.3): the village on edge
   const dread = world.deaths?.dreadFor(c) ?? 0;
   if (dread >= 3) right.push(dread >= 6 ? 'Since the deaths, the whole village is afraid; people look over their shoulders.' : 'Since the deaths, the whole village is on edge.');
@@ -147,11 +151,17 @@ function situationPrompt(world, c, { tier, mode, collect }) {
     right.push(`What you did recently:\n${c.recentActions.map((a) => `- (${relativeTime(now - a.gameTime)}) ${mem.resolveNames(c, a.text)}`).join('\n')}`);
   }
   blocks.push(`# RIGHT NOW\n${right.join('\n')}`);
+  // step 10 §3.2 / §5.1: the fight they're in, and what they have done (in their own words, their own intent)
+  const fight = world.physical ? altercationBlock(world, c) : null;
+  if (fight) blocks.push(`# ALTERCATION\n${mem.resolveNames(c, fight)}`);
+  const done = world.physical ? deedsBlock(world, c) : null;
+  if (done) blocks.push(`# WHAT YOU'VE DONE\n${mem.resolveNames(c, done)}`);
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {
     let here = [...world.objects.whatsHere(c, { aliases: true }), ...emoNotes.whatsHere];
     if (sn.concussed) here = here.filter((_l, i) => i < 2 || !dropsDetail(c, i, Math.floor(now / 30))); // a rattled head misses details
+    if (dark && !sn.blind && here.length > 3) here = [...here.slice(0, 3), '(In the dark you can make out little else.)']; // step 10: lanterns matter at night
     const blindNote = sn.blind ? "You can't see. What you know of this place comes from memory and touch:\n" : '';
     blocks.push(`# WHAT'S HERE\n${blindNote}${here.length ? here.join('\n') : sn.blind ? 'Nothing that you can feel around you.' : 'Nothing worth mentioning.'}`);
   }
@@ -159,7 +169,8 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // HOW YOU FEEL (only when something is off)
   const emoLines = feelLines(world, c); // step 6: body sensations, never numbers or labels
-  if (feel.any || emoLines.length || body.lines.length) {
+  const physNow = world.physical ? physLines(world, c).map((l) => mem.resolveNames(c, l)) : []; // step 10: held, pinned, choking, on the floor
+  if (feel.any || emoLines.length || body.lines.length || physNow.length) {
     const hints = [];
     // step 7A: when a need bites, the nearest place they know that answers it (shortest route from here).
     const nearest = (service) => knownWith(c, service)
@@ -176,7 +187,7 @@ function situationPrompt(world, c, { tier, mode, collect }) {
       const word = state === 'broken' ? 'but the bed is broken' : state === 'usable' ? 'bed usable' : null;
       hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins ? `${bed.mins} min` : 'right here'}${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
     }
-    blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...body.lines, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
+    blocks.push(`# HOW YOU FEEL\n${[...physNow, feel.any ? feel.text : null, ...body.lines, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
   // YOUR GROUPS (step 5.5)
@@ -436,8 +447,10 @@ function visibleLine(world, o, viewer, { short = false } = {}) {
   // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.
   const line = relationLine(world, viewer, o);
   const where = spotPhrase(world, viewer, o); // step 8: one short phrase about where they stand
-  if (short) return `${who}${line.tags}${where}. ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
-  return `${who}${line.tags}${where}. ${line.text} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+  const wary = world.physical ? waryNote(world, viewer, o) : null; // step 10: lasting wariness toward an attacker
+  const waryText = wary ? ` (${wary}.)` : '';
+  if (short) return `${who}${line.tags}${where}.${waryText} ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
+  return `${who}${line.tags}${where}. ${line.text}${waryText} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
 }
 
 /** ", by the oven, across the room from you" / ", right next to you" ('' when positions are unknown). */

@@ -159,6 +159,9 @@ export const EVENT_CATEGORY = {
   plan: () => 'memory',
   // step 9.5
   learned_death: () => 'social', news: () => 'speech', gathering: () => 'social', burial: () => 'social', tend_body: () => 'action', vigil: () => 'action',
+  // step 10
+  physical: () => 'action', crime: () => 'social', altercation_start: () => 'social', altercation_end: () => 'social', altercation_join: () => 'social', aftermath: () => 'memory', coherence: () => 'system', coherence_retry: () => 'system', intent: () => 'memory', touch: () => 'social',
+  fire_start: () => 'director', fire_out: () => 'object', fire_burnt: () => 'object', room_fire: () => 'director', room_fire_out: () => 'object', barricade: () => 'object', barricade_removed: () => 'object', object_broken: () => 'object', light_knocked_over: () => 'object', restraint_end: () => 'body', vigil_relieved: () => 'action', habit_blocked: () => 'system', tier_capped: () => 'system', learned_from_reflection: () => 'social',
   intention: () => 'memory', habits: () => 'memory', habit: () => 'activity', habit_change: () => 'memory', mortality: () => 'body', dread: () => 'director', stock: () => 'object',
   feeling_repaired: () => 'system', feeling_dropped: () => 'system', feeling_target_unmapped: () => 'system',
   reflection_gate: () => 'memory',
@@ -278,6 +281,16 @@ export function eventHtml(e) {
     case 'burial': return `${who(actor)} <span class="bad">buries</span> ${who(d.deadId)}${d.words ? ` — “${esc(d.words)}”` : ''} <span class="dim">(${(d.present ?? []).length} present)</span>`;
     case 'tend_body': return `${who(actor)} tends the body of ${who(d.deadId)}: ${esc(String(d.how).replace('_', ' '))}`;
     case 'vigil': return `${who(actor)} keeps vigil over ${who(d.deadId)}`;
+    // step 10
+    case 'physical': return `${who(actor)} <span class="${['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act) ? 'bad' : ''}">${esc(String(d.act).replace('_', ' '))}</span> ${who(d.targetId)}${d.with ? ` <span class="dim">with ${esc(d.with)}</span>` : ''}${d.hit === false ? ' <span class="dim">— misses</span>' : (d.effects ?? []).length ? ` — <span class="bad">${esc(d.effects.join(', '))}</span>` : ''}${d.words ? ` “${esc(d.words)}”` : ''}${d.reason ? ` <span class="dim">(why: ${esc(d.reason)})</span>` : ''}`;
+    case 'crime': return `⚖ ${who(actor)} <span class="bad">${esc(String(d.kind).replace('_', ' '))}</span>${d.victimId ? ` against ${who(d.victimId)}` : ''} <span class="dim">(severity ${esc(d.severity)}, ${(d.witnesses ?? []).length ? `seen by ${(d.witnesses ?? []).length}` : 'unseen'})</span>`;
+    case 'altercation_start': return `⚔ ${who(actor)} goes at ${who(d.targetId)} <span class="dim">(${esc(d.intent)})</span>`;
+    case 'altercation_end': return `⚔ a fight ends: ${esc(d.reason)} <span class="dim">(${(d.participants ?? []).map((id) => store.citizens.get(id)?.name ?? id).join(', ')})</span>`;
+    case 'coherence': return `${who(actor)} <span class="dim">${esc(d.kind)}:</span> ${esc(d.action)} → ${who(d.victimId)}${d.reason ? ` — “${esc(d.reason)}”` : ''}`;
+    case 'coherence_retry': return `${who(actor)} <span class="dim">asked again:</span> ${esc(d.message)}`;
+    case 'fire_start': return `🔥 <span class="bad">fire</span> in ${esc(roomName(e.location))} <span class="dim">(${esc(d.cause)})</span>${actor ? ` — ${who(actor)}` : ''}`;
+    case 'room_fire': return `🔥 <span class="bad">${esc(roomName(e.location))} is on fire</span>`;
+    case 'fire_out': return `the fire on ${esc(d.objectId)} is out <span class="dim">(${esc(d.how)})</span>${actor ? ` — ${who(actor)}` : ''}`;
     case 'intention': return `${who(actor)} <span class="dim">intention ${esc(d.op)}:</span> ${esc(d.text ?? d.id)}`;
     case 'habits': return `${who(actor)} <span class="dim">habits (${esc(d.origin)}):</span> ${esc((d.habits ?? []).join('; '))}`;
     case 'habit': return `<span class="dim">↺ out of habit,</span> ${who(actor)} ${esc(d.what)} <span class="dim">(${esc(d.step)})</span>`;

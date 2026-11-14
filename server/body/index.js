@@ -388,7 +388,7 @@ export class Body {
   recompute(c, { quiet = false } = {}) {
     const st = c.body;
     const conds = this.active(c.id);
-    const r = computeBody(this.content, { conds, blood: st.blood, vitality: st.vitality, fatigue: c.needs?.fatigue ?? 0, aids: this.aidsOf(c), now: this.world.now });
+    const r = computeBody(this.content, { conds, blood: st.blood, vitality: st.vitality, fatigue: c.needs?.fatigue ?? 0, aids: this.aidsOf(c), now: this.world.now, asphyxia: (c.phys?.asphyxia ?? 0) + (c.phys?.smoke ?? 0) });
     const before = st.status ?? [];
     st.parts = r.parts;
     st.capacities = r.capacities;

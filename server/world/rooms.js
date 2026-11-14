@@ -35,6 +35,8 @@ export function normalizeRoom(row) {
     // step 5.5: how dangerous the place feels (0–10, village rooms 0–1) and whose home it is
     danger: Math.min(10, Math.max(0, Number(src.danger) || 0)),
     owner: src.owner ? String(src.owner) : null,
+    // step 10: what the building is made of (timber rooms can catch fire as a whole)
+    construction: src.construction ? String(src.construction) : null,
     x: Number.isFinite(Number(src.x)) && src.x !== null ? Number(src.x) : null,
     y: Number.isFinite(Number(src.y)) && src.y !== null ? Number(src.y) : null,
     effects: Array.isArray(src.effects) ? src.effects.filter((e) => e && e.text) : [],

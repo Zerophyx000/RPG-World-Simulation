@@ -330,6 +330,7 @@ export function buildTools(world, c) {
 
   // step 9.5 (B4): the dead — tend, keep vigil, bury; and calling people together
   tools.push(...customTools(world, c, fn, INNER_THOUGHT));
+  if (world.physical) tools.push(...world.physical.tools(c, fn, INNER_THOUGHT)); // step 10: act_on, get_up, handle, force_door
   const gathering = gatheringTool(world, c, fn, INNER_THOUGHT);
   if (gathering && !mute) tools.push(gathering);
 
@@ -347,6 +348,22 @@ export function buildTools(world, c) {
       emotion: { type: 'string', enum: [...new Set(strong.map((e) => e.type))], description: 'Optional. Which feeling; leave it out to hide them all.' },
       inner_thought: INNER_THOUGHT,
     }, []));
+  }
+  // step 10 §5.3: someone they went at in the last hour is here — helping them needs a reason, and saying anything may
+  // change what they mean toward them
+  const deeds = world.physical?.consequences.recentAggression(c, 60) ?? [];
+  if (deeds.length) {
+    const names = deeds.map((d) => world.memory.nameFor(c, d.victimId)).join(', ');
+    for (const t of tools) {
+      if (['treat', 'give', 'carry_person', 'feed'].includes(t.function.name)) {
+        t.function.parameters.properties.reason = { type: 'string', description: `Required if you help someone you went at in the last hour (${names}): why you are doing this now.` };
+      }
+    }
+  }
+  const intentsNow = Object.keys(c.intents ?? {}).filter((id) => world.physical?.consequences.intentToward(c, id));
+  if (intentsNow.length) {
+    const say = tools.find((t) => t.function.name === 'say');
+    if (say) say.function.parameters.properties.intent = { type: 'string', enum: ['scare', 'subdue', 'hurt', 'kill', 'defend', 'care', 'none'], description: 'Optional: what you now mean toward the one you speak to (it changes what you came at them for; "none" lets it go).' };
   }
   // Step 7A: every action may carry the optional `feeling` self-report (an object; the enums are per citizen).
   const feeling = feelingParam(world, c);
