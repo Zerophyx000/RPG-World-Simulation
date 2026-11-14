@@ -255,6 +255,8 @@ export class Emotions {
       const mood = (negative ? m > 0 : m < 0) ? stretch : 1 / stretch;
       const halfLife = (e.data?.halfLifeHours ?? def.halfLifeHours) * 60 * personality * (m === 0 ? 1 : mood); // step 7B: grief lingers for days
       e.intensity *= 0.5 ** (elapsed / halfLife);
+      // step 9.5 (B2.2): close grief can't fall below its floor for the first days
+      if (e.data?.floor && this.world.now < (e.data.floorUntil ?? 0)) e.intensity = Math.max(e.intensity, e.data.floor);
       if (e.intensity < MIN_INTENSITY) dropped = true;
     }
     if (dropped) {
@@ -295,7 +297,8 @@ export class Emotions {
       if (NEGATIVE_TENSION.includes(e.type)) tense = Math.max(tense, e.intensity);
     }
     const targetV = clamp(base.valence + (pos - neg) * 0.25, -5, 5); // a summed intensity of 20 is the full ±5
-    const targetT = tense > 0 ? Math.max(tense, base.tension) : base.tension;
+    const dread = this.world.deaths?.dreadFor(c) ?? 0; // step 9.5 (B3.3): the village's dread adds to everyone's tension
+    const targetT = Math.min(10, (tense > 0 ? Math.max(tense, base.tension) : base.tension) + dread * 0.4);
     const k = 1 - 0.9 ** Math.max(0.1, hours);
     mood.valence = clamp(mood.valence + (targetV - mood.valence) * k, -5, 5);
     mood.tension = clamp(mood.tension + (targetT - mood.tension) * k, 0, 10);
@@ -544,7 +547,7 @@ export class Emotions {
 }
 
 export function detok(world, text) {
-  return text == null ? text : String(text).replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => world.citizens.get(id)?.name ?? id);
+  return text == null ? text : String(text).replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => world.citizens.get(id)?.name ?? id);
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));

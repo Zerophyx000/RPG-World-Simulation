@@ -42,5 +42,14 @@
   {"id": "lena_door", "type": "door", "room": "house_lena", "state": "closed"},
   {"id": "mine_lantern", "type": "lantern", "room": "old_mine_entrance", "state": "broken", "visibility": "noticeable", "trueText": "A miner's lantern, its glass long since shattered. Scratched into the base: K.B."},
   {"id": "mine_rope", "type": "rope", "room": "old_mine_entrance", "state": "tangled"},
-  {"id": "smithy_hatchet", "type": "hatchet", "room": "smithy", "state": "sharp", "visibility": "noticeable", "placement": {"relation": "beside", "of": "smithy_forge"}}
+  {"id": "smithy_hatchet", "type": "hatchet", "room": "smithy", "state": "sharp", "visibility": "noticeable", "placement": {"relation": "beside", "of": "smithy_forge"}},
+  {"id": "chapel_spade_1", "type": "spade", "room": "chapel_yard", "state": "sound", "surfaceText": "a spade leaning by the chapel door", "short": "spade"},
+  {"id": "chapel_spade_2", "type": "spade", "room": "chapel_yard", "state": "sound", "surfaceText": "an old spade with a worn handle", "short": "old spade"},
+  {"id": "greta_blanket", "type": "blanket", "room": "house_greta", "owner": "greta", "state": "folded", "short": "blanket"},
+  {"id": "tomas_blanket", "type": "blanket", "room": "house_tomas", "owner": "tomas", "state": "folded", "short": "blanket"},
+  {"id": "lena_blanket", "type": "blanket", "room": "house_lena", "owner": "lena", "state": "folded", "short": "blanket"},
+  {"id": "tavern_blanket", "type": "blanket", "room": "tavern", "owner": "anselm", "state": "folded", "short": "blanket"},
+  {"id": "bakery_cloth", "type": "cloth", "room": "bakery", "owner": "greta", "state": "clean", "short": "linen cloth"},
+  {"id": "tavern_cloth", "type": "cloth", "room": "tavern", "owner": "anselm", "state": "clean", "short": "linen cloth"},
+  {"id": "lena_cloth", "type": "cloth", "room": "house_lena", "owner": "lena", "state": "clean", "short": "linen cloth"}
 ]

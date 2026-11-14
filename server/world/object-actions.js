@@ -13,6 +13,8 @@ import { ref } from '../memory/index.js';
 import { cap } from './objects.js';
 import { keeperUse, keeperConceal, fallbackUse, fallbackConceal } from '../keeper/index.js';
 import { stale, logAction, remember, findPerson } from './actions.js';
+import { pronouns } from './citizens.js';
+import { onTake as takenFromTheDead } from '../death/customs.js';
 
 const KEEPER_WAIT_MINUTES = 10;   // a use / conceal waits at most this long for the keeper
 const SEARCH_MINUTES = { sparse: 5, normal: 10, rich: 15 };
@@ -115,6 +117,7 @@ export function take(world, c, call) {
   // Step 6: taking what isn't yours in front of others is shaming (and gnaws at the conscientious).
   world.emotions.onOwnActSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? [], 'take');
   world.signals.onTheftSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 6: bystanders lose trust in a thief
+  takenFromTheDead(world, c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 9.5: before the burial, it is shameful
   remember(world, c, `You picked up ${O.textFor(c, o)}.`);
   // step A3: their own tools and valuables they remember by place, so a later "not where it belongs" reads kindly.
   ownPlacementMemory(world, c, o, `I took ${mineName(O, o)} from ${roomName(world, c)}.`);
@@ -257,8 +260,9 @@ export function finishExamine(world, c, a) {
     world.perceive([c.id], { kind: 'system', text: 'You look up, but what you were looking at is gone.', importance: IMPORTANCE.staleAction, roomId: c.location });
     return;
   }
-  const parts = [`You look closely at ${O.short(o)}: ${O.examineText(o)}`];
   const type = O.type(o);
+  if (o.typeId === 'corpse') return examineBody(world, c, o); // step 9.5: looking closely at the dead makes it certain
+  const parts = [`You look closely at ${O.short(o)}: ${O.examineText(o)}`];
   if (type.container) {
     if (O.isClosed(o)) parts.push(`It is ${o.state}; you can't see inside.`);
     else {
@@ -275,6 +279,23 @@ export function finishExamine(world, c, a) {
   world.logEvent('examine', { actorId: c.id, location: c.location, objectId: o.id, noticed: near.map((x) => x.id) });
   world.perceive([c.id], { kind: 'timer', text: parts.join(' '), importance: IMPORTANCE.timer, roomId: c.location, data: { objectId: o.id } });
   remember(world, c, `You examined ${O.short(o)}.`);
+}
+
+// step 9.5: "She's cold. She isn't breathing. Greta is dead." — the moment of finding becomes knowing.
+function examineBody(world, c, o) {
+  const dead = world.citizens.get(o.data?.citizenId);
+  const p = dead ? pronouns(dead) : { subj: 'they', poss: 'their' };
+  const Subj = p.subj[0].toUpperCase() + p.subj.slice(1);
+  const be = p.subj === 'they' ? "aren't" : "isn't";
+  const named = dead && world.memory.rel(c.id, dead.id)?.nameKnown;
+  const cold = world.now - (o.data?.diedAt ?? world.now) > 60;
+  const wounds = dead ? (world.body?.active(dead.id) ?? []).filter((x) => x.visible !== false && x.severity >= 4).map((x) => world.body.content.parts?.[x.partId]?.label ?? x.partId) : [];
+  const text = `${cold ? `${Subj} ${p.subj === 'they' ? 'are' : 'is'} cold. ` : ''}${Subj} ${be} breathing. ${named ? `${dead.name} is dead.` : 'This person is dead.'}${wounds.length ? ` You see wounds: the ${[...new Set(wounds)].slice(0, 3).join(', the ')}.` : ''}`;
+  world.objects.learn(c, o, { touched: true });
+  if (dead) world.deaths.learn(c, dead.id, { how: 'found', certainty: 'certain', where: o.roomId ?? c.location });
+  world.logEvent('examine', { actorId: c.id, location: c.location, objectId: o.id, deadId: dead?.id ?? null });
+  world.perceive([c.id], { kind: 'timer', text, importance: 8, roomId: c.location, data: { objectId: o.id, death: dead?.id ?? null } });
+  remember(world, c, named ? `You found ${dead.name} dead.` : 'You found a dead stranger.');
 }
 
 // ---------- search ----------

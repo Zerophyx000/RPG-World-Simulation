@@ -12,7 +12,8 @@ import { nowPhrase } from './time.js';
 import { CRAWL_FACTOR } from '../body/content.js';
 import { startTreatment, finishTreatment, startExamine, finishExamine as finishExaminePerson, refuseTreatment, acceptHelp, startCarry, putDownPerson, dropCarried, carryAlong, carryArrive, washClothes } from '../body/treat.js';
 import { ref } from '../memory/index.js';
-import { endOfDay, revisePlan, planActive } from '../agents/plan.js';
+import { tendBody, finishTend, keepVigil, endVigil, bury, finishBury, proposeGathering } from '../death/customs.js';
+import { follow, followStep, tellNews } from './social-actions.js';
 import {
   take, put, give, examine, search, use, finishExamine, finishSearch, finishUse, finishConceal,
   startTargetedDo, finishTargetedDo, carryingPhrase,
@@ -47,7 +48,12 @@ export function applyAction(world, c, call) {
     case 'examine_person': return startExamine(world, c, call, { stale, logAction });
     case 'refuse_treatment': return refuseTreatment(world, c, call, { stale, logAction });
     case 'accept_help': return acceptHelp(world, c, call, { stale, logAction });
-    case 'carry_person': return startCarry(world, c, call, { stale, logAction });
+    case 'carry_person': {
+      // step 9.5: a body is carried by lifting it (both hands; travel and effort doubled in startLeg)
+      const body = world.objects.resolve(call.arguments.person);
+      if (body?.typeId === 'corpse') return take(world, c, { ...call, name: 'take', arguments: { ...call.arguments, object: call.arguments.person } });
+      return startCarry(world, c, call, { stale, logAction });
+    }
     case 'put_down_person': return putDownPerson(world, c, call, { stale, logAction });
     case 'wash_clothes': return washClothes(world, c, call, { stale, logAction });
     case 'walk': return stale(world, c, call, 'You hesitate, unsure what you meant to do.');
@@ -60,9 +66,13 @@ export function applyAction(world, c, call) {
     case 'feed': return feed(world, c, call);
     case 'leave_conversation': return leaveConversation(world, c, call);
     case 'introduce_yourself': return introduceYourself(world, c, call);
-    case 'continue_plan': return continuePlan(world, c, call);
-    case 'revise_plan': return revisePlanAction(world, c, call);
-    case 'abandon_plan': return abandonPlan(world, c, call);
+    // step 9.5: follow, news, the dead, gatherings
+    case 'follow': return follow(world, c, call, { stale, logAction, findPerson, remember });
+    case 'tell_news': return tellNews(world, c, call, { stale, findPerson, say });
+    case 'tend_body': return tendBody(world, c, call, { stale, logAction, remember });
+    case 'keep_vigil': return keepVigil(world, c, call, { stale, logAction, remember });
+    case 'bury': return bury(world, c, call, { stale, logAction, remember });
+    case 'propose_gathering': return proposeGathering(world, c, call, { stale, logAction, remember });
     // step 5: objects
     case 'take': return take(world, c, call);
     case 'put': return put(world, c, call);
@@ -144,6 +154,13 @@ function cantGo(world, room, toId) {
   if (!room.exits.some((e) => e.to === toId)) return (label) => `You start to head for ${label}, but you can't get there from here.`;
   const b = blockedExit(room, toId, world.now);
   if (b) return (label) => `The way to ${label} is blocked${b.reason ? `: ${b.reason}` : ''}.`;
+  // step 9.5: a barred door keeps everyone outside out; those inside have to unbar it first
+  const barred = world.maps.barredBetween?.(room.id, toId);
+  if (barred) {
+    return barred.insideRoom === room.id
+      ? () => `The door is barred; you would have to unbar it first.`
+      : () => 'The door is barred from the inside.';
+  }
   return null;
 }
 
@@ -152,9 +169,10 @@ function startLeg(world, c, toId, trip) {
   const room = world.rooms.get(c.location);
   const exit = exitTo(room, toId);
   const dest = world.rooms.get(toId);
-  const carrying = Boolean(c.carryingPerson);
+  const carryingBody = world.objects.carriedBy(c.id).some((o) => o.typeId === 'corpse'); // step 9.5
+  const carrying = Boolean(c.carryingPerson) || carryingBody;
   const minutes = exit.travelMinutes * (trip?.slow ?? 1) * (carrying ? 2 : 1); // step 7B: crawling and carrying take longer
-  if (carrying) carryAlong(world, c, toId);
+  if (c.carryingPerson) carryAlong(world, c, toId);
   world.body?.onMove(c, { crawl: Boolean(trip?.crawl), toId });
   if (c.conversationId) world.conversations.leave(c, { reason: 'moved' });
   world.objects.snapshotRoom(c, room.id); // the baseline for noticing changes next time
@@ -188,6 +206,8 @@ export function arrive(world, c) {
   if (c.carryingPerson) {
     if (c.needs) c.needs.fatigue = Math.min(100, c.needs.fatigue + 6.5 * ((d.travelMinutes ?? 0) / 60)); // carrying someone doubles the effort
     carryArrive(world, c);
+  } else if (c.needs && world.objects.carriedBy(c.id).some((o) => o.typeId === 'corpse')) {
+    c.needs.fatigue = Math.min(100, c.needs.fatigue + 6.5 * ((d.travelMinutes ?? 0) / 60)); // step 9.5: so does carrying the dead
   }
   learnPlace(c, dest.id, serviceNames(dest, world.now), 'visited', world.now); // being there teaches everything
   world.setActivity(c, { type: 'idle' });
@@ -239,6 +259,7 @@ export function arrive(world, c) {
     importance: effects.length ? IMPORTANCE.timer : IMPORTANCE.arriveDepart,
     sourceId: c.id, roomId: dest.id, data: { from: origin?.id ?? null },
   });
+  if (c.following) followStep(world, c, { applyAction }); // step 9.5: still following someone: stay close
 }
 
 /** Director "move": put a citizen somewhere instantly (not walking). */
@@ -449,6 +470,8 @@ function proximityTarget(world, c, call) {
       break;
     }
     case 'take': case 'use': case 'examine': { const o = obj(a.object); spot = o ? M.objectSpot(o) : null; break; }
+    case 'tend_body': case 'keep_vigil': { const o = obj(a.body); spot = o ? M.objectSpot(o) : null; break; } // step 9.5
+    case 'follow': case 'tell_news': { const p = person(a.to ?? a.person); spot = p?.spot ?? null; must = false; break; }
     case 'search': { const o = obj(a.target); spot = o ? M.objectSpot(o) : null; break; }
     case 'put': { const o = obj(a.anchor); spot = o ? M.objectSpot(o) : null; break; }
     case 'do': case 'wait': {
@@ -539,6 +562,7 @@ function sameConversation(a, b) {
 function eat(world, c, call) {
   const food = activeServices(world.rooms.get(c.location), world.now).food;
   if (!food) return stale(world, c, call, "You look around for something to eat, but there's nothing to be had here.");
+  if (world.stock && !world.stock.take(c.location, 'food')) return stale(world, c, call, 'The shelves are empty. There is nothing left to eat here.'); // step 9.5
   logAction(world, c, call);
   world.setActivity(c, {
     type: 'doing',
@@ -558,7 +582,7 @@ export function finishMeal(world, c, activity, { completed }) {
   const d = activity.detail ?? {};
   const total = Math.max(1, (activity.until ?? world.now) - activity.since);
   const frac = completed ? 1 : Math.min(1, Math.max(0, (world.now - activity.since) / total));
-  const relief = Math.round((d.hungerRelief ?? 0) * frac);
+  const relief = Math.round((d.hungerRelief ?? 0) * frac * (world.deaths?.mealFactor(c) ?? 1)); // step 9.5: grief takes the appetite
   if (relief <= 0) return 0;
   c.needs.hunger = Math.max(0, c.needs.hunger - relief);
   world.logEvent('meal', { actorId: c.id, location: c.location, relief, completed, hunger: Math.round(c.needs.hunger) });
@@ -601,6 +625,7 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
   if (c.activity.type !== 'sleeping') return;
   const slept = Math.round(world.now - c.activity.since);
   const startedAt = c.activity.detail?.startedAt ?? c.activity.since; // step A2: when this sleep began
+  const sleptQuality = c.activity.detail?.quality ?? null;
   const buffer = c.sleepBuffer ?? [];
   c.sleepBuffer = [];
   world.setActivity(c, { type: 'idle' });
@@ -615,7 +640,9 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
   }[reason] ?? `You wake up. ${nowPhrase(world.now)}`;
   const heard = buffer.length ? ` While you slept you vaguely heard: ${buffer.map((s) => s.text.replace(/[.!]+$/, '')).join('; ')}.` : '';
   const hour = (((world.now % 1440) + 1440) % 1440) / 60;
-  if (hour >= 4 && hour < 11 && slept >= 180) endOfDay(world, c); // a real night's sleep: yesterday's plan is over
+  const longSleep = slept >= 180; // step 9.5 (A4): the first decision after a real sleep is the waking decision (full)
+  if (longSleep) { c.wokeAt = world.now; c.lastSleep = { minutes: slept, quality: sleptQuality, reason, startedAt }; }
+  void hour;
   // step A2: woken before an hour of sleep with fatigue at 'exhausted' (80) or worse → flag it; unless
   // something urgent (>= 7) arrives first, the body takes over again after 20 minutes (#updateBodies).
   if (reason !== 'rested' && world.now - startedAt < 60 && c.needs.fatigue >= 80) {
@@ -623,7 +650,7 @@ export function wake(world, c, { reason = 'timer', cause = null } = {}) {
     first = `${reason === 'jolt' ? 'You jolt awake! ' : ''}You were only asleep a moment; you can barely keep your eyes open.`;
     world.saveCitizen(c);
   }
-  world.perceive([c.id], { kind: 'timer', text: first + heard, importance: IMPORTANCE.timer, roomId: c.location, data: { wakeUp: true } });
+  world.perceive([c.id], { kind: 'timer', text: first + heard, importance: IMPORTANCE.timer, roomId: c.location, data: { wakeUp: true, longSleep } });
   world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), {
     kind: 'action', text: `${ref(c)} wakes up.`, importance: 3, sourceId: c.id, roomId: c.location,
   });
@@ -695,29 +722,6 @@ function introduceYourself(world, c, call) {
   const addition = String(call.arguments.addition ?? '').trim();
   const text = `I'm ${c.name}.${addition ? ` ${addition}` : ''}`;
   return say(world, c, { ...call, arguments: { ...call.arguments, text }, introduce: true });
-}
-
-// ---------- plan tools ----------
-function continuePlan(world, c, call) {
-  logAction(world, c, call);
-  if (c.plan) c.plan.interrupted = false;
-  world.setActivity(c, { type: 'idle' }); // the scheduler runs the next step on the next calm idle moment
-  return { ok: true };
-}
-
-function revisePlanAction(world, c, call) {
-  logAction(world, c, call);
-  revisePlan(world, c, call.arguments.steps);
-  world.setActivity(c, { type: 'idle' });
-  return { ok: true };
-}
-
-function abandonPlan(world, c, call) {
-  logAction(world, c, call);
-  if (planActive(c)) c.plan.status = 'abandoned';
-  world.setActivity(c, { type: 'idle' });
-  remember(world, c, 'You gave up on your plan for today.');
-  return { ok: true };
 }
 
 // ---------- hide_feelings (step 6) ----------
@@ -827,6 +831,8 @@ export function resolveTimers(world, now) {
       if (a.detail?.kind === 'examine_person') { finishExaminePerson(world, c, a); continue; }
       if (a.detail?.kind === 'use') { finishUse(world, c, a.detail.token, null); continue; }
       if (a.detail?.kind === 'conceal') { finishConceal(world, c, a.detail.token, null); continue; }
+      if (a.detail?.kind === 'tend') { finishTend(world, c, a); continue; }   // step 9.5
+      if (a.detail?.kind === 'bury') { finishBury(world, c, a); continue; }
       if (a.detail?.kind === 'eat') {
         a.detail.done = true;
         finishMeal(world, c, a, { completed: true });
@@ -834,13 +840,16 @@ export function resolveTimers(world, now) {
         world.perceive([c.id], { kind: 'timer', text: "You've eaten your fill.", importance: IMPORTANCE.timer, roomId: c.location });
         continue;
       }
+      world.stock?.onWork(c, a); // step 9.5: work at a service refills its stock
       const changed = a.detail?.targetId ? finishTargetedDo(world, c, a) : '';
       world.setActivity(c, { type: 'idle' });
       world.perceive([c.id], { kind: 'timer', text: `You finish ${ingOrQuote(what)}.${changed}`, importance: IMPORTANCE.timer, roomId: c.location });
     } else if (a.type === 'waiting') {
       const reason = a.detail?.reason;
+      if (a.detail?.kind === 'vigil') endVigil(world, c, a.detail.objectId); // step 9.5
+      if (a.detail?.following && c.following?.id === a.detail.following) { if (followStep(world, c, { applyAction })) continue; }
       world.setActivity(c, { type: 'idle' });
-      if (a.detail?.silent) { world.scheduler.poke(); continue; } // a plan's own short wait (following someone): no stimulus
+      if (a.detail?.silent) { world.scheduler.poke(); continue; } // a short wait while following someone: no stimulus
       world.perceive([c.id], {
         kind: 'timer', text: reason ? `You've waited long enough (${reason}).` : "You've waited long enough.",
         importance: IMPORTANCE.timer, roomId: c.location,

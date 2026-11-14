@@ -1,0 +1,15 @@
+{
+  "name": "death-day",
+  "description": "Step 9.5 test day, reproducing day 15: Greta and Jonas die in the bakery in the night while the others sleep elsewhere. Nobody knows until they find the bodies or are told. Watch who finds them, whether they check, who breaks the news to whom, grief and fear, the customs (covering, vigil, burial in the chapel yard), the bakery's empty shelves, and village dread. Reseed first and reuse the seed to replay it; follow with calm-day.",
+  "actions": [
+    { "at": "00:30", "type": "apply", "effects": [
+      { "type": "move", "target": "greta", "to": "bakery", "notify": false },
+      { "type": "move", "target": "jonas", "to": "bakery", "notify": false },
+      { "type": "move", "target": "tomas", "to": "house_tomas", "notify": false },
+      { "type": "move", "target": "lena", "to": "house_lena", "notify": false },
+      { "type": "move", "target": "anselm", "to": "tavern", "notify": false }
+    ], "comment": "everyone where they were on the night of day 15" },
+    { "at": "02:10", "type": "kill", "citizenId": "greta", "cause": "bled out from a gash in the spine", "comment": "Jonas, awake beside her, witnesses it" },
+    { "at": "05:40", "type": "kill", "citizenId": "jonas", "cause": "bled out from a fracture in the right forearm", "comment": "nobody sees this one: unexplained, more dread" }
+  ]
+}

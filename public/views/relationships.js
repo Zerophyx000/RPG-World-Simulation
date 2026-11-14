@@ -299,7 +299,7 @@ function emotionArcs(pos) {
     const cx = (p1.x + p2.x) / 2 - (dy / len) * off;
     const cy = (p1.y + p2.y) / 2 + (dx / len) * off;
     const color = EMO_COLOR[e.type] ?? e.color ?? '#aaa';
-    const title = `${citizenName(e.from)} → ${citizenName(e.to)}: ${e.type} ${e.intensity}${e.about ? ` (about ${store.citizens.get(e.about)?.name ?? e.about})` : ''}${e.cause ? `\n${e.cause.replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => citizenName(id))}` : ''}`;
+    const title = `${citizenName(e.from)} → ${citizenName(e.to)}: ${e.type} ${e.intensity}${e.about ? ` (about ${store.citizens.get(e.about)?.name ?? e.about})` : ''}${e.cause ? `\n${e.cause.replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => citizenName(id))}` : ''}`;
     out.push(`<g class="emo-arc"><title>${esc(title)}</title>
       <path d="M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}" fill="none" stroke="${color}" stroke-width="${1 + e.intensity * 0.22}" stroke-opacity="${0.35 + e.intensity * 0.06}" stroke-dasharray="7 6"/>
       <text x="${(p1.x + 2 * cx + p2.x) / 4}" y="${(p1.y + 2 * cy + p2.y) / 4 - 5}" text-anchor="middle" class="emo-arc-label" fill="${color}">${esc(e.type)}</text>
@@ -362,9 +362,12 @@ function render() {
   if (emoOverlay) out.push(...emotionArcs(pos));
   for (const c of list) {
     const p = pos.get(c.id);
+    // step 9.5: the dead are grey — in "what X believes" only when X knows
+    const shownDead = source === 'observer' ? c.alive === false : beliefs.some((b) => b.to === c.id && b.dead);
+    const col = shownDead ? '#777' : colorOf(c.id);
     out.push(`<g class="rnode" data-node="${esc(c.id)}"${dim([c.id])}>
-      <circle cx="${p.x}" cy="${p.y}" r="${NODE_R}" fill="${colorOf(c.id)}" fill-opacity="0.22" stroke="${colorOf(c.id)}" stroke-width="2.5"/>
-      <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" class="rnode-initial" fill="${colorOf(c.id)}">${esc(c.name.slice(0, 2))}</text>
+      <circle cx="${p.x}" cy="${p.y}" r="${NODE_R}" fill="${col}" fill-opacity="0.22" stroke="${col}" stroke-width="2.5"${shownDead ? ' stroke-dasharray="4 3"' : ''}/>
+      <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" class="rnode-initial" fill="${col}">${esc(c.name.slice(0, 2))}</text>
       <text x="${p.x}" y="${p.y + NODE_R + 16}" text-anchor="middle" class="rnode-label">${esc(c.name)}</text></g>`);
   }
   svg.innerHTML = out.join('');

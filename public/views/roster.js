@@ -57,25 +57,32 @@ function cardHtml(c) {
   const classes = ['roster-card', a.type === 'sleeping' ? 'asleep' : '', a.type === 'collapsed' ? 'down' : '', c.id === store.selectedId ? 'selected' : '', store.filterCitizen && store.filterCitizen !== c.id ? 'dimmed' : '', c.alive === false ? 'dead' : ''];
   return `<div class="${classes.join(' ')}" data-id="${esc(c.id)}" style="--c:${colorOf(c.id)};${ringStyle(c)}" title="Click: inspect · Shift-click: filter${ringTitle(c) ? `\n${ringTitle(c)}` : ''}">
     <div class="r-head">
-      <span class="r-name">${esc(c.name)}</span>${emoIcons(c)}${bodyChips(c)}
+      <span class="r-name">${esc(c.name)}</span>${lifeMarks(c)}${emoIcons(c)}${bodyChips(c)}
       ${thinking ? '<span class="pulse" title="thinking"></span>' : ''}
       <span class="badges">${needBadges(c)}</span>
       <span class="r-loc">${esc(roomName(c.location))}</span>
     </div>
     <div class="r-act"><span>${ICONS[a.type] ?? '·'}</span> <span class="r-act-label" data-countdown="${esc(c.id)}">${esc(activityLabel(c))}</span></div>
-    ${planLine(c)}
+    ${intentionLine(c)}
     <div class="r-thought">${c.lastInnerThought ? esc(c.lastInnerThought) : '<span class="dim">no thought yet</span>'}</div>
     ${c.lastInnerThought ? trimmedNote(c.lastInnerThought) : ''}
   </div>`;
 }
 
-// "3/6 · baking the morning bread", dimmed while the plan is on hold.
-function planLine(c) {
-  const p = c.plan;
-  if (!p || !p.total || p.status === 'abandoned') return '';
-  const pct = Math.min(100, (p.cursor / p.total) * 100);
-  const label = p.status === 'done' ? 'plan done' : `${Math.min(p.cursor + 1, p.total)}/${p.total} · ${p.current ?? ''}`;
-  return `<div class="r-plan ${p.interrupted ? 'paused' : ''}" title="${esc(p.interrupted ? 'plan on hold' : "today's plan")}"><i style="width:${pct}%"></i><span>${esc(label)}</span></div>`;
+// step 9.5: the top intention (small), or what code just did out of habit
+function intentionLine(c) {
+  if (c.habit) return `<div class="r-intent habit" title="carried out by habit (no model call)">↺ ${esc(c.habit)}</div>`;
+  const i = c.intention;
+  if (!i) return '';
+  return `<div class="r-intent" title="top intention (weight ${i.weight})">→ ${esc(i.text)}</div>`;
+}
+
+// step 9.5: a black ribbon while grieving (>= 5), a mark while fearing for their own life
+function lifeMarks(c) {
+  const out = [];
+  if (c.grieving) out.push(`<span class="r-mark ribbon" title="grieving ${esc(store.citizens.get(c.grieving.target)?.name ?? '')} (${c.grieving.intensity})">🎗</span>`);
+  if (c.mortal || (c.mortality ?? 0) >= 4) out.push(`<span class="r-mark mortal ${esc(c.mortal ?? '')}" title="fears for their own life${c.mortal ? ` (body ${esc(c.mortal)})` : ''}">☠</span>`);
+  return out.join('');
 }
 
 function updateCountdowns() {

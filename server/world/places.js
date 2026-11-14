@@ -15,7 +15,7 @@ function effectStart(db, effect) {
   return row?.game_time ?? -Infinity;
 }
 
-export const SERVICE_WORDS = { food: 'food', bed: 'a bed for the night' };
+export const SERVICE_WORDS = { food: 'food', bed: 'a bed for the night', burial: 'a place to bury the dead' };
 
 /** Starting knowledge for a new citizen: "all" (a local) or a list of room ids (visited). */
 export function initialKnownPlaces(rooms, spec, { location, home, now }) {

@@ -97,7 +97,7 @@ function loadProfiles() {
 }
 
 const DEFAULT_ROUTES = {
-  decide: ['school'], plan: ['school'], reflect: ['school'], consolidate: ['school'], bootstrap: ['school'],
+  decide: ['school'], habits: ['school'], reflect: ['school'], consolidate: ['school'], bootstrap: ['school'],
   observer: ['local', 'school'], director_text: ['local', 'school'], score: ['local'], test: ['school'],
   keeper: ['local', 'school'], // step 5: the room keeper (falls back to code rules when nothing is up)
 };
@@ -144,7 +144,7 @@ export const config = {
 
   // Token budget governor: output tokens per rolling real hour, per profile (0 = off).
   governor: {
-    budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 500000),
+    budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 1000000), // step 9.5: 1M
     profiles: env('GOVERNOR_PROFILES', 'school').split(',').map((s) => s.trim()).filter(Boolean),
   },
 

@@ -635,3 +635,21 @@ ul.rels li { border-bottom: 1px solid var(--line); padding: 6px 0; font-size: 13
 .ev-export-box input:disabled + * , .ev-export-box label.check:has(input:disabled) { opacity: 0.55; }
 .ev-export-box a.button { text-align: center; padding: 6px 11px; border: 1px solid var(--accent); border-radius: 6px; color: var(--accent); text-decoration: none; }
 .ev-export-box a.button:hover { background: var(--accent); color: var(--bg); }
+
+/* step 9.5: intentions, grief, mortality, the life panel, the dread meter */
+.r-intent { font-size: 11.5px; color: #b9c0cc; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-intent.habit { color: #8f97a3; font-style: italic; }
+.r-mark { margin-left: 4px; font-size: 12px; }
+.r-mark.mortal { color: #e06060; }
+.r-mark.mortal.critical { animation: pulse 1s infinite; }
+.life-panel h4 { margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+.life-list { list-style: none; padding: 0; margin: 0; }
+.life-list li { display: flex; gap: 6px; align-items: center; padding: 2px 0; font-size: 12.5px; flex-wrap: wrap; }
+.life-list .weight { display: inline-block; width: 46px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-left: auto; }
+.life-list .weight i { display: block; height: 100%; background: var(--accent); }
+.life-list .mono { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--muted); }
+.life-grief { background: #2a2730; border-left: 3px solid #555; padding: 4px 8px; margin: 4px 0; font-size: 12.5px; }
+.life-mortal { background: #3a1f22; border-left: 3px solid #e06060; padding: 4px 8px; margin: 4px 0; font-size: 12.5px; }
+.dread-meter { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.dread-meter .bar { width: 60px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.dread-meter .bar i { display: block; height: 100%; background: linear-gradient(90deg, #8a7a3a, #c04a3a); }

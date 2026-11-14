@@ -139,7 +139,7 @@ export function timeline(world, { from = null, to = null } = {}) {
   const points = [];
   const pointRows = db.prepare(`SELECT id, type, actor_id, game_time, location, data FROM events
     WHERE game_time >= ? AND game_time <= ?
-      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window')
+      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news')
            OR (type = 'body' AND json_extract(data, '$.importance') >= 7)
            OR (type = 'action' AND json_extract(data, '$.tool') IN ('say', 'leave_conversation', 'tell_about_place', 'eat')))
     ORDER BY id`).all(from, to);
@@ -194,7 +194,14 @@ export function timeline(world, { from = null, to = null } = {}) {
         : r.type === 'treatment' ? `${d.method}${d.effective === false ? ' (no effect)' : ''}`
         : r.type === 'accident' ? `accident: ${d.source}`
         : r.type === 'critical_window' ? `critical bleeding ${d.action}${d.reason ? ` (${d.reason})` : ''}`
-        : r.type === 'learn_place' ? `learned about ${d.placeId}` : d.reason ?? d.cause?.text ?? d.cause ?? null;
+        : r.type === 'learn_place' ? `learned about ${d.placeId}`
+        // step 9.5: the news travelling, habit runs (dim), gatherings and burials
+        : r.type === 'learned_death' ? `${d.certainty === 'suspected' ? 'saw someone lying still' : 'learned of the death'} of ${world.citizens.get(d.deadId)?.name ?? d.deadId} (${d.how})`
+        : r.type === 'habit' ? `out of habit: ${d.what}`
+        : r.type === 'gathering' ? `calls a gathering: ${d.purpose} (${d.time})`
+        : r.type === 'burial' ? `buries ${world.citizens.get(d.deadId)?.name ?? 'the dead'}`
+        : r.type === 'news' ? `tells ${world.citizens.get(d.to)?.name ?? d.to}: ${world.citizens.get(d.person)?.name ?? d.person} ${d.news}`
+        : d.reason ?? d.cause?.text ?? d.cause ?? null;
       points.push({ ...base, type: r.type, text, ...(r.type === 'death' ? { cause: d.cause ?? null } : {}) });
     }
   }
@@ -317,5 +324,6 @@ export function beliefs(world, citizenId) {
   return world.memory.relsOf(citizenId).map((r) => ({
     from: r.citizenId, to: r.otherId, affinity: r.affinity, trust: r.trust, familiarity: r.familiarity,
     nameKnown: r.nameKnown, nameConfidence: r.nameConfidence, summary: r.summary,
+    dead: Boolean(world.deaths?.knows(citizenId, r.otherId)), // step 9.5: only a death they know of
   }));
 }

@@ -49,6 +49,8 @@ export class Relationships {
     const text = String(reason ?? '').trim();
     if (!text) throw new Error(`relationship change ${a}→${b} without a reason`);
     if (!SOURCES.includes(source)) throw new Error(`unknown relationship event source "${source}"`);
+    // step 9.5 (B6.3): a relationship with the dead is frozen — only memory (consolidation) may still reshape it
+    if (this.world.citizens.get(b)?.alive === false && !['consolidation', 'director', 'seed'].includes(source)) return null;
     const mem = this.world.memory;
     const cur = mem.rel(a, b);
     const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);

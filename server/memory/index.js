@@ -14,6 +14,8 @@ const FAMILIARITY_PER_DAY_CAP = 0.5;
 const ON_MY_MIND_MAX = 6;
 
 export const ref = (c) => `{{c:${c.id ?? c}}}`;
+/** step 9.5: the name without "(dead)" — for sentences that are about the death itself ("Greta is dead"). */
+export const plainRef = (c) => `{{p:${c.id ?? c}}}`;
 
 export class Memory {
   constructor(world) {
@@ -153,13 +155,14 @@ export class Memory {
   }
 
   /** How `viewer` refers to `other` in text. */
-  nameFor(viewer, otherId, { start = false } = {}) {
+  nameFor(viewer, otherId, { start = false, plain = false } = {}) {
     const vId = viewer.id ?? viewer;
     const other = this.world.citizens.get(otherId);
     if (!other) return start ? 'Someone' : 'someone';
     if (vId === otherId) return start ? 'You' : 'you';
     const r = this.rel(vId, otherId);
-    const dead = other.alive === false ? ' (dead)' : '';
+    // step 9.5: "(dead)" only for a viewer who knows (witnessed, examined the body, or was told)
+    const dead = other.alive === false && !plain ? (this.world.deaths?.deadTag(vId, otherId) ?? '') : '';
     if (r?.nameKnown && r.nameConfidence >= 0.5) return other.name + dead;
     if (r?.nameKnown && r.nameConfidence >= 0.2) return `${other.name} (or so you think)${dead}`;
     const look = shortLook(other);
@@ -168,11 +171,13 @@ export class Memory {
 
   /** Replace {{c:id}} tokens for this viewer (capitalized at the start of a sentence). */
   resolveNames(viewer, text) {
-    if (!text || !text.includes('{{c:')) return text;
-    return text.replace(/\{\{c:([\w-]+)\}\}/g, (_m, id, offset, whole) => {
+    if (!text || (!text.includes('{{c:') && !text.includes('{{p:'))) return text;
+    return text.replace(/\{\{([cp]):([\w-]+)\}\}/g, (_m, kind, id, offset, whole) => {
       const before = whole.slice(0, offset);
       const start = offset === 0 || /[.!?:]\s*["“]?$/.test(before) || /^\s*["“]?$/.test(before);
-      return this.nameFor(viewer, id, { start });
+      // a possessive reads "Greta's", never "Greta (dead)'s"
+      const possessive = /^['’]s\b/.test(whole.slice(offset + _m.length));
+      return this.nameFor(viewer, id, { start, plain: kind === 'p' || possessive });
     });
   }
 
@@ -191,9 +196,10 @@ export class Memory {
     return out;
   }
 
-  /** People this citizen has a row for (they've met or heard of them). */
-  knownPeople(c) {
-    return this.relsOf(c.id).map((r) => this.world.citizens.get(r.otherId)).filter((o) => o && o.alive);
+  /** People this citizen has a row for (they've met or heard of them). With dead: also the dead they know are dead. */
+  knownPeople(c, { dead = false } = {}) {
+    return this.relsOf(c.id).map((r) => this.world.citizens.get(r.otherId))
+      .filter((o) => o && (o.alive || (dead && this.world.deaths?.knows(c, o.id))));
   }
 
   // ---------- memories ----------
@@ -222,10 +228,12 @@ export class Memory {
     return id;
   }
 
-  /** Push to "on my mind" (capped, keeps the most important). */
-  pushOnMind(c, { text, importance, memoryId = null }) {
-    c.onMyMind = [...(c.onMyMind ?? []), { text, importance, gameTime: this.world.now, memoryId }]
-      .sort((a, b) => b.importance - a.importance || b.gameTime - a.gameTime)
+  /** Push to "on my mind" (capped, keeps the most important; step 9.5: pinned entries — a death — always stay). */
+  pushOnMind(c, { text, importance, memoryId = null, pinnedUntil = null, deathOf = null }) {
+    const now = this.world.now;
+    const pinned = (m) => m.pinnedUntil != null && m.pinnedUntil > now;
+    c.onMyMind = [...(c.onMyMind ?? []), { text, importance, gameTime: now, memoryId, ...(pinnedUntil != null ? { pinnedUntil } : {}), ...(deathOf ? { deathOf } : {}) }]
+      .sort((a, b) => Number(pinned(b)) - Number(pinned(a)) || b.importance - a.importance || b.gameTime - a.gameTime)
       .slice(0, ON_MY_MIND_MAX);
     this.world.saveCitizen(c);
   }

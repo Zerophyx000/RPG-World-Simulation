@@ -370,7 +370,7 @@ function renderEvents(world, rows) {
         : `${name(r.actor_id)} is eaten by ${d.emotion} of ${name(d.otherId)}${d.about && world.citizens.has(d.about) ? ` over ${name(d.about)}` : ''}`;
     } else if (r.type === 'relationship') {
       const ch = [d.dTrust ? `trust ${d.dTrust > 0 ? '+' : ''}${d.dTrust}` : null, d.dAffinity ? `liking ${d.dAffinity > 0 ? '+' : ''}${d.dAffinity}` : null].filter(Boolean).join(', ');
-      line = `${name(r.actor_id)} now sees ${name(d.otherId)} differently (${ch}): "${String(d.reason).replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => name(id))}"`;
+      line = `${name(r.actor_id)} now sees ${name(d.otherId)} differently (${ch}): "${String(d.reason).replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => name(id))}"`;
     } else if (r.type === 'signal') {
       line = `${name(r.actor_id)} notices a warning sign about ${name(d.otherId)}: ${d.sign}`;
     } else if (r.type === 'group' && ['join', 'leave', 'dissolve', 'propose'].includes(d.action)) {

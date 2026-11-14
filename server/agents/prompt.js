@@ -3,9 +3,11 @@
 // Order matters for the server's prefix cache: the most stable content first.
 //   [system] world rules · common knowledge · WHO YOU ARE · WHAT YOU KNOW ABOUT YOURSELF (core memory;
 //            only changes at night, so the system prefix is identical all game day)
-//   [user]   (urgency line) · RIGHT NOW · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · YOUR PLAN · ON YOUR MIND · WHO IS HERE ·
-//            YOU REMEMBER · PLACES YOU KNOW (with travel times and last known state, step 7A) · CONVERSATION ·
-//            WHAT JUST HAPPENED · instruction
+//   [user]   (own-mortality line, step 9.5) (urgency line) · ON WAKING (the first decision after a real sleep) ·
+//            RIGHT NOW (dread, "out of habit, you …") · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · ON YOUR MIND ·
+//            WHO IS HERE (shared grief) · YOU REMEMBER · PLACES YOU KNOW (with travel times and last known state, step 7A)
+//            · CONVERSATION · WHAT JUST HAPPENED · THINGS YOU'D MEANT TO DO (intentions, step 9.5) · instruction
+// Step 9.5: no more YOUR PLAN — day plans are gone; intentions are listed softly and only the citizen acts on them.
 //
 // People are named only if this citizen knows the name; otherwise they are described by how they look.
 // Relationships appear in words, never numbers.
@@ -18,7 +20,7 @@ import { placeLabel, knownWith, servicesText, travelMinutes, knownRoomState, las
 import { clockTime, timeOfDay, relativeTime } from '../world/time.js';
 import { retrieve, memoryLine } from '../memory/retrieve.js';
 import { relationSentence } from '../memory/words.js';
-import { planBlock, yesterdayText } from './plan.js';
+import { promptBlock as intentionsBlock } from './intentions.js';
 import { carryingPhrase } from '../world/object-actions.js';
 import { ownBody, cuesFor, wearingLine, senses, dropsDetail } from '../body/perceive.js';
 import { SLOTS } from '../world/objects.js';
@@ -50,7 +52,7 @@ ${FEELING_RULE}
 /**
  * @param {object} opts
  * @param {'full'|'light'|'none'} [opts.tier]
- * @param {'decide'|'plan'} [opts.mode]
+ * @param {'decide'} [opts.mode]
  * @param {object} [opts.collect]  filled with { recalled: [memory ids] } (the caller decides whether that counts as recall)
  */
 export function buildMessages(world, c, { tier = 'full', mode = 'decide', collect = null } = {}) {
@@ -97,8 +99,18 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   // Severe needs go first, so they are not buried under conversation noise. Step 7B: blood and wounds first of all.
   const body = ownBody(world, c);
   const sn = senses(c);
+  // step 9.5 (B3.2): their own life in danger, in the body's language, first of all — and where help is
+  const mortal = world.deaths?.ownLine(c);
+  if (mortal) {
+    const help = world.deaths.helpLine(c);
+    blocks.push(`${mortal}${help ? ` ${mem.resolveNames(c, help)}` : ''}`);
+  }
   if (body.urgent) blocks.push(body.urgent);
   else if (feel.urgent) blocks.push(feel.urgent);
+
+  // step 9.5 (A4): the first decision after a real sleep
+  const waking = mode === 'decide' && [...c.thinkingInbox, ...c.inbox].some((s) => s.data?.wakeUp && s.data?.longSleep);
+  if (waking) blocks.push(`# ON WAKING\n${onWaking(world, c)}`);
 
   // RIGHT NOW
   // Step 6: mood colours the moment (one framing sentence; the room description itself is never rewritten).
@@ -120,7 +132,12 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   } else if (c.activity.type === 'moving') {
     right.push(`You are on your way to ${placeLabel(c, world.rooms.get(c.activity.detail?.to))}.`);
   }
+  // step 9.5 (B3.3): the village on edge
+  const dread = world.deaths?.dreadFor(c) ?? 0;
+  if (dread >= 3) right.push(dread >= 6 ? 'Since the deaths, the whole village is afraid; people look over their shoulders.' : 'Since the deaths, the whole village is on edge.');
   right.push(ownActivity(world, c));
+  // step 9.5 (A3): what code did for them out of habit, so they can break it off
+  if (c.habitNote && world.now - c.habitNote.at < 120) right.push(`Just now, ${c.habitNote.text}. You can carry on or do something else.`);
   const marks = (c.marks ?? []).filter((m) => m.until == null || m.until > now).map((m) => m.text);
   if (marks.length) right.push(`About yourself: ${marks.join('; ')}.`);
   if (c.recentActions.length) {
@@ -159,15 +176,6 @@ function situationPrompt(world, c, { tier, mode, collect }) {
     blocks.push(`# HOW YOU FEEL\n${[feel.any ? feel.text : null, ...body.lines, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
-  // YOUR PLAN
-  if (mode === 'plan') {
-    const y = yesterdayText(world, c);
-    if (y) blocks.push(`# YESTERDAY\n${y}`);
-  } else {
-    const pb = planBlock(world, c);
-    if (pb) blocks.push(`# YOUR PLAN\n${pb}`);
-  }
-
   // YOUR GROUPS (step 5.5)
   const groups = world.groups.block(c);
   if (groups) blocks.push(`# YOUR GROUPS\n${groups}`);
@@ -192,7 +200,8 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   // Step 6: strong feelings focus attention (the target in detail, others compressed) and add what people show.
   if (room) {
     const lines = !others.length ? null : sn.blind ? blindWhoIsHere(world, c, others) : whoIsHere(world, c, others, (o, opts) => visibleLine(world, o, c, opts)).map((l) => `- ${l}`);
-    blocks.push(`# WHO IS HERE\n${lines ? lines.join('\n') : 'Nobody else is here.'}`);
+    const shared = sharedGrief(world, c, others); // step 9.5 (B2.3)
+    blocks.push(`# WHO IS HERE\n${lines ? lines.join('\n') : 'Nobody else is here.'}${shared.length ? `\n${shared.join('\n')}` : ''}`);
   }
 
   // YOU REMEMBER
@@ -223,10 +232,14 @@ function situationPrompt(world, c, { tier, mode, collect }) {
     ? [...ordered.lead.map((l) => `- ${l}`), ...stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`)].join('\n')
     : 'Nothing new has caught your attention.'}`);
 
+  // THINGS YOU'D MEANT TO DO (step 9.5, A1.4): after what just happened, before the instruction, worded softly
+  const intents = intentionsBlock(world, c, { waking });
+  if (intents) blocks.push(`# ${intents}`);
+
   // Instruction (step 6: at intense levels the feeling colours it, e.g. "Your heart is pounding.")
   const clause = instructionClause(world, c);
-  if (mode === 'plan') {
-    blocks.push('# WHAT NOW\nPlan your day: what you intend to do, roughly when, and where. Think about what you need (food, rest), what you want, and who you need to see. Only use places you know and people you know. Call make_plan exactly once.');
+  if (waking && tier !== 'none') {
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}You've just woken up. Take a moment: what matters to you today? Then decide what you do first. Call exactly one tool; you may add, finish or drop things you mean to do in the same call.`);
   } else if (tier === 'none') {
     blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}Act on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.`);
   } else {
@@ -239,6 +252,41 @@ function situationPrompt(world, c, { tier, mode, collect }) {
       + "don't reach for your usual pet names or sayings.");
   }
   return blocks.join('\n\n');
+}
+
+// step 9.5 (A4): how they slept, what is on their mind, yesterday's unfinished business, today's routine, body, feelings.
+function onWaking(world, c) {
+  const lines = [];
+  const s = c.lastSleep;
+  if (s) {
+    const hours = Math.round(s.minutes / 60);
+    const how = s.reason === 'jolt' || s.reason === 'director' || s.reason === 'grief' ? 'Your sleep was broken' : s.quality === 'rough' ? 'You slept rough, on the hard ground' : s.reason === 'rested' ? 'You slept well' : 'You slept';
+    lines.push(`${how} (about ${hours} hour${hours === 1 ? '' : 's'}).`);
+  }
+  const mind = (c.onMyMind ?? []).slice(0, 3).map((m) => world.memory.resolveNames(c, m.text));
+  if (mind.length) lines.push(`On your mind as you wake: ${mind.join(' / ')}`);
+  const today = Math.floor(world.now / 1440);
+  const left = (c.intentions ?? []).filter((i) => Math.floor(i.createdAt / 1440) < today).map((i) => world.memory.resolveNames(c, i.text));
+  if (left.length) lines.push(`Left undone from yesterday: ${left.join('; ')}.`);
+  const routine = world.habits?.brief(c);
+  if (routine) lines.push(`Your usual day: ${routine}.`);
+  const grief = world.deaths?.strongestGrief(c);
+  if (grief && grief.intensity >= 3 && grief.target) lines.push(`For a moment you forget — then you remember: ${world.memory.nameFor(c, grief.target, { plain: true })} is gone.`);
+  return lines.join('\n') || 'A new day.';
+}
+
+// step 9.5 (B2.3): two people grieving the same person each see the other's grief
+function sharedGrief(world, c, others) {
+  const D = world.deaths;
+  if (!D) return [];
+  const out = [];
+  for (const deadId of D.knownDead(c)) {
+    if (D.griefFor(c, deadId) < 2) continue;
+    for (const o of others) {
+      if (D.griefFor(o, deadId) >= 3 && D.knows(o, deadId)) out.push(`- ${world.memory.nameFor(c, o.id, { start: true })} grieves ${world.memory.nameFor(c, deadId).replace(/ \(dead.*\)$/, '')} too.`);
+    }
+  }
+  return out;
 }
 
 /** Blind: people are voices. Known and familiar → named by voice; otherwise only "someone". No looks, no expressions. */
@@ -299,7 +347,11 @@ function placeLine(world, c, id, k, mins) {
   const bits = [...state.parts];
   if (state.bed && !bits.some((b) => /^bed /.test(b))) bits.push(`bed ${state.bed}`);
   const tagText = tags.filter(Boolean).join(', ');
-  return `- ${r.name}${tagText ? ` (${tagText})` : ''}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}.${seen ? ` Last seen ${seen}.` : ''}`;
+  // step 9.5: a place that frightens them since a death (or the smell of one)
+  const fear = c.fearedPlaces?.[id];
+  const dreadText = fear && world.now - fear.since < 7 * 1440 ? ` You dread it: ${fear.why}.` : '';
+  const stock = here ? (world.stock?.note(id, 'food') ?? '').trim().replace(/^\(|\)$/g, '') : '';
+  return `- ${r.name}${tagText ? ` (${tagText})` : ''}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}${stock ? ` — ${stock}` : ''}.${seen ? ` Last seen ${seen}.` : ''}${dreadText}`;
 }
 
 function ownActivity(world, c) {

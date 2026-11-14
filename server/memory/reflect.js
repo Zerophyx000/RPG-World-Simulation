@@ -12,7 +12,8 @@ import { systemPrompt } from '../agents/prompt.js';
 import { chatForTool } from '../llm.js';
 import { relationLine } from '../social/describe.js';
 import { emotionsSummary } from '../emotions/present.js';
-import { parseFeeling, applyFeeling, feelingItemSchema } from '../emotions/report.js';
+import { parseFeeling, applyFeeling, feelingItemSchema, feelingPeople } from '../emotions/report.js';
+import { addIntention } from '../agents/intentions.js';
 
 const FULL = { maxMemories: 3, clamp: 3 };
 const LIGHT = { maxMemories: 1, clamp: 1 };
@@ -66,6 +67,9 @@ async function choosePath(world, conv, c, { reason, leaverId }) {
   // Step 5.5: talking with someone you recently caught at something is never small talk.
   if (others.some((o) => world.relationships.events(pid, o, 20).some((e) => e.source === 'signal' && world.now - e.gameTime <= 1440))) fullBecause.push('a warning sign about someone there');
   if (reason === 'cap') fullBecause.push('talked themselves out');
+  // step 9.5 (B2.3): two people grieving the same person — their talk matters
+  const D = world.deaths;
+  if (D && D.knownDead(c).some((dead) => D.griefFor(c, dead) >= 2 && others.some((o) => D.griefFor(world.citizens.get(o) ?? {}, dead) >= 2))) fullBecause.push('shared grief');
   // Step 7B: someone in it was hurt, treated or died: never small talk
   if (world.body?.involvedSince([pid, ...others], conv.startedAt)) fullBecause.push('someone was hurt, treated or died');
   // walked out on mid-exchange (a short greeting that simply ends is not that)
@@ -167,6 +171,10 @@ async function remember(world, conv, c, limits, path) {
   ].filter(Boolean).join('\n\n');
 
   const labelList = [...labels.keys()];
+  // step 9.5: everyone they know, the dead they know of included (for news and intentions about them)
+  const newsPeople = world.memory.labelsFor(c, world.memory.knownPeople(c, { dead: true }));
+  const newsLabels = [...newsPeople.keys()];
+  const feelPeople = feelingPeople(world, c);
   const tools = [{
     type: 'function',
     function: {
@@ -204,8 +212,12 @@ async function remember(world, conv, c, limits, path) {
             },
           },
           learned_names: { type: 'array', items: { type: 'string', enum: labelList }, description: 'People whose name you learned in this conversation.' },
-          feelings: { type: 'array', maxItems: 3, items: feelingItemSchema(world, labelList), description: 'What this conversation left you feeling, if anything.' },
+          feelings: { type: 'array', maxItems: 3, items: feelingItemSchema(world, [...new Set([...labelList, ...feelPeople.keys()])]), description: 'What this conversation left you feeling, if anything.' },
           on_my_mind: { type: 'string', description: 'Optional. Something from this you keep thinking about.' },
+          // step 9.5 (A1.3): things said and decided become intentions; (B1.2) news of a death heard here
+          promises: { type: 'array', maxItems: 2, description: 'Things YOU said you would do, if any.', items: { type: 'object', properties: { text: { type: 'string' }, to: { type: 'string', enum: labelList } }, required: ['text'] } },
+          intentions: { type: 'array', maxItems: 2, description: 'Things you decided during the talk that you mean to do.', items: { type: 'object', properties: { text: { type: 'string' }, about: { type: 'array', items: { type: 'string', enum: newsLabels.length ? newsLabels : ['nobody'] } } }, required: ['text'] } },
+          ...(newsLabels.length ? { learned_news: { type: 'array', maxItems: 2, description: 'News about someone you heard here: that they died, are badly hurt, missing or alive.', items: { type: 'object', properties: { person: { type: 'string', enum: newsLabels }, news: { type: 'string', enum: ['died', 'badly_hurt', 'missing', 'found_alive'] }, from: { type: 'string', enum: labelList } }, required: ['person', 'news'] } } } : {}),
         },
         required: ['memories'],
       },
@@ -262,8 +274,30 @@ async function remember(world, conv, c, limits, path) {
   // Step 6: the feelings the conversation left behind (clamped, known people only); this is how the subtle
   // things come in: envy from praise, shame from an insult, affection from a kindness.
   for (const f of (Array.isArray(args.feelings) ? args.feelings : []).slice(0, 3)) {
-    applyFeeling(world, c, parseFeeling(world, c, f, labels), 'reflection');
+    applyFeeling(world, c, parseFeeling(world, c, f, new Map([...feelPeople, ...labels])), 'reflection');
   }
+  // step 9.5 (A1.3): promises and decisions become intentions
+  for (const p of (Array.isArray(args.promises) ? args.promises : []).slice(0, 2)) {
+    const to = byLabel(p?.to);
+    addIntention(world, c, { text: p?.text, about: to ? [to.id] : [], source: 'promise' });
+  }
+  for (const it of (Array.isArray(args.intentions) ? args.intentions : []).slice(0, 2)) {
+    const about = (Array.isArray(it?.about) ? it.about : []).map((l) => newsPeople.get(l)?.id).filter(Boolean);
+    addIntention(world, c, { text: it?.text, about, source: 'self' });
+  }
+  // step 9.5 (B1.2): news heard in the conversation (a death is believed or doubted by trust in the teller)
+  for (const n of (Array.isArray(args.learned_news) ? args.learned_news : []).slice(0, 2)) {
+    const who = newsPeople.get(n?.person);
+    const from = byLabel(n?.from) ?? world.citizens.get(lastOtherSpeaker);
+    if (!who) continue;
+    if (n.news === 'died' && !who.alive) {
+      const trust = from ? world.memory.rel(c.id, from.id)?.trust ?? 0 : 0;
+      world.deaths.learn(c, who.id, { how: from ? `told:${from.id}` : 'inferred', certainty: trust < 0 ? 'doubted' : 'believed', by: from?.id ?? null });
+    } else if (n.news !== 'died') {
+      c.knownNews = { ...(c.knownNews ?? {}), [who.id]: { news: n.news, from: from?.id ?? null, at: world.now, certainty: 'believed' } };
+    }
+  }
+  world.saveCitizen(c);
 }
 
 function listJoin(items) {

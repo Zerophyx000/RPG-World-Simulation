@@ -1,5 +1,5 @@
 // Inspector: right drawer for one citizen, ordered for reading:
-// header → needs → inner thought → model reasoning → plan → conversation → inbox → memories (core memory +
+// header → needs → inner thought → model reasoning → life (step 9.5: intentions, habits, known deaths) → conversation → inbox → memories (core memory +
 // constellation) → relationships → nights → places → carrying / known objects / last seen → act → persona →
 // prompt preview → LLM calls.
 import { store, subscribe, select } from '../store.js';
@@ -8,7 +8,8 @@ import { colorOf } from '../colors.js';
 import { bubblesHtml } from './conversations.js';
 import { showCall } from './llm.js';
 import { actPanelHtml, bindActPanels } from './act.js';
-import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml, planHtml } from './memories.js';
+import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml } from './memories.js';
+import { lifeHtml, lifeClick } from './life-ui.js';
 import { showEvent } from '../util.js';
 import { openReasons, warinessHtml, groupChip } from './social-ui.js';
 import { emotionsPanelHtml, emotionTypes } from './emotions-ui.js';
@@ -22,7 +23,7 @@ let data = null;
 let mems = null;   // GET /api/citizens/:id/memories
 let nights = null; // GET /api/citizens/:id/consolidations
 let bodyInternal = false; // the body panel's "internal organs" layer
-const open = new Set(['reasoning', 'plan', 'memories', 'rels', 'objects', 'body']); // which <details> are open (reasoning starts open)
+const open = new Set(['reasoning', 'life', 'memories', 'rels', 'objects', 'body']); // which <details> are open (reasoning starts open)
 
 export function mount(el) {
   root = el;
@@ -56,6 +57,7 @@ export function mount(el) {
     }
   });
   el.addEventListener('click', (e) => {
+    if (data && e.target.closest('.life-panel')) { lifeClick(e, data, load).catch((err) => alert(err.message)); }
     if (e.target.closest('[data-close]')) select(null);
     const call = e.target.closest('[data-call]');
     if (call) {
@@ -146,7 +148,7 @@ async function loadMemories() {
 }
 
 // UI shows real names: {{c:id}} tokens in stored texts become names.
-const detok = (t) => String(t ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
+const detok = (t) => String(t ?? '').replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
 
 // Need bars with tick marks at the level thresholds.
 function needBars(c) {
@@ -232,7 +234,7 @@ function render() {
 
     ${details('reasoning', 'Model reasoning', reasoningHtml(c) + reasoningFinishHtml(c))}
 
-    ${details('plan', `Plan${c.planView ? ` · ${Math.min(c.planView.cursor, c.planView.steps.length)}/${c.planView.steps.length}` : ''}`, planHtml(c))}
+    ${details('life', `Life · ${(c.intentions ?? []).length} intention${(c.intentions ?? []).length === 1 ? '' : 's'} · ${(c.habits ?? []).length} habits${(c.knownDeaths ?? []).length ? ` · knows ${c.knownDeaths.length} death${c.knownDeaths.length === 1 ? '' : 's'}` : ''}${c.grief ? ' · 🎗' : ''}${c.mortal ? ' · ☠' : ''}`, `<div class="life-panel">${lifeHtml(c)}</div>`)}
 
     <h3>Conversation</h3>
     ${conv ? `<div class="mini-conv">${bubblesHtml(conv, { thoughts: true, compact: true })}</div>

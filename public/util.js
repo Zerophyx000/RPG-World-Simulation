@@ -48,7 +48,7 @@ export function minutesLeft(activity) {
 
 // ---------- names ----------
 /** Stored world texts may carry per-viewer name tokens {{c:id}}; the UI always shows real names. */
-export const detok = (t) => String(t ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
+export const detok = (t) => String(t ?? '').replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
 
 export const citizenName = (id) => store.citizens.get(id)?.name ?? id ?? '?';
 export const roomName = (id) => (id ? store.rooms.get(id)?.name ?? id : 'on the way');
@@ -157,6 +157,10 @@ export const EVENT_CATEGORY = {
   death: () => 'body',
   learn_place: () => 'speech',
   plan: () => 'memory',
+  // step 9.5
+  learned_death: () => 'social', news: () => 'speech', gathering: () => 'social', burial: () => 'social', tend_body: () => 'action', vigil: () => 'action',
+  intention: () => 'memory', habits: () => 'memory', habit: () => 'activity', habit_change: () => 'memory', mortality: () => 'body', dread: () => 'director', stock: () => 'object',
+  feeling_repaired: () => 'system', feeling_dropped: () => 'system', feeling_target_unmapped: () => 'system',
   reflection_gate: () => 'memory',
   consolidation: () => 'memory',
   error: () => 'system',
@@ -267,6 +271,20 @@ export function eventHtml(e) {
     case 'collapse': return `${who(actor)} <span class="bad">collapses</span> at ${esc(roomName(e.location))} <span class="dim">(${esc(d.reason)})</span>`;
     case 'revive': return `${who(actor)} comes to${d.by && d.by !== 'director' ? `, fed by ${who(d.by)}` : d.by === 'director' ? ' <span class="dim">(director)</span>' : ''}`;
     case 'death': return `${who(actor)} <span class="bad">dies</span> <span class="dim">(${esc(d.reason)})</span>`;
+    // step 9.5
+    case 'learned_death': return `${who(actor)} ${d.certainty === 'suspected' ? 'sees someone lying still:' : 'learns'} ${who(d.deadId)} ${d.certainty === 'suspected' ? '' : 'is dead'} <span class="dim">(${esc(String(d.how).startsWith('told:') ? `told by ${store.citizens.get(d.how.slice(5))?.name ?? d.how.slice(5)}` : d.how)}, ${esc(d.certainty)})</span>`;
+    case 'news': return `${who(actor)} tells ${who(d.to)}: ${who(d.person)} <span class="bad">${esc(String(d.news).replace('_', ' '))}</span> <span class="dim">(heard by ${(d.heardBy ?? []).length})</span>`;
+    case 'gathering': return `${who(actor)} calls people to ${esc(roomName(d.place))} (${esc(d.time)}): ${esc(d.purpose)} <span class="dim">(${esc(d.told)} told)</span>`;
+    case 'burial': return `${who(actor)} <span class="bad">buries</span> ${who(d.deadId)}${d.words ? ` — “${esc(d.words)}”` : ''} <span class="dim">(${(d.present ?? []).length} present)</span>`;
+    case 'tend_body': return `${who(actor)} tends the body of ${who(d.deadId)}: ${esc(String(d.how).replace('_', ' '))}`;
+    case 'vigil': return `${who(actor)} keeps vigil over ${who(d.deadId)}`;
+    case 'intention': return `${who(actor)} <span class="dim">intention ${esc(d.op)}:</span> ${esc(d.text ?? d.id)}`;
+    case 'habits': return `${who(actor)} <span class="dim">habits (${esc(d.origin)}):</span> ${esc((d.habits ?? []).join('; '))}`;
+    case 'habit': return `<span class="dim">↺ out of habit,</span> ${who(actor)} ${esc(d.what)} <span class="dim">(${esc(d.step)})</span>`;
+    case 'habit_change': return `${who(actor)} <span class="dim">habit ${esc(d.op)}:</span> ${esc(d.what)} — “${esc(d.why)}”`;
+    case 'mortality': return `${who(actor)} <span class="bad">${d.state ? `fears for ${esc(d.state === 'critical' ? 'their life — critical' : 'their life')}` : 'is out of danger'}</span>`;
+    case 'dread': return `<span class="director">village dread ${esc(d.delta > 0 ? '+' : '')}${esc(d.delta)} → ${esc(d.value)}</span> <span class="dim">(${esc(d.why)})</span>`;
+    case 'stock': return `${who(actor)} restocks ${esc(roomName(e.location))} <span class="dim">(${esc(d.service)}: ${esc(Math.round(d.before))} → ${esc(Math.round(d.after))})</span>`;
     case 'learn_place': return `${who(actor)} learns about ${esc(roomName(d.placeId))} from ${who(d.from)} <span class="dim">(${esc((d.services ?? []).join(', ') || 'no services')})</span>`;
     case 'director_effect': return `<span class="director">✨ ${effectHtml(d)}</span>${d.notify ? ` <span class="dim">“${esc(d.notify)}”</span>` : ''}`;
     case 'conversation_end': {

@@ -42,21 +42,66 @@ export function feelingParam(world, c) {
   };
 }
 
-// Who the citizen could mean: the people here plus whoever they already feel something about.
-function feelingLabels(world, c) {
+// Who the citizen could mean: the people here, whoever they already feel something about, and (step 9.5) the
+// dead they know are dead — grief must be able to aim at them.
+export function feelingPeople(world, c) {
   const here = c.location ? world.citizensIn(c.location, { exceptId: c.id }) : [];
   const felt = world.emotions.of(c).map((e) => e.target).filter((id) => id && world.citizens.has(id)).map((id) => world.citizens.get(id));
+  const dead = world.deaths ? world.deaths.knownDead(c).map((id) => world.citizens.get(id)).filter(Boolean) : [];
+  const known = world.memory.knownPeople(c);
   const seen = new Set();
   const others = [];
-  for (const o of [...here, ...felt]) if (o.id !== c.id && !seen.has(o.id)) { seen.add(o.id); others.push(o); }
-  return [...world.memory.labelsFor(c, others).keys(), 'none'];
+  for (const o of [...here, ...felt, ...dead, ...known]) if (o.id !== c.id && !seen.has(o.id)) { seen.add(o.id); others.push(o); }
+  return world.memory.labelsFor(c, others);
+}
+
+function feelingLabels(world, c) {
+  return [...feelingPeople(world, c).keys(), 'none'];
+}
+
+// step 9.5: models sometimes send the feeling as broken JSON (single quotes, a missing brace, a trailing
+// comma, a cut-off string). Repair what can be repaired; null if it can't.
+export function repairJson(s) {
+  let t = String(s ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const tryParse = (x) => { try { const v = JSON.parse(x); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+  const direct = tryParse(t);
+  if (direct) return direct;
+  t = t.replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":').replace(/:\s*'([^']*)'/g, ':"$1"');
+  t = t.replace(/([{,]\s*)([A-Za-z_]+)\s*:/g, '$1"$2":');
+  t = t.replace(/,\s*([}\]])/g, '$1');
+  const open = (t.match(/{/g) ?? []).length; const close = (t.match(/}/g) ?? []).length;
+  if (close > open) t = t.replace(/}+\s*$/, (m) => m.slice(0, Math.max(0, m.length - (close - open))));
+  let u = open > close ? t + '}'.repeat(open - close) : t;
+  const fixed = tryParse(u);
+  if (fixed) return fixed;
+  if (((t.match(/"/g) ?? []).length) % 2) { u = `${t.replace(/}*\s*$/, '')}"${'}'.repeat(Math.max(1, open - close))}`; return tryParse(u); }
+  return null;
+}
+
+/** Last resort: pull the fields out of whatever text came back. */
+export function extractFeelingFields(s) {
+  const str = String(s ?? '');
+  const field = (k) => new RegExp(`["']?${k}["']?\\s*[:=]\\s*["']?([^"',}\\n]+)`, 'i').exec(str)?.[1]?.trim() ?? null;
+  const emotion = field('emotion') ?? field('type');
+  if (!emotion) return null;
+  const why = /["']?why["']?\s*[:=]\s*["']([^"']*)/i.exec(str)?.[1] ?? field('why');
+  return { emotion, target: field('target'), direction: field('direction'), amount: field('amount'), why };
 }
 
 /** → { type, target (citizen id | null), change (-3..3, non-zero), why, trust? } or null. `people`: Map label → citizen. */
 export function parseFeeling(world, c, raw, people) {
   if (raw == null || raw === '') return null;
-  if (typeof raw === 'string' && raw.trim().startsWith('{')) {
-    try { return parseFeeling(world, c, JSON.parse(raw), people); } catch { return null; } // meant to be an object, but broken
+  if (typeof raw === 'string' && /^\s*(```|\{)/.test(raw)) {
+    // meant to be an object: parse, repair, or extract the fields (step 9.5)
+    try { return parseFeeling(world, c, JSON.parse(raw), people); } catch { /* broken */ }
+    const fixed = repairJson(raw);
+    const fields = fixed ?? extractFeelingFields(raw);
+    if (!fields) {
+      world.logEvent('feeling_dropped', { actorId: c.id, location: c.location, raw: String(raw).slice(0, 200) });
+      return null;
+    }
+    world.logEvent('feeling_repaired', { actorId: c.id, location: c.location, how: fixed ? 'json' : 'regex', raw: String(raw).slice(0, 200) });
+    return parseFeeling(world, c, fields, people);
   }
   const types = world.emotions.typeNames();
   const norm = (w) => {
@@ -113,7 +158,10 @@ export function parseFeeling(world, c, raw, people) {
   }
   const { type } = found;
   const rule = found.rule;
-  if (target === undefined) target = null; // unknown people can't be targets; the feeling itself still counts if it may be unaimed
+  if (target === undefined) { // unknown people can't be targets; the feeling itself still counts if it may be unaimed
+    world.logEvent('feeling_target_unmapped', { actorId: c.id, location: c.location, target: String(typeof raw === 'object' ? raw.target : raw).slice(0, 60) });
+    target = null;
+  }
   if (!Number.isFinite(change) || change === 0) return null;
   // step 7A: a scaled synonym (curiosity → joy at half strength) keeps its sign; less than half a step is nothing.
   if (rule?.scale != null) {

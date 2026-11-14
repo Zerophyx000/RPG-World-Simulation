@@ -31,7 +31,7 @@
       "cueAt": ", glaring at {target}"
     },
     "disgust": {
-      "aimed": "required", "valence": -1, "halfLifeHours": 6, "contagion": 0.1, "color": "#8a9a3a",
+      "aimed": "optional", "valence": -1, "halfLifeHours": 6, "contagion": 0.1, "color": "#8a9a3a",
       "body": ["You feel a slight distaste", "Your lip wants to curl and you would rather not stand close", "Your stomach turns", "You can barely keep from retching"],
       "aim": "at {target}",
       "cue": ["{Name} wrinkles {poss} nose a little", "{Name}'s lip is curled{at}", "{Name} recoils{at}", "{Name} turns away{at}, looking sick"],

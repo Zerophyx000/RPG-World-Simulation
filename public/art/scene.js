@@ -330,6 +330,17 @@ export function createScene({ pal, recipes = [], maps = [], art = null, quality 
           const ox = person.x + (an.dx ?? 0) - f.anchor[0]; const oy = person.y + (an.dy ?? 0) - f.anchor[1] + (pose === 'lie' ? -2 : 0) + (pose === 'sit' ? 4 : 0);
           F.dropShadow(person.x, person.y - 1, lying ? 14 : 8, 3, 0.28);
           target.blit(f.img, X(ox), Y(oy), { scale: z, alpha });
+          // step 9.5: the dead — a cloth laid over them, flies over a decaying body
+          if (c.alive === false) {
+            const corpse = S.objects?.get(`body_${c.id}`);
+            if (corpse?.data?.covered) {
+              const cw = f.img.w - 2; const ch = Math.max(6, Math.round(f.img.h * 0.55));
+              target.rect(X(ox + 1), Y(oy + f.img.h - ch - 1), cw * z, ch * z, [196, 188, 168, 255], alpha);
+              target.rect(X(ox + 1), Y(oy + f.img.h - ch - 1), cw * z, Math.max(1, z), [226, 220, 202, 255], alpha);
+              target.rect(X(ox + 1), Y(oy + f.img.h - 2), cw * z, Math.max(1, z), [150, 142, 124, 255], alpha);
+            }
+            if (corpse && ['smelling', 'decaying'].includes(corpse.state) && (ms % 700) < 18) F.emit('fly', person.x, person.y - 6);
+          }
           person.drawn = { img: f.img, sx: X(ox), sy: Y(oy), scale: z };
           entries.push({ ...entry, x: X(person.x), y: Y(person.y), head: lying ? Y(oy) - 2 : Y(oy) + 2 * z });
           hits.push({ type: 'citizen', id: c.id, x: X(ox), y: Y(oy), w: f.img.w * z, h: f.img.h * z });

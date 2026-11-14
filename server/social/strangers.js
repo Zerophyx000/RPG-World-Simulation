@@ -90,6 +90,8 @@ export class Strangers {
       { key: 'openness', weight: -((t.openness ?? 0.5) - 0.5) * 2 },
       ...this.cuesOf(viewer, other),
       { key: 'experience', weight: (0.5 - st) * 4, phrase: st < 0.45 ? "you've been burned by strangers before" : null },
+      // step 9.5 (B3.3): since the deaths, strangers are suspect sooner
+      { key: 'dread', weight: (this.world.deaths?.dreadFor(viewer) ?? 0) / 4, phrase: (this.world.deaths?.dreadFor(viewer) ?? 0) >= 3 ? 'since the deaths, everyone is suspect' : null },
     ];
     const value = Math.min(10, Math.max(0, parts.reduce((s, p) => s + p.weight, 0)));
     const p = pronounsOf(other);

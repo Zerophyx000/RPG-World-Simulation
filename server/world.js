@@ -28,7 +28,11 @@ import { Quiet } from './world/quiet.js';
 import { directorEvent, expireDirectorState, EFFECT_TYPES } from './world/director.js';
 import { Scheduler } from './agents/scheduler.js';
 import { Governor } from './agents/governor.js';
-import { validatePlan, startPlan, planActive, stepText } from './agents/plan.js';
+import { Habits } from './agents/habits.js';
+import { applyEdits as applyIntentionEdits, touch as touchIntentions, fade as fadeIntentions, topIntention, intentionsView } from './agents/intentions.js';
+import { Deaths } from './death/index.js';
+import { Stock } from './world/stock.js';
+import { getState } from './db.js';
 import { Memory } from './memory/index.js';
 import { Objects, placementSig } from './world/objects.js';
 import { Relationships } from './social/relationships.js';
@@ -37,7 +41,7 @@ import { Strangers } from './social/strangers.js';
 import { Signals } from './social/signals.js';
 import { relationLine } from './social/describe.js';
 import { Emotions } from './emotions/index.js';
-import { parseFeeling, applyFeeling } from './emotions/report.js';
+import { parseFeeling, applyFeeling, feelingPeople } from './emotions/report.js';
 import { onConversationEnd as reflectOnConversationEnd } from './memory/reflect.js';
 import { onSleepStart as consolidateOnSleep, consolidate as consolidateNow, decayAndFade } from './memory/consolidate.js';
 import { seedFromScenario, ensureVillageAcquaintance, bootstrap as bootstrapMemories } from './memory/bootstrap.js';
@@ -69,6 +73,11 @@ export class World {
     this.strangers = new Strangers(this);
     this.signals = new Signals(this);
     this.emotions = new Emotions(this);   // step 6: feelings shape what citizens are shown, never what they do
+    this.deaths = new Deaths(this);       // step 9.5: who knows of which death; grief, mortality, dread, news
+    this.stock = new Stock(this);         // step 9.5: services need people (bakery, tavern)
+    this.habits = new Habits(this);       // step 9.5: routines code may carry out, in calm moments only
+    this.debugLeakCheck = process.env.DEBUG_LEAK_CHECK === 'true'; // step 9.5: switchable by the director
+    this.gatherings = [];
 
     this.insertEvent = db.prepare(`INSERT INTO events (game_time, real_time, type, actor_id, location, data)
                                    VALUES (?, ?, ?, ?, ?, ?)`);
@@ -92,7 +101,7 @@ export class World {
 
     // Night hooks: falling asleep may start the nightly memory consolidation.
     this.hooks = {
-      onSleepStart: (citizen) => consolidateOnSleep(this, citizen),
+      onSleepStart: (citizen) => { this.deaths?.onSleepStart(citizen); consolidateOnSleep(this, citizen); },
       onWake(_citizen, _sleptMinutes) {},
       // step 9 (visual record only, never perceived): trips feed the wear map and the replay log; room effects leave marks
       onTripStart: (citizen, trip) => this.positions?.onTripStart(citizen, this.#withPath(trip)),
@@ -130,6 +139,9 @@ export class World {
     if (seeded) seedFromScenario(this, seeded.inputs);
     this.objects.load(this.scenario); // types from content, new content instances seeded, invariant checked
     this.body.load();                 // step 7B: body state for everyone (HP → vitality), garments seeded once
+    this.deaths.load();               // step 9.5: dread per region, knownDeaths defaults
+    this.stock.load();
+    this.gatherings = getState(this.db, 'gatherings', []) ?? [];
 
     for (const c of this.citizens.values()) {
       let changed = false;
@@ -191,6 +203,13 @@ export class World {
     this.conversations.releaseDue((held) => applyHeldSay(this, held));
     this.conversations.tick(now);
     this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
+    this.deaths.tick(elapsed, now);   // step 9.5: bodies seen, news to break, own mortality, dread, decay
+    this.habits.ensure();             // step 9.5: habits for whoever has none yet (LLM, a few at a time)
+    this.habits.judge();
+    if (now - (this.lastIntentionFade ?? -Infinity) >= 60) {
+      this.lastIntentionFade = now;
+      for (const c of this.citizens.values()) if (c.alive) fadeIntentions(this, c);
+    }
     this.quiet.update();
     this.scheduler.run();
     this.wear?.tick(now);   // step 9: decay and hourly persistence (self-throttled)
@@ -211,6 +230,20 @@ export class World {
       else if (!c.location && c.spot) c.spot = null;
       const f = this.needs.advance(c, elapsed);
       this.dirty.add(c.id);
+      // step 9.5 (B2.3): deep grief tires faster, and sometimes wakes the sleeper in the dark
+      const gf = this.deaths.fatigueFactor(c);
+      if (gf > 1 && !UNAWARE_ACT.has(c.activity.type)) {
+        const base = this.needs.rate('fatigue', this.needs.rateKey(c));
+        if (base > 0) c.needs.fatigue = Math.min(100, c.needs.fatigue + (base * (gf - 1) * elapsed) / 60);
+      }
+      if (c.activity.type === 'sleeping' && c.griefWakeAt != null && now >= c.griefWakeAt) {
+        const of = c.griefWakeOf;
+        c.griefWakeAt = null;
+        c.griefWakeOf = null;
+        wake(this, c, { reason: 'grief' });
+        if (of && this.citizens.has(of)) this.perceive([c.id], { kind: 'system', text: `You wake in the dark, thinking of {{c:${of}}}.`, importance: 5, roomId: c.location });
+        continue;
+      }
       if (f.hpZero) {
         if (this.needs.lethal) die(this, c, { reason: c.needs.hunger >= this.needs.starvingAt ? 'starvation' : 'injury' });
         else collapse(this, c, { reason: c.needs.hunger >= this.needs.starvingAt ? 'starvation' : 'injury' });
@@ -289,18 +322,22 @@ export class World {
       id: c.id, name: c.name, kind: c.kind, alive: c.alive, location: c.location,
       activity: c.activity, conversationId: c.conversationId, inboxSize: c.inbox.length,
       lastInnerThought: c.lastInnerThought, lastDecisionAt: c.lastDecisionAt, hp: c.needs?.hp ?? 100,
-      needs: needsSummary(c), body: bodySummary(c), spot: c.spot ?? null, marks: c.marks, plan: this.planSummary(c), emotion: this.emotions?.summary(c) ?? null,
+      needs: needsSummary(c), body: bodySummary(c), spot: c.spot ?? null, marks: c.marks, emotion: this.emotions?.summary(c) ?? null,
+      ...this.lifeSummary(c),
     });
   }
 
-  /** Compact plan state for the roster: "3/6 · baking the morning bread", paused or not. */
-  planSummary(c) {
-    const p = c.plan;
-    if (!p) return null;
-    const cur = p.steps[Math.min(p.cursor, p.steps.length - 1)];
+  /** step 9.5: the roster line — top intention, grieving (the black ribbon), fearing for their life. */
+  lifeSummary(c) {
+    const top = c.alive ? topIntention(c) : null; // the dead mean to do nothing
+    const grief = this.deaths?.strongestGrief(c);
     return {
-      status: p.status, cursor: p.cursor, total: p.steps.length, interrupted: Boolean(p.interrupted),
-      current: cur ? stepText(this, c, cur) : null,
+      intention: top ? { id: top.id, text: this.memory.resolveNames(c, top.text), weight: Math.round(top.weight * 100) / 100 } : null,
+      grieving: grief && grief.intensity >= 5 ? { target: grief.target, intensity: Math.round(grief.intensity * 10) / 10 } : null,
+      mortal: c.mortal?.state ?? null,
+      mortality: Math.round((this.deaths?.mortalityFear(c) ?? 0) * 10) / 10,
+      habit: c.habitNote && this.now - c.habitNote.at < 30 ? c.habitNote.text : null,
+      following: c.following?.id ?? null,
     };
   }
 
@@ -350,6 +387,8 @@ export class World {
       const s = hearing(c, makeStimulus(partial, this.now)); // step 7B: deaf / hard of hearing hear less
       // step A2: an emergency (>= 7) that gets through to someone counts, asleep or not.
       if (s.importance >= 7) c.lastUrgentAt = this.now;
+      if (s.importance >= 5) c.lastStrongAt = this.now;       // step 9.5 (A3): no autopilot for 30 min after
+      if (s.data?.addressed) c.lastAddressedAt = this.now;
       if (c.activity.type === 'collapsed') continue;
       if (c.activity.type === 'sleeping') {
         // The body speaks differently in sleep: tiredness never wakes you; only a real emergency (>= 8,
@@ -394,7 +433,6 @@ export class World {
   // ---------- thinking lifecycle (used by agents/think.js) ----------
   beginThink(c, { mode = 'decide' } = {}) {
     this.quiet.snap();
-    if (mode === 'decide' && planActive(c)) c.plan.interrupted = true;
     const rt = this.runtime(c.id);
     const conv = this.conversations.of(c);
     const t = {
@@ -452,6 +490,12 @@ export class World {
     c.lastTier = outcome.tier ?? null;
     this.memory.recalled(outcome.recalled);
     this.#afterThought(c, outcome);
+    // step 9.5: the decision ends an autopilot streak; edits to intentions ride along; a related act touches them
+    this.habits.onDecision(c);
+    c.habitNote = null;
+    if (outcome.call?.arguments?.intentions != null) applyIntentionEdits(this, c, outcome.call.arguments.intentions);
+    if (outcome.call) touchIntentions(this, c, outcome.call);
+    if (c.following && outcome.call?.name !== 'follow') c.following = null;
 
     if (outcome.call) {
       if (outcome.innerThought) c.lastInnerThought = outcome.innerThought; // keep the latest thought if this decision had none
@@ -472,7 +516,7 @@ export class World {
   #afterThought(c, outcome) {
     const raw = outcome.call?.arguments?.feeling;
     if (raw != null && raw !== '') {
-      const people = this.memory.labelsFor(c, [...new Set([...this.memory.knownPeople(c), ...(c.location ? this.citizensIn(c.location, { exceptId: c.id }) : [])])]);
+      const people = feelingPeople(this, c); // step 9.5: the people here, those they feel about, the known dead
       const f = parseFeeling(this, c, raw, people);
       const r = applyFeeling(this, c, f, 'self');
       this.logEvent('feeling', { actorId: c.id, location: c.location, raw: String(typeof raw === 'string' ? raw : JSON.stringify(raw)).slice(0, 200), parsed: f, applied: r ? Math.round(r.applied * 100) / 100 : 0 });
@@ -483,23 +527,6 @@ export class World {
       const about = new Set(rows.flatMap((r) => { try { return JSON.parse(r.about); } catch { return []; } }));
       for (const id of about) this.emotions.ruminate(c, id, 'recall');
     }
-  }
-
-  /** A planning think finished: validate the steps and start the plan (code carries it out). */
-  completePlanThink(c, t, outcome) {
-    if (!this.#ownsThink(c, t)) return;
-    this.runtime(c.id).think = null;
-    c.thinkingInbox = [];
-    c.lastThought = trimText(outcome.reasoning, THOUGHT_MAX);
-    c.lastDecisionAt = this.now;
-    c.lastTier = 'full';
-    c.thinkCooldownUntil = this.now + (this.governor?.thinkGapMinutes() ?? THINK_COOLDOWN_MINUTES);
-    if (outcome.innerThought) c.lastInnerThought = outcome.innerThought;
-    this.memory.recalled(outcome.recalled);
-    const raw = outcome.call?.name === 'make_plan' ? outcome.call.arguments.steps : [];
-    const { steps, dropped } = validatePlan(this, c, raw);
-    startPlan(this, c, steps, dropped); // an empty plan still counts as planned (no endless re-planning)
-    this.setActivity(c, { type: 'idle' });
   }
 
   /** Aborted (interrupt, pause) or stale: put the inbox back and let the scheduler pick them up again. */
@@ -875,10 +902,14 @@ export class World {
       clock: this.clock.snapshot(),
       scenario: this.scenario,
       rooms: [...this.rooms.values()].map((r) => this.roomView(r)),
-      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), look: appearance(this, c), plan: this.planSummary(c), lastTier: c.lastTier ?? null, emotion: this.emotions.summary(c) })),
+      citizens: [...this.citizens.values()].map((c) => ({ ...citizenSummary(c), look: appearance(this, c), lastTier: c.lastTier ?? null, emotion: this.emotions.summary(c), ...this.lifeSummary(c) })),
       conversations: this.conversations.list().map((cv) => this.conversations.view(cv)),
       objects: [...this.objects.byId.values()].map((o) => this.objects.view(o)),
       groups: this.groups.list(),
+      // step 9.5
+      dread: this.deaths.dreadView(),
+      stock: this.stock.view(),
+      gatherings: (this.gatherings ?? []).slice(-10),
     };
   }
 
@@ -918,7 +949,14 @@ export class World {
         appearance: this.citizens.get(r.otherId)?.persona?.appearance ?? '',
         lastSeenPlaceName: r.lastSeenPlace ? this.rooms.get(r.lastSeenPlace)?.name ?? r.lastSeenPlace : null,
       })),
-      planView: c.plan ? { ...c.plan, steps: c.plan.steps.map((st) => ({ ...st, text: stepText(this, c, st) })) } : null,
+      intentions: intentionsView(this, c),                 // step 9.5
+      habits: this.habits.view(c),
+      knownDeaths: this.deaths.knownView(c),
+      grief: this.deaths.strongestGrief(c) ? { ...this.deaths.strongestGrief(c) } : null,
+      mortal: c.mortal ?? null,
+      mortality: Math.round(this.deaths.mortalityFear(c) * 10) / 10,
+      fearedPlaces: c.fearedPlaces ?? {},
+      following: c.following ?? null,
       memoryCount: this.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE citizen_id = ? AND status = 'active'").get(c.id).n,
       knownPlacesView: Object.entries(c.knownPlaces ?? {}).map(([rid, k]) => ({
         id: rid, name: this.rooms.get(rid)?.name ?? rid, services: k.services, source: k.source,
@@ -1051,7 +1089,7 @@ export class World {
 
 // Reasons carry {{c:id}} tokens; the director sees real names.
 function detokName(world, text) {
-  return String(text ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => world.citizens.get(id)?.name ?? id);
+  return String(text ?? '').replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => world.citizens.get(id)?.name ?? id);
 }
 
 function sigText(O, sig) {

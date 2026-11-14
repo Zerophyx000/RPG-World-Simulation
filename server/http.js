@@ -12,6 +12,7 @@ import { interest } from './ui/interest.js';
 import { socialView } from './ui/social.js';
 import { replay } from './ui/replay.js';
 import { exportOptions, exportFilename, streamExport } from './ui/export.js';
+import { intentionsView, setIntentions } from './agents/intentions.js';
 import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
@@ -45,6 +46,7 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('object', (o) => broadcast('object', o));
   world.bus.on('group', (g) => broadcast('group', g));
   world.bus.on('emotion_room', (r) => broadcast('emotion_room', r));
+  world.bus.on('dread', (d) => broadcast('dread', d)); // step 9.5
 
   const qs = (req) => new URL(req.url, 'http://x').searchParams;
   const num = (v) => (v == null || v === '' ? null : Number(v));
@@ -196,6 +198,38 @@ export function createServer(world, { observer = null } = {}) {
       if (body.confirm !== 'WIPE') throw httpError(400, 'send {"confirm": "WIPE"} to wipe and reseed the world');
       return world.reseed({ scenario: body.scenario });
     }],
+
+    // ---- Step 9.5: reactive living and death that matters ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/intentions$/, (_req, _body, [id]) => intentionsView(world, found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/habits$/, (_req, _body, [id]) => world.habits.view(found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/deaths$/, (_req, _body, [id]) => world.deaths.knownView(found(world.citizens.get(id)))],
+    ['POST', /^\/api\/director\/intentions$/, (_req, body) => setIntentions(world, found(world.citizens.get(body.citizenId)), body.intentions)],
+    ['POST', /^\/api\/director\/habits$/, (_req, body) => world.habits.set(found(world.citizens.get(body.citizenId)), body.habits, { origin: 'director', why: 'set by the director' })],
+    ['POST', /^\/api\/director\/habits\/regenerate$/, async (_req, body) => world.habits.generate(found(world.citizens.get(body.citizenId)))],
+    ['GET', /^\/api\/dread$/, () => world.deaths.dreadView()],
+    ['POST', /^\/api\/director\/dread$/, (_req, body) => world.deaths.setDread(body.mapId || world.maps.maps[0]?.id, body.value)],
+    ['GET', /^\/api\/deaths$/, () => ({
+      dead: [...world.citizens.values()].filter((c) => !c.alive).map((c) => ({ id: c.id, name: c.name, diedAt: c.diedAt, place: c.deathPlace ?? null, cause: c.deathCause ?? null, buriedAt: c.buriedAt ?? null, knownAt: c.deathKnownAt ?? null })),
+      learned: world.deaths.learnedTimeline(), dread: world.deaths.dreadView(), gatherings: world.gatherings ?? [], stock: world.stock.view(),
+    })],
+    ['POST', /^\/api\/director\/death-news$/, (_req, body) => {
+      // testing: someone learns of a death (as if told), or a knower is prompted to break it to someone
+      const c = found(world.citizens.get(body.citizenId));
+      const dead = found(world.citizens.get(body.deadId));
+      if (dead.alive) throw httpError(400, `${dead.name} is not dead`);
+      if (body.listenerId) {
+        const o = found(world.citizens.get(body.listenerId));
+        world.perceive([c.id], { kind: 'system', text: `{{c:${o.id}}} doesn't know about {{c:${dead.id}}} yet.`, importance: 7, sourceId: o.id, data: { breakNews: { to: o.id, dead: dead.id } } });
+        world.logEvent('director', { action: 'break_news', citizenId: c.id, listenerId: o.id, deadId: dead.id });
+        return { ok: true };
+      }
+      const e = world.deaths.learn(c, dead.id, { how: 'told:director', certainty: ['certain', 'believed', 'doubted', 'suspected'].includes(body.certainty) ? body.certainty : 'believed' });
+      world.logEvent('director', { action: 'death_news', citizenId: c.id, deadId: dead.id });
+      return { ok: true, entry: e };
+    }],
+    ['POST', /^\/api\/director\/leak-check$/, (_req, body) => { world.debugLeakCheck = Boolean(body.enabled); return { enabled: world.debugLeakCheck }; }],
+    ['GET', /^\/api\/director\/leak-check$/, () => ({ enabled: Boolean(world.debugLeakCheck) })],
+    ['GET', /^\/api\/stock$/, () => world.stock.view()],
 
     // ---- Read models for the UI ----
     ['GET', /^\/api\/events$/, (req) => {

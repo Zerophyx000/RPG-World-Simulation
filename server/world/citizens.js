@@ -67,10 +67,15 @@ function defaultData() {
     onMyMind: [],           // [{ text, importance, gameTime, memoryId }], cleared at consolidation
     lastConsolidatedAt: null,
     lastDecayAt: null,
-    // step 4: day plans
-    plan: null,             // see agents/plan.js
-    yesterdayPlan: null,
-    needsPlan: true,        // plan at the next calm idle moment
+    // step 9.5: intentions and habits replace day plans (agents/intentions.js, agents/habits.js)
+    intentions: [],         // [{ id, text, about, place, source, createdAt, touchedAt, weight }], at most 8
+    habits: [],             // [{ id, what, window, place, action, strength, … }], generated, evolving
+    habitStreak: 0,         // habits carried out by code in a row (at most 2)
+    // step 9.5: death that matters (death/index.js)
+    knownDeaths: {},        // { deadId: { learnedAt, how, certainty, where, by? } }
+    knownNews: {},          // { personId: { news, from, at, certainty } } (hurt, missing, found alive)
+    fearedPlaces: {},       // { roomId: { since, why } } — dreaded since a death or the smell of one
+    mortal: null,           // { state: 'dangerous'|'critical', since, lastBump } — their own life in danger
     // step 5: objects (see world/objects.js)
     carrying: [],           // object ids held (mirror of objects.holder_id; at most 2 slots)
     knownObjects: {},       // { objectId: { lastSeenAt, roomId, holderId, placementSig, state, visible, touchedAt? } }
@@ -156,6 +161,12 @@ export function normalizeCitizen(row) {
     // step A2: sleep bookkeeping, defaulted so old rows load
     wokeEarly: normalizeWokeEarly(d.wokeEarly),
     lastUrgentAt: Number.isFinite(Number(d.lastUrgentAt)) ? Number(d.lastUrgentAt) : null,
+    // step 9.5
+    intentions: Array.isArray(d.intentions) ? d.intentions : [],
+    habits: Array.isArray(d.habits) ? d.habits : [],
+    knownDeaths: obj(d.knownDeaths),
+    knownNews: obj(d.knownNews),
+    fearedPlaces: obj(d.fearedPlaces),
   };
 }
 

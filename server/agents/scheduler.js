@@ -1,9 +1,10 @@
 // Scheduler: decides WHO thinks WHEN. Never decides WHAT they do; that is the model's job.
 //
 // Runs on every clock tick and shortly after every perception (poke). For an idle citizen, in order:
-//   1. a plan is due (needsPlan) and nothing urgent (>= 7) is pending → planning think (purpose 'plan')
-//   2. a day plan is running and nothing (>= 5) is pending → CODE runs the next plan step (no LLM call)
-//   3. otherwise → a decision, as before
+//   1. a habit is due, and the moment is calm (step 9.5, A3: habits.js calm()) → CODE carries out the habit (no LLM
+//      call; at most two in a row, then the citizen decides)
+//   2. otherwise → a decision
+// There are no day plans any more (step 9.5): intentions are only ever carried out by the citizen's own decisions.
 // Busy citizens: waiting/doing wake on importance >= 5; talking wakes when spoken to / their turn / urgent.
 //
 // Interrupts (aborting an in-flight think) are rare on purpose. The SOURCE of a stimulus marks it
@@ -11,7 +12,6 @@
 // critical body states). At most 1 interrupt per citizen per 5 game minutes.
 import { think } from './think.js';
 import { maxImportance } from '../world/perception.js';
-import { planActive, runPlan } from './plan.js';
 
 export const WAKE_IMPORTANCE = 5;
 export const INTERRUPT_EVERY_MINUTES = 5;
@@ -31,21 +31,24 @@ export class Scheduler {
     return true;
   }
 
-  /** What, if anything, this citizen should do now: 'plan' | 'step' | 'decide' | null. */
+  /** What, if anything, this citizen should do now: 'habit' | 'decide' | null. */
   next(c) {
     const w = this.world;
     if (!this.#ready(c)) return null;
     const a = c.activity.type;
     if (a === 'idle') {
-      const pending = maxImportance(c.inbox);
-      if (c.needsPlan && pending < 7 && !c.conversationId && w.now >= c.thinkCooldownUntil) return 'plan';
-      if (planActive(c) && pending < WAKE_IMPORTANCE && !c.conversationId) return 'step';
-      return w.now >= c.thinkCooldownUntil ? 'decide' : null;
+      if (w.now < c.thinkCooldownUntil) return null;
+      if (w.habits && maxImportance(c.inbox) < WAKE_IMPORTANCE && w.habits.autopilot(c)) return 'habit';
+      return 'decide';
     }
     if (w.now < c.thinkCooldownUntil) return null;
     switch (a) {
       case 'waiting':
-      case 'doing': return c.inbox.some((s) => s.importance >= WAKE_IMPORTANCE) ? 'decide' : null;
+      case 'doing': {
+        // step 9.5: a vigil is only broken by something urgent (>= 7)
+        const wakeAt = c.activity.detail?.kind === 'vigil' ? 7 : WAKE_IMPORTANCE;
+        return c.inbox.some((s) => s.importance >= wakeAt) ? 'decide' : null;
+      }
       case 'talking': return c.inbox.some((s) => s.data?.wake || s.data?.interrupt) ? 'decide' : null;
       default: return null;
     }
@@ -63,11 +66,14 @@ export class Scheduler {
     const due = [];
     for (const c of w.citizens.values()) {
       const n = this.next(c);
-      if (n === 'step') runPlan(w, c); // code carries out the plan: no LLM call
-      else if (n) due.push([c, n]);
+      if (n === 'habit') {
+        const h = w.habits.autopilot(c);
+        if (h && w.habits.run(c, h)) continue; // code carried out the habit: no LLM call
+        due.push(c);                            // it couldn't: they decide
+      } else if (n) due.push(c);
     }
-    due.sort((a, b) => maxImportance(b[0].inbox) - maxImportance(a[0].inbox));
-    for (const [c, n] of due) think(w, c, { mode: n === 'plan' ? 'plan' : 'decide' }); // think() never rejects
+    due.sort((a, b) => maxImportance(b.inbox) - maxImportance(a.inbox));
+    for (const c of due) think(w, c, { mode: 'decide' }); // think() never rejects
   }
 
   // Coalesce many perceptions in one synchronous burst into a single run.

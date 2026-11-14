@@ -60,7 +60,13 @@ export function loadWorldText(scenarioId) {
   try {
     extra = loadScenario(scenarioId).text;
   } catch { /* unknown scenario: just world.md */ }
-  return [base, extra].filter(Boolean).join('\n\n');
+  // step 9.5: the village's customs (content/customs/*.md, e.g. death.md), common knowledge for everyone
+  let customs = '';
+  try {
+    const dir = path.join(CONTENT_DIR, 'customs');
+    customs = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => readText(path.join(dir, f)).trim()).filter(Boolean).join('\n\n');
+  } catch { /* no customs */ }
+  return [base, extra, customs ? `Customs:\n${customs}` : ''].filter(Boolean).join('\n\n');
 }
 
 /**

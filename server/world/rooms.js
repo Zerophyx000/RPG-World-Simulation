@@ -12,7 +12,7 @@
 // keeping only the runtime-state fields above. Rooms created at runtime (origin 'runtime') are never touched.
 
 export const RUNTIME_ROOM_FIELDS = ['effects', 'serviceOverrides', 'blockedExits'];
-const SERVICE_KINDS = ['food', 'bed'];
+const SERVICE_KINDS = ['food', 'bed', 'burial']; // step 9.5: the chapel yard's burial ground
 
 export function normalizeRoom(row) {
   const data = typeof row.data === 'string' ? safeJson(row.data) : (row.data ?? {});
@@ -52,9 +52,17 @@ function normalizeServices(s) {
       minutes: clampInt(s.food.minutes, 1, 240, 30),
       hungerRelief: clampInt(s.food.hungerRelief, 1, 100, 60),
       description: String(s.food.description ?? 'something to eat'),
+      // step 9.5 (B6.1): who runs it and how much is left
+      ...(s.food.operator ? { operator: String(s.food.operator) } : {}),
+      ...(s.food.stock && typeof s.food.stock === 'object' ? { stock: { ...s.food.stock } } : {}),
     };
   }
   if (s.bed) out.bed = { quality: s.bed.quality === 'rough' ? 'rough' : 'good', description: String(s.bed.description ?? 'a bed') };
+  // step 9.5: other services (burial…) keep their description
+  for (const [k, v] of Object.entries(s)) {
+    if (k === 'food' || k === 'bed' || !v || typeof v !== 'object') continue;
+    out[k] = { description: String(v.description ?? k), ...(v.operator ? { operator: String(v.operator) } : {}), ...(v.stock && typeof v.stock === 'object' ? { stock: { ...v.stock } } : {}) };
+  }
   return out;
 }
 

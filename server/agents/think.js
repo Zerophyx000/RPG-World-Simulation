@@ -2,15 +2,15 @@
 // All state changes go through world.* methods; this module only orchestrates.
 //
 // mode 'decide' — the usual decision (purpose 'decide', tier from tiers.js)
-// mode 'plan'   — plan the day (purpose 'plan', tier full, only the make_plan tool)
+// (step 9.5: the day plan and its 'plan' mode are gone; intentions are edited inside decisions)
 import { buildMessages } from './prompt.js';
 import { buildTools, validateCall } from './tools.js';
 import { chooseTier } from './tiers.js';
-import { makePlanTool } from './plan.js';
 import { ranOut, RETRY_MAX, CAP_ABOVE, TIER_MAX_TOKENS } from '../llm.js'; // step A6: TIER_MAX_TOKENS comes from config (LLM_MAX_TOKENS_*)
 import { findLeaks } from '../social/leak.js';
 
-const LEAK_CHECK = process.env.DEBUG_LEAK_CHECK === 'true';
+// step 9.5: the director can switch the leak check on and off at runtime (world.debugLeakCheck)
+const leakCheckOn = (world) => world.debugLeakCheck ?? process.env.DEBUG_LEAK_CHECK === 'true';
 
 // A `say` decided while 3+ new lines were spoken in the same conversation answers a stale
 // question: think again once with the fresh transcript (cheaper than interrupting).
@@ -24,7 +24,7 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     console.error(`[think] could not start for ${c.id}:`, err);
     return;
   }
-  const purpose = mode === 'plan' ? 'plan' : 'decide';
+  const purpose = 'decide';
   const tierInfo = chooseTier(c, { purpose, stimuli: c.thinkingInbox }, world);
   t.tier = tierInfo.tier;
   // EMOTION_PARAM_EFFECTS (off by default): a slightly higher temperature under overwhelming anger or fear.
@@ -55,8 +55,7 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     outcome.tier = tierInfo.tier;
     outcome.tierReason = tierInfo.reason;
     outcome.callIds = callIds;
-    if (mode === 'plan') world.completePlanThink(c, t, outcome);
-    else world.completeThink(c, t, outcome);
+    world.completeThink(c, t, outcome);
   } catch (err) {
     if (!world.isCurrentThink(c, t) || t.controller.signal.aborted) world.abandonThink(c, t);
     else world.failThink(c, t, err);
@@ -67,10 +66,14 @@ export async function think(world, c, { mode = 'decide' } = {}) {
 async function decide(world, c, t, call, { mode, tier, maxTokens }) {
   const collect = { recalled: [] };
   const messages = buildMessages(world, c, { tier, mode, collect });
-  const tools = mode === 'plan' ? [makePlanTool(world, c)] : buildTools(world, c);
-  if (LEAK_CHECK) {
+  const tools = buildTools(world, c);
+  if (leakCheckOn(world)) {
     const leaks = findLeaks(world, `${messages.map((m) => m.content).join('\n')}\n${JSON.stringify(tools)}`, c.id);
-    if (leaks.length) world.logEvent('error', { actorId: c.id, location: c.location, message: `PROMPT LEAK: ${leaks.map((l) => `${l.kind} "${l.text}"`).join('; ')}`, leak: true });
+    if (leaks.length) {
+      const msg = `PROMPT LEAK: ${leaks.map((l) => `${l.kind} "${l.text}"`).join('; ')}`;
+      console.error(`[leak] ${c.id}: ${msg}`); // fails loudly (step 9.5), the think still runs
+      world.logEvent('error', { actorId: c.id, location: c.location, message: msg, leak: true, leaks });
+    }
   }
 
   const first = await call(messages, tools, tier, maxTokens);
@@ -99,7 +102,7 @@ async function decide(world, c, t, call, { mode, tier, maxTokens }) {
     } else {
       // plan mode: one cheap thinking-off attempt, as before
       const quick = buildMessages(world, c, { tier: 'none', mode, collect: null });
-      const retryRes = await call(quick, tools, 'none', RETRY_MAX[mode === 'plan' ? 'plan' : 'decide']);
+      const retryRes = await call(quick, tools, 'none', RETRY_MAX.decide);
       if (!world.isCurrentThink(c, t)) return null;
       outcome = interpret(retryRes, tools);
       outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;

@@ -128,6 +128,10 @@ export function directorEvent(world, input) {
 
   const ctx = { world, room, zones, reached: new Set(reached.map((c) => c.id)), eventId: ev.id };
   const applied = effects.map((e) => applyEffect(ctx, e));
+  // step 9.5 (B3.3): an event that does damage puts the village on edge (+1 dread)
+  const damaging = effects.some((e) => ['damage', 'injure', 'injury', 'kill'].includes(e.type))
+    || /explo|blast|fire|burn|collaps|smash|blood|shatter|crash/i.test(`${roomEffect?.text ?? ''} ${texts.here ?? ''}`);
+  if (damaging && room && world.deaths) world.deaths.raiseDread(world.maps.mapOf(room.id) ?? 'village', 1, `an incident at ${room.name}`);
   const objectChanges = applyObjectChanges(world, room, input.objectChanges, ev.id);
   return {
     eventId: ev.id,

@@ -1,7 +1,8 @@
 // Step 7B: death. Triggers (vitality <= 0, blood < 35%, a vital part destroyed) all end here, in one go:
-// thinks aborted, conversation and plan and party memberships ended, a body object created (the ONLY thing code
-// creates in this step), carried things dropped beside it (worn garments and aids stay on the body), witnesses told,
-// grief for the people who loved them (step 6). LETHAL=false turns it into permanent unconsciousness.
+// thinks aborted, conversation and party memberships ended, a body object created (code creates bodies and, step 9.5,
+// graves), carried things dropped beside it (worn garments and aids stay on the body), witnesses told. Step 9.5: grief
+// and fear no longer reach everyone at once — world.deaths.onDeath() tells the awake witnesses, and everybody else
+// learns by finding the body or being told. LETHAL=false turns it into permanent unconsciousness.
 import { config } from '../config.js';
 import { citizensIn } from '../world/rooms.js';
 import { ref } from '../memory/index.js';
@@ -31,20 +32,19 @@ export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {
     }
     const roomId = c.location;
     if (c.conversationId) w.conversations.leave(c, { reason: 'died' });
-    c.plan = null;
-    c.needsPlan = false;
+    const others = roomId ? citizensIn(w.citizens, roomId, { exceptId: c.id }) : [];
+    w.deaths.onDeath(c, { roomId, cause, witnesses: [] }); // ties first, while the groups still list them
     for (const m of w.groups.of(c.id)) w.groups.leave(m.group.id, c.id, { dissolveSmallParty: true });
 
-    const others = roomId ? citizensIn(w.citizens, roomId, { exceptId: c.id }) : [];
     const worn = wornGarments(w, c.id).concat(w.objects.wornBy(c.id).filter((o) => !wornGarments(w, c.id).includes(o)));
     // the body object
     const id = `body_${c.id}`;
     if (roomId && !w.objects.get(id)) {
       w.objects.create({
         id, type: 'corpse', room: roomId, name: `${c.name}'s body`, state: 'still', visibility: 'obvious',
-        surfaceText: 'a body lying where it fell',
+        surfaceText: 'someone lying very still',
         trueText: `${c.name} died of ${cause}.${worn.length ? ` Still wearing: ${worn.map((o) => w.objects.short(o)).join(', ')}.` : ''}`,
-        data: { citizenId: c.id, diedAt: w.now, short: `${c.name}'s body` },
+        data: { citizenId: c.id, diedAt: w.now, short: 'body', spot: c.spot ?? null },
       }, { actorId: 'code', origin: 'code' });
       // what they were carrying falls to the floor beside the body
       for (const o of w.objects.carriedBy(c.id)) {
@@ -61,33 +61,16 @@ export function killCitizen(body, c, { cause = 'injury', reason = 'injury' } = {
       importance: 10, sourceId: c.id, roomId, data: { interrupt: true, death: true },
     });
     w.saveCitizen(c);
-    grieve(body, c, others, cause);
+    // step 9.5: awake witnesses know at once (grief and fear for them now); everyone else finds out later
+    w.deaths.onDeath(c, { roomId, cause, witnesses: others });
+    for (const o of others) {
+      if (['sleeping', 'collapsed'].includes(o.activity.type)) continue;
+      if (/bled|blood|killed|slain|wound|stab|cut|blast|burn|fell/i.test(cause)) {
+        w.emotions.bump(o, { type: 'fear', target: null, delta: 5, cause: `I watched ${ref(c)} die`, source: 'death', raw: true, rule: 'witnessed_death' });
+      }
+    }
   } finally {
     body.dying.delete(c.id);
   }
   return true;
-}
-
-// Step 6 hooks: grief aimed at the dead (long half-life, strength from affinity), fear in witnesses, a mood drop for
-// close people. No-ops when the emotion system isn't there.
-function grieve(body, dead, witnesses, cause) {
-  const w = body.world;
-  if (!w.emotions?.bump) return;
-  const witnessIds = new Set(witnesses.map((x) => x.id));
-  for (const c of w.citizens.values()) {
-    if (!c.alive || c.id === dead.id || c.kind !== 'citizen') continue;
-    const rel = w.memory.rel(c.id, dead.id);
-    const affinity = rel?.affinity ?? 0;
-    if (affinity >= 3) {
-      const strength = Math.min(9, 6 + (affinity - 3) * 1.5);
-      w.emotions.bump(c, {
-        type: 'sadness', target: dead.id, delta: strength, cause: `${dead.name} is dead`, source: 'death', raw: true, rule: 'grief',
-        data: { grief: true, halfLifeHours: 24 * 10 },
-      });
-      w.emotions.directorMood?.({ citizenId: c.id, valence: -Math.min(4, affinity - 1), tension: 1 });
-    }
-    if (witnessIds.has(c.id) && /bled|blood|killed|slain|wound|stab|cut|blast|burn|fell/i.test(cause)) {
-      w.emotions.bump(c, { type: 'fear', target: null, delta: 5, cause: `I watched ${dead.name} die`, source: 'death', raw: true, rule: 'witnessed_death' });
-    }
-  }
 }

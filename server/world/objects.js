@@ -25,6 +25,7 @@ import path from 'node:path';
 import { CONTENT_DIR } from './scenarios.js';
 import { citizensIn } from './rooms.js';
 import { relativeTime } from './time.js';
+import { corpseText as corpseTextFor } from '../death/customs.js';
 
 export const RELATIONS = ['floor', 'on', 'in', 'behind', 'under', 'beside'];
 export const VISIBILITIES = ['obvious', 'noticeable', 'hidden'];
@@ -224,7 +225,8 @@ export class Objects {
    * whose it is (real ids like "greta_key" would leak ownership).
    */
   alias(o) {
-    return `${o.typeId}#${Math.floor(hash01(`alias|${o.id}`) * 1679616).toString(36).padStart(4, '0')}`;
+    // step 9.5: a body's handle must not say "corpse" to someone who only sees a person lying still
+    return `${o.typeId === 'corpse' ? 'figure' : o.typeId}#${Math.floor(hash01(`alias|${o.id}`) * 1679616).toString(36).padStart(4, '0')}`;
   }
 
   /** An alias (or a real id) back to the object. */
@@ -552,7 +554,10 @@ export class Objects {
     if (o.ownerId === viewer.id) return 'yours';
     const owner = this.world.citizens.get(o.ownerId);
     const r = this.world.memory.rel(viewer.id, o.ownerId);
-    return owner && r?.nameKnown && r.nameConfidence >= 0.5 && r.familiarity >= 1 ? `${owner.name}'s` : '';
+    if (!(owner && r?.nameKnown && r.nameConfidence >= 0.5 && r.familiarity >= 1)) return '';
+    // step 9.5: "Greta's (she's dead)" — only for those who know
+    if (!owner.alive && this.world.deaths?.knows(viewer, owner.id)) return `${owner.name}'s (${owner.persona?.sex === 'female' ? 'she' : owner.persona?.sex === 'male' ? 'he' : 'they'}'s dead)`.replace("they's", "they're");
+    return `${owner.name}'s`;
   }
 
   /** What this viewer calls the object in a sentence: "a full flour sack (Greta's)". */
@@ -589,7 +594,8 @@ export class Objects {
       if (blind && !(c.knownObjects?.[o.id] && c.knownObjects[o.id].roomId === roomId)) continue;
       if (!this.#perceives(c, o, tier, visit)) continue;
       const k = c.knownObjects?.[o.id];
-      const must = o.ownerId === c.id || (k?.touchedAt != null && this.world.now - k.touchedAt <= RECENT_TOUCH_MINUTES);
+      // step 9.5: a body is never lost in the clutter
+      const must = o.ownerId === c.id || o.typeId === 'corpse' || (k?.touchedAt != null && this.world.now - k.touchedAt <= RECENT_TOUCH_MINUTES);
       items.push({ o, tier, must, knownHidden: tier === 'hidden' });
     }
     const order = { obvious: 0, noticeable: 1, hidden: 2 };
@@ -628,13 +634,25 @@ export class Objects {
     return { here: listed, carried: this.carriedBy(c.id) };
   }
 
-  /** step 7B: a body, named only for people who know who it was. */
+  /** step 7B / 9.5: a body as this viewer knows it — "Greta, lying very still" until they know she is dead. */
   corpseText(viewer, o) {
-    const id = o.data?.citizenId;
-    const who = id ? this.world.citizens.get(id) : null;
-    const rel = who ? this.world.memory.rel(viewer.id, who.id) : null;
-    const known = who && rel?.nameKnown && rel.nameConfidence >= 0.5;
-    return known ? `${who.name}'s body, lying where ${who.persona?.sex === 'female' ? 'she' : who.persona?.sex === 'male' ? 'he' : 'they'} fell` : 'a body lying where it fell';
+    return corpseTextFor(this.world, viewer, o);
+  }
+
+  /**
+   * step 9.5: code removes an object (a body when it is buried). Like create, never a citizen's doing; the history
+   * keeps the last state.
+   */
+  remove(id, { actorId = 'code', reason = 'removed' } = {}) {
+    const o = this.byId.get(id);
+    if (!o) return false;
+    for (const x of this.around(id)) this.change(x.id, { placement: { relation: 'floor', of: null } }, { actorId: 'code', action: 'move', notify: false });
+    this.stmt.history.run(o.id, this.world.now, actorId, 'remove', JSON.stringify(snap(o)), JSON.stringify({ removed: reason }), '[]');
+    this.db.prepare('DELETE FROM objects WHERE id = ?').run(id);
+    this.byId.delete(id);
+    this.#syncCarrying();
+    this.world.bus.emit('object', { id, removed: true, roomId: o.roomId, reason });
+    return true;
   }
 
   /** A thing named in plain words ("the flour sacks") among what c can act on here; their own first. */
@@ -654,7 +672,8 @@ export class Objects {
     const { listed, overflow, kind } = this.perceiveRoom(c);
     const groups = new Map();
     for (const it of listed) {
-      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o, c)}|${it.o.typeId}`;
+      // step 9.5: every body is someone — never grouped ("two of: someone lying very still")
+      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o, c)}|${it.o.typeId}${it.o.typeId === 'corpse' ? `|${it.o.id}` : ''}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(it);
     }
@@ -823,7 +842,14 @@ export class Objects {
       for (const it of items) {
         if (old.objects[it.o.id] || it.tier !== 'obvious') continue;
         if ((it.o.data?.arrivedAt ?? -Infinity) <= old.at) continue;
-        changes.push({ o: it.o, kind: 'new', text: it.o.typeId === 'corpse' ? `${this.corpseText(c, it.o)} lies here, and it wasn't here before.`.replace(/^(\w)/, (m) => m.toUpperCase()) : `There is ${this.textFor(c, it.o, { withPlace: true })} that wasn't here before.`, importance: it.o.typeId === 'corpse' ? 8 : 3 });
+        if (it.o.typeId === 'corpse') {
+          // step 9.5: someone they don't know is dead is announced by world.deaths ("… is lying very still"), once
+          const deadId = it.o.data?.citizenId;
+          if (!deadId || !this.world.deaths?.knows(c, deadId)) continue;
+          changes.push({ o: it.o, kind: 'new', text: `${cap(this.corpseText(c, it.o))} — it wasn't here before.`, importance: 8 });
+          continue;
+        }
+        changes.push({ o: it.o, kind: 'new', text: `There is ${this.textFor(c, it.o, { withPlace: true })} that wasn't here before.`, importance: 3 });
       }
     }
 

@@ -63,16 +63,18 @@ export async function consolidate(world, c) {
   const user = [
     `# YOUR CORE MEMORY (who you are, as you see it)\n${c.coreMemory || '(nothing written yet)'}`,
     `# WHAT HAPPENED SINCE YOU LAST SLEPT\n${recent.map(line).join('\n') || '(nothing new)'}`,
-    (c.onMyMind ?? []).length ? `# WHAT WAS ON YOUR MIND\n${c.onMyMind.map((m) => `- ${m.text}`).join('\n')}` : '',
+    (c.onMyMind ?? []).length ? `# WHAT WAS ON YOUR MIND\n${c.onMyMind.map((m) => `- ${mem.resolveNames(c, m.text)}`).join('\n')}` : '',
+    deathsBlock(world, c),
     changedRels.length ? `# PEOPLE WHOSE PLACE IN YOUR LIFE CHANGED TODAY\n${changedRels.filter((r) => world.citizens.has(r.otherId)).map((r) => `- ${labelOf.get(r.otherId) ?? r.otherId}: ${relationLine(world, c, world.citizens.get(r.otherId)).text}`).join('\n')}` : '',
     gistCands.length ? `# OLD, MINOR MEMORIES (already fading)\n${gistCands.map(line).join('\n')}` : '',
     feelNow ? `# HOW YOU FELT GOING TO SLEEP\n${feelNow}` : '',
-    `# WHAT NOW\nYou are asleep. Your mind sorts the day. Rewrite your core memory (first person, at most 250 words: who you are now, what matters, your people, what you are working towards). Merge related memories from today into a few lasting ones (list the ids they merge). Let trivial ones fade. Turn the old, minor memories into vague gists. Update what you think of people whose place in your life changed. Under lingering, name the feelings that carry over into tomorrow (up to 3: emotion, who it is about, stronger or weaker, by how much 1–3), and under mood_shift say whether the day left you lower (−) or lighter (+) overall. Use only what is listed here. Call consolidate exactly once.`,
+    world.habits ? world.habits.consolidationBlock(c) : '',
+    `# WHAT NOW\nYou are asleep. Your mind sorts the day. Rewrite your core memory (first person, at most 250 words: who you are now, what matters, your people, what you are working towards). Merge related memories from today into a few lasting ones (list the ids they merge). Let trivial ones fade. Turn the old, minor memories into vague gists. Update what you think of people whose place in your life changed. Under lingering, name the feelings that carry over into tomorrow (up to 3: emotion, who it is about, stronger or weaker, by how much 1–3), and under mood_shift say whether the day left you lower (−) or lighter (+) overall. Use only what is listed here.${world.deaths?.knownDead(c).length ? ' Deaths you know of belong in your core memory: who, and what they were to you.' : ''}${world.habits ? ' Under habit_changes, say if your daily routine has changed (at most 2: a habit to add, change or drop, with why), judging by what you actually did lately.' : ''} Call consolidate exactly once.`,
   ].filter(Boolean).join('\n\n');
 
   const labelList = [...labels.keys()];
   const ids = [...allowed];
-  const feelLabels = mem.labelsFor(c, mem.knownPeople(c));
+  const feelLabels = mem.labelsFor(c, mem.knownPeople(c, { dead: true })); // step 9.5: grief may aim at the dead
   const tools = [{
     type: 'function',
     function: {
@@ -98,7 +100,8 @@ export async function consolidate(world, c) {
           fade: { type: 'array', items: { type: 'integer', enum: ids } },
           gists: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer', enum: gistCands.map((m) => m.id).length ? gistCands.map((m) => m.id) : [0] }, text: { type: 'string' } }, required: ['id', 'text'] } },
           relationship_summaries: { type: 'array', items: { type: 'object', properties: { person: { type: 'string', enum: labelList.length ? labelList : ['nobody'] }, summary: { type: 'string' } }, required: ['person', 'summary'] } },
-          lingering: { type: 'array', maxItems: 3, items: feelingItemSchema(world, [...mem.labelsFor(c, mem.knownPeople(c)).keys()]), description: 'Feelings that carry into tomorrow.' },
+          lingering: { type: 'array', maxItems: 3, items: feelingItemSchema(world, [...feelLabels.keys()]), description: 'Feelings that carry into tomorrow.' },
+          ...(world.habits ? { habit_changes: world.habits.changesSchema(c) } : {}),
           mood_shift: { type: 'integer', minimum: -2, maximum: 2, description: 'How the day left your mood overall: −2 much lower … +2 much lighter.' },
         },
         required: ['core_memory'],
@@ -112,7 +115,9 @@ export async function consolidate(world, c) {
   }, 'consolidate');
   const a = r.toolCalls?.find((t) => t.name === 'consolidate')?.arguments;
   if (!a || '_raw' in a) throw new Error('no usable consolidate call');
-  return apply(world, c, a, { allowed, gistIds: new Set(gistCands.map((m) => m.id)), labels, recent, gistCands, feelLabels });
+  const record = apply(world, c, a, { allowed, gistIds: new Set(gistCands.map((m) => m.id)), labels, recent, gistCands, feelLabels });
+  if (world.habits && Array.isArray(a.habit_changes)) record.habitChanges = world.habits.applyChanges(c, a.habit_changes);
+  return record;
 }
 
 function apply(world, c, a, { allowed, gistIds, labels, recent, gistCands, feelLabels }) {
@@ -173,7 +178,8 @@ function apply(world, c, a, { allowed, gistIds, labels, recent, gistCands, feelL
   const sinceLast = c.lastConsolidatedAt != null ? (world.now - c.lastConsolidatedAt) / 1440 : 1;
   const mood = world.emotions.nightly(c, record.moodShift, sinceLast);
   record.mood = { valence: Math.round(mood.valence * 100) / 100, tension: Math.round(mood.tension * 100) / 100 };
-  c.onMyMind = [];
+  // step 9.5: a death stays pinned on their mind for a week; everything else is sorted away
+  c.onMyMind = (c.onMyMind ?? []).filter((m) => m.pinnedUntil != null && m.pinnedUntil > world.now);
   c.lastConsolidatedAt = world.now;
   world.saveCitizen(c);
   const info = world.db.prepare('INSERT INTO consolidations (citizen_id, game_time, data) VALUES (?, ?, ?)').run(c.id, world.now, JSON.stringify(record));
@@ -182,6 +188,18 @@ function apply(world, c, a, { allowed, gistIds, labels, recent, gistCands, feelL
     lasting: record.lasting.length, merged: record.merged.length, faded: record.faded.length, gists: record.gists.length,
   });
   return record;
+}
+
+// step 9.5: the deaths they know of, so the core memory keeps them once the pin is gone
+function deathsBlock(world, c) {
+  const ids = world.deaths?.knownDead(c) ?? [];
+  if (!ids.length) return '';
+  const lines = ids.map((id) => {
+    const e = world.deaths.entry(c, id);
+    const where = world.rooms.get(e.where)?.name;
+    return `- ${world.memory.nameFor(c, id, { start: true })}${where ? ` (died at ${where})` : ''}${e.certainty === 'doubted' ? ' — you were told, but you are not sure' : ''}`;
+  });
+  return `# THE DEAD YOU KNOW OF\n${lines.join('\n')}`;
 }
 
 const DAILY = (importance) => (importance >= 9 ? 0.99 : importance >= 6 ? 0.97 : importance >= 3 ? 0.92 : 0.85);

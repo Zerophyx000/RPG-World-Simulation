@@ -1,5 +1,5 @@
 // Memory views for the inspector: constellation (SVG), core memory with history diff, relationships,
-// plan, and nights (consolidations).
+// and nights (consolidations). (Step 9.5: plans are gone; intentions and habits live in life-ui.js.)
 import { store } from '../store.js';
 import { esc, citizenName, roomName, gameTime } from '../util.js';
 import { SOURCE_ICON } from './social-ui.js';
@@ -174,15 +174,3 @@ export function relationshipsHtml(c, now) {
   }).join('')}</ul>`;
 }
 
-// ---------- plan ----------
-export function planHtml(c) {
-  const p = c.planView;
-  const y = c.yesterdayPlan;
-  if (!p && !y) return `<p class="muted">${c.needsPlan ? 'Will plan the day at the next calm moment.' : 'No plan.'}</p>`;
-  const steps = p ? p.steps.map((s, i) => {
-    const mark = s.status === 'done' ? '✓' : s.status === 'failed' ? '✗' : i === p.cursor && p.status === 'active' ? '→' : '·';
-    return `<li class="step ${s.status ?? ''} ${i === p.cursor ? 'cur' : ''}"><span class="mark">${mark}</span>${esc(s.text)}</li>`;
-  }).join('') : '';
-  return `${p ? `<div class="dim">${esc(p.status)}${p.interrupted ? ' · on hold' : ''} · made ${esc(gameTime(p.createdAt))}${p.dropped ? ` · ${p.dropped} step(s) dropped` : ''}</div><ol class="plan">${steps}</ol>` : ''}
-    ${y ? `<details><summary>yesterday</summary>${(y.done ?? []).map((t) => `<div>✓ ${esc(t)}</div>`).join('')}${(y.unfinished ?? []).map((t) => `<div class="dim">· ${esc(t)}</div>`).join('')}</details>` : ''}`;
-}

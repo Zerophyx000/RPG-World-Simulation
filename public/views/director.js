@@ -116,6 +116,16 @@ export function mount(el) {
         <div class="result" id="wh-result"></div>
       </form>
 
+      <div class="card" id="life-card">
+        <h3>Death &amp; dread (step 9.5)</h3>
+        <p class="muted">Who knows of a death is real state: citizens learn by seeing it, finding the body or being told. These are test levers.</p>
+        <div class="row"><label>Village dread <input id="dr-value" type="number" min="0" max="10" step="0.5" style="width:70px"></label><button type="button" id="dr-set">Set</button>
+          <label class="check"><input type="checkbox" id="dr-leak"> leak check</label></div>
+        <div class="row"><select id="dn-citizen" title="who learns / who knows"></select><select id="dn-dead" title="the dead"></select>
+          <select id="dn-listener" title="optional: prompt them to break it to…"><option value="">(learns it now)</option></select><button type="button" id="dn-go">Go</button></div>
+        <div class="result" id="dn-result"></div>
+      </div>
+
       <div class="card">
         <h3>Active room changes</h3>
         <div id="fx-list"></div>
@@ -261,6 +271,7 @@ export function mount(el) {
   });
   el.querySelector('#f-event').addEventListener('submit', sendEvent);
   el.querySelector('#f-whisper').addEventListener('submit', sendWhisper);
+  bindLifeCard(el);
   el.querySelector('#f-create').addEventListener('submit', createCitizen);
   el.querySelector('#f-object').addEventListener('submit', createObject);
   bindSocial(el);
@@ -580,6 +591,37 @@ function fillSelects() {
   const prevCit = cit.value;
   cit.innerHTML = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(roomName(c.location))})</option>`).join('');
   if (prevCit) cit.value = prevCit;
+  // step 9.5: death news test selects
+  const living = [...store.citizens.values()].filter((c) => c.alive !== false);
+  const dead = [...store.citizens.values()].filter((c) => c.alive === false);
+  for (const [sel, list, head] of [['#dn-citizen', living, ''], ['#dn-dead', dead, ''], ['#dn-listener', living, '<option value="">(learns it now)</option>']]) {
+    const el = root.querySelector(sel);
+    if (!el) continue;
+    const prev = el.value;
+    el.innerHTML = head + list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if (prev) el.value = prev;
+  }
+  const dv = root.querySelector('#dr-value');
+  if (dv && document.activeElement !== dv) dv.value = Object.values(store.dread ?? {})[0]?.value ?? 0;
+}
+
+// step 9.5: dread, the leak check, death news
+function bindLifeCard(el) {
+  el.querySelector('#dr-set')?.addEventListener('click', async () => {
+    try { store.dread = await api.post('/api/director/dread', { value: Number(val('#dr-value')) }); result('#dn-result', true, 'Dread set.'); } catch (err) { result('#dn-result', false, err.message); }
+  });
+  api.get('/api/director/leak-check').then((r) => { const cb = el.querySelector('#dr-leak'); if (cb) cb.checked = r.enabled; }).catch(() => {});
+  el.querySelector('#dr-leak')?.addEventListener('change', async (e) => {
+    try { await api.post('/api/director/leak-check', { enabled: e.target.checked }); result('#dn-result', true, `Leak check ${e.target.checked ? 'on' : 'off'}.`); } catch (err) { result('#dn-result', false, err.message); }
+  });
+  el.querySelector('#dn-go')?.addEventListener('click', async () => {
+    const body = { citizenId: val('#dn-citizen'), deadId: val('#dn-dead'), listenerId: val('#dn-listener') || undefined };
+    if (!body.deadId) return result('#dn-result', false, 'Nobody is dead.');
+    try {
+      await api.post('/api/director/death-news', body);
+      result('#dn-result', true, body.listenerId ? `${citizenName(body.citizenId)} is prompted to tell ${citizenName(body.listenerId)}.` : `${citizenName(body.citizenId)} now knows ${citizenName(body.deadId)} is dead.`);
+    } catch (err) { result('#dn-result', false, err.message); }
+  });
 }
 
 // ---------- effects builder ----------

@@ -11,6 +11,7 @@ const KINDS = {
   splash: { n: [3, 4], life: [180, 240], v: [20, 40], up: 0.5, g: 120, size: 1, color: ['water', 2], a: 0.9 },
   firefly: { n: [1, 1], life: [3000, 5000], v: [4, 10], up: 0, g: 0, size: 1, color: ['gold', 2], a: 1 },
   mote: { n: [1, 1], life: [4000, 6000], v: [2, 5], up: 0, g: -1, size: 1, color: ['flour', 2], a: 0.35 },
+  fly: { n: [1, 2], life: [700, 1100], v: [10, 22], up: 0.2, g: 0, size: 1, color: ['black', 0], a: 0.9 }, // step 9.5: over a decaying body
   soot: { n: [2, 3], life: [900, 1100], v: [2, 6], up: -0.5, g: 12, size: 1, color: ['black', 0], a: 0.8 },
 };
 const Z_COLOR = [150, 180, 245, 255];

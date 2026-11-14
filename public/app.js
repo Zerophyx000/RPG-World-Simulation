@@ -149,6 +149,15 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- data loading ----------
+// step 9.5: the village's dread, per region (a meter in the top bar once there is any)
+function renderDread() {
+  const el = document.querySelector('#dread');
+  if (!el) return;
+  const regions = Object.entries(store.dread ?? {}).filter(([, d]) => (d?.value ?? 0) > 0.05);
+  el.classList.toggle('hidden', !regions.length);
+  el.innerHTML = regions.map(([id, d]) => `<span>dread${regions.length > 1 ? ` ${id}` : ''}</span><span class="bar"><i style="width:${Math.min(100, d.value * 10)}%"></i></span><span>${d.value.toFixed(1)}</span>`).join(' ');
+}
+
 async function loadWorld() {
   const [w, convs, obs, events] = await Promise.all([
     api.get('/api/world'),
@@ -164,6 +173,10 @@ async function loadWorld() {
   store.observerStatus = obs.status;
   store.events = events;
   renderClock(w.clock);
+  store.dread = w.dread ?? {};
+  store.stock = w.stock ?? {};
+  store.gatherings = w.gatherings ?? [];
+  renderDread();
   api.get('/api/governor').then((g) => { store.governor = g; renderGovernor(); }).catch(() => {});
   if (store.selectedId && !store.citizens.has(store.selectedId)) select(null);
   for (const t of ['rooms', 'citizens', 'conversations', 'observer', 'events', 'objects']) emit(t);
@@ -243,6 +256,7 @@ function connect() {
     emit('governor', store.governor);
   });
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
+  es.addEventListener('dread', (m) => { store.dread = JSON.parse(m.data); renderDread(); emit('dread', store.dread); });
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
   es.addEventListener('group', () => emit('groups'));
   es.addEventListener('emotion_room', (m) => emit('emotion_room', JSON.parse(m.data)));

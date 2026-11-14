@@ -84,6 +84,27 @@ export class Maps {
     return (fromRoomId && r.room.entries?.[fromRoomId]) || this.doorSpot(roomId) || this.defaultSpot(roomId);
   }
 
+  /**
+   * step 9.5: a door barred shut on the way between two rooms: the door object mounted in the wall at the
+   * map door that leads from one to the other. → { door, insideRoom } or null.
+   */
+  barredBetween(fromRoom, toRoom) {
+    for (const [inside, other] of [[toRoom, fromRoom], [fromRoom, toRoom]]) {
+      const r = this.byRoom.get(inside)?.room;
+      if (!r) continue;
+      for (const d of r.doors ?? []) {
+        const to = Array.isArray(d.to) ? d.to : [d.to];
+        if (!to.includes(other)) continue;
+        for (const f of r.furniture ?? []) {
+          if (!f.wall || f.wall[0] !== d.tile[0] || f.wall[1] !== d.tile[1]) continue;
+          const o = this.world.objects.get(f.object);
+          if (o && o.state === 'barred' && o.roomId === inside) return { door: o, insideRoom: inside };
+        }
+      }
+    }
+    return null;
+  }
+
   doorSpot(roomId) {
     const r = this.byRoom.get(roomId);
     return [...(r?.spots.values() ?? [])].find((s) => /^(door|doorway)$/.test(s.id))?.id ?? null;
@@ -120,6 +141,7 @@ export class Maps {
     const r = this.byRoom.get(o.roomId);
     if (!r) return null;
     if (r.objectSpot.has(o.id)) return r.objectSpot.get(o.id);
+    if (o.data?.spot && r.spots.has(o.data.spot) && !o.placement?.of) return o.data.spot; // step 9.5: a body lies where they fell
     if (o.placement?.of) {
       const anchor = this.world.objects.get(o.placement.of);
       if (anchor) return this.objectSpot(anchor, depth + 1);

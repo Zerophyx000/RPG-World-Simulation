@@ -7,7 +7,7 @@ import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const LABEL_W = 96;
-const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸' };
+const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸', learned_death: '🕯', habit: '↺', gathering: '📣', burial: '⚱', news: '✉' };
 const LANE_H = 34;
 const TOP = 26;
 const MIN_SPAN = 15;

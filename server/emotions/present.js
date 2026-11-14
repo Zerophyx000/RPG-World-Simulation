@@ -41,7 +41,7 @@ function aimPhrase(world, c, e, def) {
   if (!e.target || !def.aim) return '';
   const mem = world.memory;
   const about = e.about ? (world.citizens.has(e.about) ? mem.nameFor(c, e.about) : world.objects.get(e.about) ? world.objects.surfaceText(world.objects.get(e.about)) : '') : '';
-  return ` ${def.aim.replace('{target}', mem.nameFor(c, e.target)).replace('{aboutEnvy}', about ? ` with ${about}` : '').replace('{about}', about || 'someone you care about')}`;
+  return ` ${def.aim.replace('{target}', mem.nameFor(c, e.target, { plain: true })).replace('{aboutEnvy}', about ? ` with ${about}` : '').replace('{about}', about || 'someone you care about')}`;
 }
 
 export function feelLines(world, c) {
@@ -152,8 +152,8 @@ export function hereNotes(world, c, room) {
   for (const e of emo.of(c)) {
     if (e.type !== 'sadness' || !e.target || e.intensity < SAD_REMIND) continue;
     const who = world.citizens.get(e.target);
-    if (!who || who.location === room.id) continue;
-    const name = world.memory.nameFor(c, who.id);
+    if (!who || (who.alive && who.location === room.id)) continue;
+    const name = world.memory.nameFor(c, who.id, { plain: true }); // step 9.5: possessives stay plain ("Greta's")
     const things = world.objects.perceiveRoom(c, room.id).listed.filter((it) => it.o.ownerId === who.id).slice(0, 2);
     for (const it of things) out.whatsHere.push(`- (it catches at you) ${world.objects.surfaceText(it.o)}: ${name}'s, still ${world.objects.placementPhrase(it.o) || 'here'}`);
     if (room.owner === who.id || who.home === room.id) out.rightNow.push(`This is ${name}'s place; everything in it speaks of ${pronounsOf(who).obj}.`);
