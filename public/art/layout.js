@@ -14,6 +14,8 @@ import { hash32 } from './rand.js';
 const centreOfRect = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 const WALL_TYPES = new Set(['door', 'shutters']);
 export const WALK_SPEED = 64;      // px per real second at a normal walk (two tiles a second)
+const DIRV = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+const FOLLOW_LAG = 0.75 * TILE;     // a walker following a trip stays this far behind the simulated position
 const SNAP_TILES = 30;             // further than this behind: jump (director moves, region changes, reloads)
 
 export function createLayout(maps) {
@@ -181,18 +183,46 @@ export function createLayout(maps) {
     }
     if (mv.goal !== key) {
       mv.goal = key;
-      const cur = tileOf(mv.x, mv.y);
-      const p = route(target.mapId, cur, tt);
-      const pts = (p ?? [cur, tt]).slice(1).map(([x, y]) => tilePx(x, y));
-      // step onto the centre of the current tile first, so the walk runs along tile lines (not along a standing offset)
-      const [cx0, cy0] = tilePx(cur[0], cur[1]);
-      if (pts.length && (Math.abs(mv.x - cx0) > 0.5 || Math.abs(mv.y - cy0) > 0.5)) pts.unshift([cx0, cy0]);
+      // Re-plan from the tile centre the walker is already stepping onto (never back to the one they are
+      // leaving: that made them turn back half a tile each time the target entered a new tile). Standing
+      // still: from the current tile, stepping onto its centre first so the walk runs along tile lines.
+      const next = mv.path?.[0];
+      const stepping = next && mv.moving;
+      const from = stepping ? tileOf(next[0], next[1] - 0.01) : tileOf(mv.x, mv.y);
+      const p = route(target.mapId, from, tt);
+      const pts = (p ?? [from, tt]).slice(1).map(([x, y]) => tilePx(x, y));
+      let head = stepping ? next : tilePx(from[0], from[1]);
+      // from a standing offset only line up across the way out (never a small step backwards first)
+      if (!stepping && pts.length) head = pts[0][1] === head[1] ? [mv.x, head[1]] : pts[0][0] === head[0] ? [head[0], mv.y] : head;
+      // a moving target still in the walker's own tile: wait for it to move on (it stays FOLLOW_LAG ahead)
+      if ((pts.length || !target.moving || stepping) && (Math.abs(mv.x - head[0]) > 0.5 || Math.abs(mv.y - head[1]) > 0.5)) pts.unshift(head);
       if (!target.moving) { if (pts.length) pts[pts.length - 1] = [target.x, target.y]; else pts.push([target.x, target.y]); }
       mv.path = pts;
     }
     let remaining = 0; let px = mv.x; let py = mv.y;
     for (const [x, y] of mv.path) { remaining += Math.abs(x - px) + Math.abs(y - py); px = x; py = y; }
-    const speed = Math.max(WALK_SPEED * speedFactor, remaining / 1.5); // catch up in about 1.5 s when the target ran ahead
+    // Speed. Following a moving target (a trip on the simulation's clock): the target's own pace, corrected
+    // so the walker stays about FOLLOW_LAG behind it. The path ends at the centre of the target's tile, so a
+    // walker that closed the gap would arrive there, stop, and wait for the target to enter the next tile
+    // (stop-and-go); keeping the lag means the next tile is always already planned. A fixed target: walking
+    // pace, faster when it is far (catch up in about 1.5 s).
+    if (mv.tx != null && dt > 0) {
+      const jump = Math.hypot(target.x - mv.tx, target.y - mv.ty);
+      if (!target.moving) mv.tv = 0;
+      else if (jump < TILE * 2) mv.tv = (mv.tv ?? 0) * 0.85 + (jump / dt) * 0.15;
+    }
+    mv.tx = target.x; mv.ty = target.y;
+    const pace = WALK_SPEED * speedFactor;
+    let speed;
+    if (target.moving) {
+      const [cx, cy] = tilePx(tt[0], tt[1]);
+      const [ux, uy] = DIRV[target.dir] ?? [0, 0];
+      const lag = remaining + (target.x - cx) * ux + (target.y - cy) * uy; // how far behind the real target
+      const tv = mv.tv ?? 0;
+      speed = Math.max(0.35 * tv, tv + 1.5 * (lag - FOLLOW_LAG));
+    } else {
+      speed = Math.max(pace, remaining / 1.5);
+    }
     let budget = speed * dt; let moved = 0;
     while (budget > 0.0001 && mv.path.length) {
       const [x, y] = mv.path[0];
@@ -206,7 +236,9 @@ export function createLayout(maps) {
       budget -= step; moved += step;
       if (Math.abs(x - mv.x) < 0.01 && Math.abs(y - mv.y) < 0.01) mv.path.shift();
     }
-    mv.moving = moved > 0.01;
+    // moving = walked this frame, or paused for a moment on a trip (no flicker into idle between steps)
+    if (moved > 0.01) mv.stillFor = 0; else mv.stillFor = (mv.stillFor ?? 1) + dt;
+    mv.moving = moved > 0.01 || (target.moving && mv.stillFor < 0.3);
     mv.dist = (mv.dist ?? 0) + moved;
     return mv;
   }

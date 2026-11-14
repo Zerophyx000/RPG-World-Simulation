@@ -2,8 +2,10 @@
 // small whole-body offsets (dx, dy) and character modifiers (blink, look, headDy, slump, lean, fists, crossArms, sway,
 // tilt, held). Everything comes from simulation state the map already has (activity, conversation bubbles, expressed
 // emotions, relationships in S.social, body status, personality traits); nothing is sent back, no LLM.
-//   1. pose:      dead / asleep / down on the floor > moving (walk, run, carry, crawl) > the activity (object type, then
-//                 keywords from content/art/activity-poses.json, then busy hands) > talking gestures > idle
+//   1. pose:      dead / asleep > moving (crawl only when the body status says they can't walk; otherwise walk, run,
+//                 carry, limping with a bad leg) > down on the floor when still (can't walk, dying, broken leg; in shock:
+//                 sitting) > the activity (object type, then keywords from content/art/activity-poses.json, then busy
+//                 hands) > talking gestures > idle
 //   2. facing:    the walk direction; in a conversation the current speaker (the speaker faces the addressee);
 //                 strong feelings override (face the beloved, stare at the rival, look away in shame)
 //   3. idle life: blinks, breathing, weight shifts, glances at arrivals and speakers, personality flavour
@@ -158,14 +160,22 @@ export function createAnimator(ctx) {
         const affection = strongest(emos, ['affection'], 5);
         const jealous = strongest(emos, ['jealousy', 'envy'], 4);
         const lying = c.alive === false || a.type === 'sleeping' || a.type === 'collapsed' || status.includes('unconscious');
-        const downOnFloor = status.some((s) => /crawling|can't move|paralyzed|in shock|dying/.test(s)) || p.legBroken;
+        // Mobility comes from the body status the server derives from capacities: only someone who can't walk
+        // crawls. Anyone else on the move walks (limping with a bad leg), whatever else is wrong with them.
+        const cantWalk = status.some((s) => /crawling|can't move|paralyzed/.test(s));
+        const limping = status.includes('limping') || p.legBroken;
+        // standing still: the badly hurt lie on the floor, someone in shock sits down on the ground
+        const downOnFloor = !p.moving && (cantWalk || status.includes('dying') || p.legBroken);
+        const sitsDown = !p.moving && !downOnFloor && status.includes('in shock') && a.type !== 'doing';
 
         // ---- 1. pose
         let entry = null;
         if (lying) out.pose = 'lie';
-        else if (downOnFloor) out.pose = p.moving ? 'crawl' : 'lie';
-        st.fearRun = Boolean(p.moving && fear && fear.intensity >= 6);
-        if (lying || downOnFloor) { /* chosen above */ }
+        else if (p.moving && cantWalk) out.pose = 'crawl';
+        else if (downOnFloor) out.pose = 'lie';
+        else if (sitsDown) out.pose = 'sit';
+        st.fearRun = Boolean(p.moving && !limping && fear && fear.intensity >= 6);
+        if (lying || downOnFloor || sitsDown || out.pose === 'crawl') { /* chosen above */ }
         else if (p.moving) out.pose = S.holding?.has(id) ? 'carry' : (st.speed > 160 || st.fearRun) ? 'run' : 'walk';
         else if (a.type === 'doing' && a.detail?.kind !== 'walk') { entry = activityEntry(a, S); out.pose = entry.pose ?? 'work'; }
         else if (a.type === 'waiting' && /sit|rest/.test(String(a.detail?.reason ?? ''))) out.pose = 'sit';
@@ -181,7 +191,10 @@ export function createAnimator(ctx) {
         if (p.moving && !st.awayDone && ms - st.leftAt < 1500 && st.partner) { st.awayUntil = ms + 250; st.awayDone = true; }
 
         // ---- frame index
-        if (out.pose === 'walk' || out.pose === 'run' || out.pose === 'carry') out.frame = Math.floor(p.dist / 6);
+        if (out.pose === 'walk' || out.pose === 'run' || out.pose === 'carry') {
+          out.frame = Math.floor(p.dist / 6);
+          if (limping) { const step = Math.floor(p.dist / 12) % 2; mods.tilt = step ? 1 : -1; out.dy += step; } // favouring one leg
+        }
         else if (out.pose === 'crawl') out.frame = Math.floor(p.dist / 5);
         else if (out.pose === 'talk') { const per = 520 - 220 * (traits.extraversion ?? 0.5) - 60 * Math.min(1, (anger?.intensity ?? 0) / 10); out.frame = Math.floor(ms / per) + st.talkPhase; }
         else if (out.pose === 'idle') { const fast = (fear?.intensity ?? 0) >= 5 || status.includes('in shock') || ms - st.stopAt < 5000; out.frame = Math.floor(ms / (fast ? 350 : PERIOD.idle)) + (hash32(id) & 1); }

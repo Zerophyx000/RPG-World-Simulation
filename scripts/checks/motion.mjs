@@ -102,5 +102,44 @@ const PL = createParticles({ pal, quality: createQuality('low') });
 PL.emit('spark', 1, 1);
 ok(PL.count() === 0, 'low quality: no particles');
 
+console.log('\n--- injured walkers');
+const hurt = (id, status, extra = {}) => person(id, { c: { body: { status } }, p: extra });
+const poseOf = (pp) => run([pp], {}, 3).seen.get(pp.c.id).at(-1).pose;
+ok(poseOf(hurt('shock', ['in shock', 'concussed'], { moving: true, dist: 30 })) === 'walk', 'in shock but able to walk: walks (not on the floor)');
+ok(poseOf(hurt('shock2', ['in shock'])) === 'sit', 'in shock, standing still: sits down on the ground');
+ok(poseOf(hurt('crawler', ['crawling only'], { moving: true, dist: 30 })) === 'crawl', 'crawling only, on the move: crawls');
+ok(poseOf(hurt('leg', ['limping'], { moving: true, dist: 30, legBroken: true })) === 'walk', 'a broken leg the body still walks on: walks (limping)');
+ok(poseOf(hurt('leg2', [], { legBroken: true })) === 'lie', 'a broken leg, standing still: down on the floor');
+
+console.log('\n--- the mover follows trips without stepping back or stopping');
+{
+  const { loadMapFiles } = await imp('server/world/maps.js');
+  const { createLayout } = await imp('public/art/layout.js');
+  const L = createLayout(loadMapFiles());
+  const OPP = { left: 'right', right: 'left', up: 'down', down: 'up' };
+  let back = 0; let stops = 0; let trips = 0;
+  for (const [from, to] of [['square', 'tavern'], ['bakery', 'square'], ['house_greta', 'smithy'], ['well', 'house_greta']]) {
+    for (const [minutes, secPerMin] of [[0.5, 2], [1, 1], [2, 2], [4, 1], [8, 2]]) {
+      trips++;
+      const c = { id: 'tester', location: from, spot: null, activity: { type: 'idle' } };
+      const mv = {}; const dt = 1 / 60;
+      L.stepMover(mv, L.citizenPlace(c, 0, 'down'), dt);
+      c.activity = { type: 'moving', since: 0, until: minutes, detail: { from, to, legStart: 0 } };
+      const total = minutes * secPerMin; let lastDir = null; let lx = mv.x; let ly = mv.y; let was = true;
+      for (let t = 0; t < total; t += dt) {
+        L.stepMover(mv, L.citizenPlace(c, t / secPerMin, mv.dir ?? 'down'), dt);
+        const dx = mv.x - lx; const dy = mv.y - ly;
+        const dir = Math.abs(dx) > 0.01 ? (dx > 0 ? 'right' : 'left') : Math.abs(dy) > 0.01 ? (dy > 0 ? 'down' : 'up') : null;
+        if (dir && lastDir && OPP[lastDir] === dir) back++;
+        if (dir) lastDir = dir;
+        if (t > 0.3 && t < total - 0.3 && was && !mv.moving) stops++;
+        was = mv.moving; lx = mv.x; ly = mv.y;
+      }
+    }
+  }
+  ok(back === 0, `${trips} trips: no step backwards (${back})`);
+  ok(stops === 0, `${trips} trips: no stop-and-go on the way (${stops})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
