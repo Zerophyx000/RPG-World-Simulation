@@ -18,6 +18,15 @@ const KINDS = {
   ember: { n: [1, 2], life: [600, 1000], v: [10, 24], up: 1, g: -20, size: 1, color: ['fire', 1], a: 1 },
   debris: { n: [4, 6], life: [300, 500], v: [30, 70], up: 0.7, g: 260, size: 1, color: ['wood', 1], a: 1 },
   blood: { n: [2, 4], life: [250, 400], v: [20, 45], up: 0.4, g: 200, size: 1, color: ['blood', 1], a: 1 },
+  // step 10: what each material throws when it breaks, lands or is struck (content/art/item-motions.json)
+  splinter: { n: [3, 5], life: [350, 550], v: [35, 75], up: 0.6, g: 280, size: 1, color: ['wood', 2], a: 1 },
+  shards: { n: [4, 6], life: [300, 500], v: [40, 90], up: 0.5, g: 300, size: 1, color: ['water', 2], a: 1 },
+  clay: { n: [3, 5], life: [300, 500], v: [30, 60], up: 0.5, g: 300, size: 1, color: ['ochre', 1], a: 1 },
+  puff: { n: [3, 5], life: [700, 1100], v: [8, 20], up: 0.4, g: -8, size: 3, color: ['flour', 2], a: 0.7 },
+  scrap: { n: [2, 3], life: [600, 900], v: [10, 25], up: 0.5, g: 60, size: 1, color: ['linen', 2], a: 0.9 },
+  straw: { n: [3, 5], life: [500, 800], v: [15, 35], up: 0.5, g: 120, size: 1, color: ['straw', 2], a: 1 },
+  steam: { n: [3, 4], life: [900, 1400], v: [6, 14], up: 1, g: -30, size: 3, color: ['flour', 2], a: 0.55 },
+  streak: { n: [2, 3], life: [90, 150], v: [60, 110], up: 0.2, g: 0, size: 1, color: ['iron', 2], a: 1 },
 };
 const Z_COLOR = [150, 180, 245, 255];
 

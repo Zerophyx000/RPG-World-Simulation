@@ -612,7 +612,7 @@ export function characterSprite(pal, spec) {
       let f = sheet.get(k);
       if (!f) {
         if (sheet.size > 600) sheet.clear(); // many modifier combinations: keep each sheet bounded
-        f = composeFrame(pal, { ...spec, expression }, d, pose, idx, mk ? mods : null); sheet.set(k, f);
+        f = composeFrame(pal, { ...spec, expression }, d, pose, idx, mk ? { ...mods, frame: idx } : null); sheet.set(k, f);
       }
       return f;
     },
@@ -623,8 +623,85 @@ export function characterSprite(pal, spec) {
 /** A stable key for the modifiers that change pixels ('' when none). */
 function modsKey(m) {
   if (!m) return '';
-  const k = `${m.blink ? 'b' : ''}${m.look ? `l${m.look}` : ''}${m.headDy ? `h${m.headDy}` : ''}${m.slump ? 's' : ''}${m.lean ? `n${m.lean}` : ''}${m.fists ? 'f' : ''}${m.crossArms ? 'x' : ''}${m.sway ? `w${m.sway}` : ''}${m.tilt ? `t${m.tilt}` : ''}${m.held ? `H${m.held}` : ''}`;
+  const k = `${m.blink ? 'b' : ''}${m.look ? `l${m.look}` : ''}${m.headDy ? `h${m.headDy}` : ''}${m.slump ? 's' : ''}${m.lean ? `n${m.lean}` : ''}${m.fists ? 'f' : ''}${m.crossArms ? 'x' : ''}${m.sway ? `w${m.sway}` : ''}${m.tilt ? `t${m.tilt}` : ''}${m.held ? `H${m.held}` : ''}${m.swing ? `S${m.swing}` : ''}`;
   return k;
+}
+
+// ---------- step 10: long things in the hand, drawn at an angle ----------
+// kind: chop (heavy: axe, hammer, bar, spade, club) · thrust (blade: sword, knife) · torch (held up) ; len in pixels
+// from the hand; head: what is at the far end (and grip: across the hand, for a sword's crossguard)
+const HELD_GEOM = {
+  axe: { kind: 'chop', len: 9, shaft: ['wood', 1], head: 'axe' },
+  hammer: { kind: 'chop', len: 7, shaft: ['wood', 1], head: 'block' },
+  bar: { kind: 'chop', len: 10, shaft: ['iron', 1], head: null },
+  spade: { kind: 'chop', len: 10, shaft: ['wood', 1], head: 'spade' },
+  club: { kind: 'chop', len: 7, shaft: ['wood', 1], head: 'knob' },
+  sword: { kind: 'thrust', len: 11, shaft: ['iron', 2], head: null, grip: 'guard' },
+  knife: { kind: 'thrust', len: 4, shaft: ['iron', 2], head: null, grip: 'hilt' },
+  torch: { kind: 'torch', len: 6, shaft: ['wood', 0], head: 'flame' },
+};
+// degrees: 0 = straight ahead, -90 = straight up, 90 = straight down (for a person facing right; mirrored facing left)
+const CHOP = [-160, -60, 25, 50]; // wound back behind the shoulder (the frame has no room above the head), over, down
+const SWING = [-165, -80, 10, 45];
+const frameOf = (mods) => (mods?.frame ?? 0);
+function heldAngle(geom, pose, frame, dir, swing) {
+  if (swing) {
+    const m = /^(chop|swing|thrust)(\d)$/.exec(swing);
+    if (m) {
+      const i = Number(m[2]);
+      if (m[1] === 'thrust') return i ? 0 : -20;
+      return (m[1] === 'swing' ? SWING : CHOP)[Math.min(3, i)];
+    }
+  }
+  if (geom.kind === 'torch') return -75;
+  if (pose === 'hammer') return CHOP[Math.min(3, frame)];
+  if (pose === 'push') return geom.kind === 'thrust' ? 0 : 20;
+  if (pose === 'sit' || pose === 'sitHigh') return 30;
+  return geom.kind === 'thrust' ? 70 : 75; // carried at the side, point or head down
+}
+
+function drawLong(target, pal, [hx, hy], geom, deg, dir) {
+  const c = (r, tn) => pal.color(r, tn);
+  // raised behind the head, the thing is behind the body: only where nothing of the person is drawn
+  const behind = deg < -95;
+  const put = (x, y, col) => { if (behind && target.alphaAt(x, y)) return; target.set(x, y, col); };
+  const img = {
+    set: put,
+    line: (x0, y0, x1, y1, col) => {
+      const dx = Math.abs(x1 - x0); const dy = -Math.abs(y1 - y0); const sx = x0 < x1 ? 1 : -1; const sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy; let x = x0; let y = y0;
+      for (let n = 0; n < 64; n++) { put(x, y, col); if (x === x1 && y === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x += sx; } if (e2 <= dx) { err += dx; y += sy; } }
+    },
+  };
+  const side = dir === 'left' ? -1 : 1;
+  const flat = dir === 'up' || dir === 'down' ? 0.45 : 1; // seen from the front or back, the swing is foreshortened
+  const a = (deg * Math.PI) / 180;
+  const ux = Math.cos(a) * side * flat; const uy = Math.sin(a);
+  const px = -uy * side; const py = Math.cos(a) * flat; // across the shaft
+  const len = geom.len + (behind ? 5 : 0); // raised behind the head it shows above it
+  const ex = Math.round(hx + ux * len); const ey = Math.round(hy + uy * len);
+  img.line(hx, hy, ex, ey, c(...geom.shaft));
+  if (geom.shaft[0] === 'iron' && geom.kind === 'thrust') img.line(hx + Math.round(px), hy + Math.round(py), Math.round(hx + ux * (geom.len - 1) + px), Math.round(hy + uy * (geom.len - 1) + py), c('iron', 1));
+  if (geom.grip === 'guard') img.line(Math.round(hx - px * 2), Math.round(hy - py * 2), Math.round(hx + px * 2), Math.round(hy + py * 2), c('iron', 0));
+  if (geom.grip === 'hilt') img.set(Math.round(hx - ux), Math.round(hy - uy), c('leather', 1));
+  switch (geom.head) {
+    case 'axe': // a blade across the shaft, on the side away from the swing
+      for (let i = 0; i <= 3; i++) for (let j = 0; j <= 2; j++) img.set(Math.round(ex - ux * j + px * i), Math.round(ey - uy * j + py * i), c('iron', i === 3 ? 2 : 1));
+      break;
+    case 'block':
+      for (let i = -2; i <= 2; i++) for (let j = 0; j <= 1; j++) img.set(Math.round(ex - ux * j + px * i), Math.round(ey - uy * j + py * i), c('iron', i === -2 ? 2 : 1));
+      break;
+    case 'spade':
+      for (let i = -1; i <= 1; i++) for (let j = 0; j <= 2; j++) img.set(Math.round(ex + ux * j + px * i), Math.round(ey + uy * j + py * i), c('iron', 1));
+      break;
+    case 'knob':
+      for (let i = -1; i <= 1; i++) for (let j = 0; j <= 2; j++) img.set(Math.round(ex - ux * j + px * i), Math.round(ey - uy * j + py * i), c('wood', 0));
+      break;
+    case 'flame':
+      img.set(ex, ey, c('black', 1)); img.set(ex, ey - 1, c('fire', 2)); img.set(ex - 1, ey - 2, c('fire', 1)); img.set(ex, ey - 3, c('fire', 2)); img.set(ex + 1, ey - 2, c('fire', 1));
+      break;
+    default: break;
+  }
 }
 
 function applyMods(img, t, pal, spec, mods, dir, pose, garments, ownGarmentPixels, skinRamp) {
@@ -645,8 +722,14 @@ function applyMods(img, t, pal, spec, mods, dir, pose, garments, ownGarmentPixel
   // things in the hands
   if (mods.held) {
     const anchor = (code) => { let sx = 0; let sy = 0; let n = 0; for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (at(x, y) === code) { sx += x; sy += y; n++; } return n ? [Math.round(sx / n), Math.round(sy / n)] : null; };
-    const hand = anchor(R.kL) ?? anchor(R.kR);
-    if (hand) {
+    // step 10: a raised arm can hide the hand: the forearm, the upper arm, then the shoulder stand in
+    const hand = anchor(R.kL) ?? anchor(R.kR) ?? anchor(R.fL) ?? anchor(R.fR) ?? anchor(R.uL) ?? anchor(R.uR) ?? [t.head.x + t.head.w, t.head.y + t.head.h + 3];
+    // step 10: long things (weapons, tools, torches) are drawn along an angle that follows the motion — raised behind
+    // the head, swung through, down at the impact for a chop; straight out for a thrust; hanging at the side at rest
+    const geom = HELD_GEOM[mods.held];
+    if (hand && geom) {
+      drawLong(img, pal, hand, geom, heldAngle(geom, pose, frameOf(mods), dir, mods.swing), dir);
+    } else if (hand) {
       const [hx, hy] = hand;
       const c = (r, tn) => pal.color(r, tn);
       switch (mods.held) {
@@ -656,6 +739,22 @@ function applyMods(img, t, pal, spec, mods, dir, pose, garments, ownGarmentPixel
         case 'book': img.rect(hx - 2, hy - 2, 5, 4, c('leather', 1)); img.rect(hx - 1, hy - 2, 3, 1, c('linen', 2)); break;
         case 'paper': img.rect(hx - 2, hy - 3, 4, 5, c('linen', 2)); img.set(hx - 1, hy - 1, c('linen', 0)); break;
         case 'hammer': img.line(hx, hy, hx, hy - 5, c('wood', 1)); img.rect(hx - 2, hy - 7, 5, 2, c('iron', 1)); break;
+        // step 10: weapons, lights, vessels and soft things in the hand (content/art/item-motions.json picks the drawing)
+        case 'axe': img.line(hx, hy + 1, hx, hy - 7, c('wood', 1)); img.rect(hx + 1, hy - 7, 3, 4, c('iron', 1)); img.line(hx + 4, hy - 7, hx + 4, hy - 4, c('iron', 2)); break;
+        case 'bar': img.line(hx - 1, hy + 2, hx + 1, hy - 7, c('iron', 0)); img.line(hx, hy + 2, hx + 2, hy - 7, c('iron', 1)); break;
+        case 'spade': img.line(hx, hy + 1, hx, hy - 7, c('wood', 1)); img.rect(hx - 1, hy + 2, 3, 3, c('iron', 1)); break;
+        case 'sword': img.line(hx, hy - 1, hx, hy - 10, c('iron', 2)); img.line(hx + 1, hy - 1, hx + 1, hy - 9, c('iron', 1)); img.rect(hx - 2, hy, 5, 1, c('iron', 0)); img.set(hx, hy + 1, c('leather', 1)); break;
+        case 'knife': img.line(hx, hy - 1, hx + 1, hy - 4, c('iron', 2)); img.set(hx, hy, c('leather', 1)); break;
+        case 'club': img.line(hx, hy + 1, hx, hy - 5, c('wood', 1)); img.rect(hx - 1, hy - 8, 3, 3, c('wood', 0)); break;
+        case 'stool': img.rect(hx - 3, hy - 6, 7, 2, c('wood', 2)); img.line(hx - 2, hy - 4, hx - 3, hy - 1, c('wood', 0)); img.line(hx + 2, hy - 4, hx + 3, hy - 1, c('wood', 0)); break;
+        case 'bottle': img.rect(hx - 1, hy - 5, 2, 5, c('green', 1)); img.set(hx - 1, hy - 6, c('green', 2)); img.set(hx, hy - 3, c('red', 1)); break;
+        case 'jug': img.rect(hx - 2, hy - 4, 4, 4, c('ochre', 1)); img.set(hx - 1, hy - 5, c('ochre', 2)); img.set(hx + 2, hy - 3, c('ochre', 0)); break;
+        case 'bucket': img.rect(hx - 2, hy, 5, 4, c('wood', 1)); img.rect(hx - 2, hy, 5, 1, c('iron', 1)); img.rect(hx - 1, hy + 1, 3, 1, c('water', 2)); break;
+        case 'torch': img.line(hx, hy + 1, hx, hy - 5, c('wood', 0)); img.rect(hx - 1, hy - 7, 3, 2, c('black', 1)); img.set(hx, hy - 8, c('fire', 2)); img.set(hx - 1, hy - 9, c('fire', 1)); img.set(hx, hy - 10, c('fire', 2)); break;
+        case 'lantern': img.rect(hx - 2, hy + 1, 4, 5, c('iron', 1)); img.rect(hx - 1, hy + 2, 2, 3, c('fire', 2)); img.set(hx, hy, c('iron', 2)); break;
+        case 'candle': img.rect(hx, hy - 3, 1, 3, c('linen', 2)); img.set(hx, hy - 4, c('fire', 2)); break;
+        case 'rope': img.ellipse(hx - 3, hy - 1, 6, 4, c('straw', 1)); img.ellipse(hx - 2, hy, 4, 2, c('straw', 0)); break;
+        case 'cloth': img.rect(hx - 1, hy, 3, 5, c('linen', 2)); img.set(hx + 1, hy + 4, c('linen', 1)); break;
         case 'broom': {
           const bx = hx + 2;
           img.line(bx, hy - 3, bx + (pose === 'sweep' ? 3 : 1), FEET_Y - 2, c('wood', 1));

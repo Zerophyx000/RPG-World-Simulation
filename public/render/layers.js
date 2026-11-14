@@ -9,8 +9,9 @@ import { createParticles } from './particles.js';
 import { createEffects } from './effects.js';
 import { createStory } from './story.js';
 import { createFire } from './fire.js'; // step 10
+import { createItems } from './items.js'; // step 10: items in motion
 import { createSubjective } from './subjective.js';
 
 export function createLayers(ctx) {
-  return [createSubjective(ctx), createTraces(ctx), createLighting(ctx), createDepth(ctx), createAmbient(ctx), createParticles(ctx), createFire(ctx), createEffects(ctx), createStory(ctx)];
+  return [createSubjective(ctx), createTraces(ctx), createLighting(ctx), createDepth(ctx), createAmbient(ctx), createParticles(ctx), createItems(ctx), createFire(ctx), createEffects(ctx), createStory(ctx)];
 }

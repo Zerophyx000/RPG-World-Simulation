@@ -15,6 +15,7 @@
 import { hash32, mulberry } from '../art/rand.js';
 import * as character from '../art/character.js';
 import { TILE } from '../art/mapdata.js';
+import { motionOf, typeOfAlias } from '../art/itemmotion.js'; // step 10: each kind of item moves its own way
 
 const DEFAULT_POSES = {
   objects: {
@@ -42,6 +43,14 @@ const ACT_POSE = {
   break_free: 'work', pull_away: 'idle', yield: 'kneel', plead: 'kneel', embrace: 'idle', hold_hand: 'idle', comfort: 'idle', support: 'walk', get_up: 'kneel',
 };
 const BLOWS = new Set(['shove', 'slap', 'punch', 'kick', 'strike', 'throw_at']);
+const STEP_MS = 120; // one phase of a blow at speed 1 (a heavy axe at 0.75 is slower, a knife at 1.3 quicker)
+/** How a blow moves: a chop for heavy things, a thrust for blades, a swing for the rest; bare blows have no held motion. */
+function swingKind(action, wm) {
+  if (action !== 'strike' && action !== 'throw_at') return null;
+  if (!wm) return null;
+  if (action === 'throw_at') return 'swing';
+  return wm.cls.strike === 'chop' ? 'chop' : wm.cls.strike === 'thrust' ? 'thrust' : 'swing';
+}
 const HANDLE_POSE = { push: 'push', break: 'hammer', throw: 'push', pour: 'work', fill: 'crouch', ignite: 'crouch', light: 'work', douse: 'work', smother: 'work', open: 'work', close: 'work', lock: 'work', unlock: 'work', bar: 'work', unbar: 'work', put_in: 'crouch', take_out: 'crouch', sit_on: 'sitHigh', lie_on: 'lie', force: 'push' };
 const HANDLE_FX = { break: 'debris', pour: 'splash', smother: 'smoke', ignite: 'ember', force: 'dust' };
 // frame period (ms) of the looping work poses
@@ -66,6 +75,7 @@ export function createAnimator(ctx) {
   const regex = new Map();
   const quality = ctx.quality;
   const seenExchanges = new Map(); // step 10: altId -> exchanges already seen
+  const pendingHits = [];          // step 10: blows waiting for their impact frame
 
   function stateOf(id, ms) {
     let st = state.get(id);
@@ -146,16 +156,53 @@ export function createAnimator(ctx) {
         if (!cur || b.born > cur.born) speakerOf.set(b.conversationId, { id, ...b });
       }
 
+      // step 10: what everyone carries (a weapon shows in the hand in a fight, a light at night, else the first thing that has a drawing)
+      const carried = new Map();
+      for (const o of S.objects?.values() ?? []) {
+        if (!o.holderId || o.placement?.relation === 'worn') continue;
+        (carried.get(o.holderId) ?? carried.set(o.holderId, []).get(o.holderId)).push(o);
+      }
+      const night = (F.dayMin ?? 720) < 6 * 60 || (F.dayMin ?? 720) > 20 * 60;
+      const heldFor = (c) => {
+        const list = (carried.get(c.id) ?? []).map((o) => ({ o, m: motionOf(ctx.art?.itemMotions, o) })).filter((x) => x.m.held);
+        if (!list.length) return null;
+        const fighting = c.altercation || c.activity?.detail?.kind === 'act';
+        const weapon = list.find((x) => ['heavy', 'blade'].includes(x.m.class)) ?? list.find((x) => x.m.class === 'light');
+        const light = list.find((x) => x.m.class === 'light_source' && ['lit', 'burning'].includes(x.o.state));
+        return (fighting && weapon) || (night && light) || light || list.find((x) => x.m.class === 'vessel') || weapon || list[0];
+      };
       // step 10: a new blow in any fight makes its target stagger (and bleed, when it drew blood)
       for (const alt of S.altercations ?? []) {
         const n = alt.exchanges?.length ?? 0;
-        const seenN = seenExchanges.get(alt.id) ?? n;
+        // a fight seen for the first time: its last half game minute still plays (it may be the blow that started it)
+        const seenN = seenExchanges.has(alt.id) ? seenExchanges.get(alt.id) : (alt.exchanges ?? []).filter((e) => e.at < (S.now ?? 0) - 0.5).length;
         seenExchanges.set(alt.id, n);
         for (const e of (alt.exchanges ?? []).slice(Math.max(0, n - (n - seenN)))) {
-          if (!e.hit || !BLOWS.has(e.action) && !['grab', 'choke', 'pin_down'].includes(e.action)) continue;
-          const st = stateOf(e.target, ms); st.hitAt = ms; st.hitFrom = e.actor;
-          const tp = F.people.get(e.target);
-          if (tp && quality?.get?.('particles') !== false) { F.emit('dust', tp.x, tp.y - 14); if ((e.effects ?? []).includes('bleeding')) F.emit('blood', tp.x, tp.y - 16); }
+          if (!BLOWS.has(e.action) && !['grab', 'choke', 'pin_down'].includes(e.action)) continue;
+          const wm = e.with ? motionOf(ctx.art?.itemMotions, { typeId: typeOfAlias(e.with) }) : null;
+          const kind = swingKind(e.action, wm);
+          const step = STEP_MS / (wm?.cls.speed ?? 1);
+          const sa = stateOf(e.actor, ms); sa.swingAt = ms; sa.swingKind = kind; sa.swingTarget = e.target; sa.swingStep = step; sa.swingWith = e.with ? typeOfAlias(e.with) : null;
+          // the impact: the third phase of a chop or a swing, the second of a thrust; a miss whooshes past
+          const delay = kind === 'thrust' ? step : kind === 'chop' || kind === 'swing' ? step * 2 : 0;
+          pendingHits.push({ at: ms + delay, e, wm });
+        }
+      }
+      for (let i = pendingHits.length - 1; i >= 0; i--) {
+        const h = pendingHits[i];
+        if (h.at > ms) continue;
+        pendingHits.splice(i, 1);
+        const { e, wm } = h;
+        const tp = F.people.get(e.target);
+        if (!e.hit) { if (tp && wm?.cls.streak && quality?.get?.('particles') !== false) F.emit('streak', tp.x - 6, tp.y - 18); continue; }
+        const st = stateOf(e.target, ms); st.hitAt = ms; st.hitFrom = e.actor; st.hitHard = wm?.class === 'heavy' ? 2 : 1;
+        if (tp && quality?.get?.('particles') !== false) {
+          F.emit(wm ? (wm.mat.hit && wm.mat.hit !== 'none' ? wm.mat.hit : 'dust') : 'dust', tp.x, tp.y - 14);
+          if (wm?.cls.streak) F.emit('streak', tp.x, tp.y - 16);
+          if (wm?.class === 'heavy' && wm.material === 'iron') F.emit('spark', tp.x, tp.y - 16);
+          if ((e.effects ?? []).includes('bleeding')) { F.emit('blood', tp.x, tp.y - 16); if (wm?.class === 'blade' || wm?.class === 'heavy') F.emit('blood', tp.x + 2, tp.y - 12); }
+          if ((e.effects ?? []).includes('weapon broke') && wm) F.emit(wm.mat.break ?? 'splinter', tp.x, tp.y - 16);
+          if ((e.effects ?? []).includes('knocked down')) F.emit('dust', tp.x, tp.y - 2);
         }
       }
       for (const p of F.people.values()) {
@@ -237,7 +284,7 @@ export function createAnimator(ctx) {
           const from = F.people.get(st.hitFrom);
           const away = from ? (Math.sign(p.x - from.x) || 1) : 1;
           const k = 1 - (ms - st.hitAt) / 450;
-          out.dx += away * Math.round(4 * k); mods.tilt = away;
+          out.dx += away * Math.round(4 * (st.hitHard ?? 1) * k); mods.tilt = away;
         }
         // leaving a conversation: turn away first, then walk
         if (c.conversationId) { st.convId = c.conversationId; st.partner = S.faceOf?.get(id) ?? st.partner; st.awayDone = false; }
@@ -267,6 +314,32 @@ export function createAnimator(ctx) {
         if (a.type === 'sleeping' && !p.inBed && ms - st.lastZ > 1500) { st.lastZ = ms; F.emit('z', p.x + 6, p.y - 16); }
         else if (a.type === 'sleeping' && p.inBed && ms - st.lastZ > 1800) { st.lastZ = ms; F.emit('z', p.x + 6, p.y - 34); }
         if (entry?.held) mods.held = entry.held;
+        // step 10: a kick is a stride with the leg thrown forward (not an arm); a slap comes from higher than a punch
+        if (act === 'kick' && !lying) { out.pose = 'walk'; out.frame = 2; out.dy -= 1; }
+        if (act === 'slap' && !lying) { out.dy -= 1; mods.tilt = mods.tilt ?? (actTarget ? Math.sign(actTarget.x - p.x) || 1 : 1); }
+        // step 10: whatever they carry shows in the hand; a strike moves by the weapon's class (an overhead chop for heavy
+        // things, a thrust for blades, a quick swing for the rest); a carried light lights the way
+        if (!lying && !mods.held) {
+          const h = heldFor(c);
+          if (h) {
+            mods.held = h.m.held;
+            // a blow plays its motion phase by phase: chop (wound back, over, down, follow-through), swing, thrust
+            const since = ms - (st.swingAt ?? -1e9);
+            const phases = st.swingKind === 'thrust' ? 2 : 4;
+            if (st.swingKind && since < (st.swingStep ?? STEP_MS) * (phases + 2)) {
+              const ph = Math.min(phases - 1, Math.floor(since / (st.swingStep ?? STEP_MS)));
+              mods.swing = `${st.swingKind === 'thrust' ? 'thrust' : st.swingKind === 'chop' ? 'chop' : 'swing'}${ph}`;
+              out.pose = st.swingKind === 'thrust' ? 'push' : 'hammer';
+              out.frame = Math.min(2, ph);
+              const tgt = a.detail?.targetId ? F.people.get(a.detail.targetId) : null;
+              const fwd = tgt ? (Math.sign(tgt.x - p.x) || 1) : sideSign(out.dir) || 1;
+              if (st.swingKind === 'thrust') out.dx += fwd * (ph ? 4 : -1);              // a lunge
+              else out.dx += fwd * [-1, 0, 2, 3][ph]; out.dy += ph === 2 ? 1 : 0;         // weight behind the blow
+            } else if (act === 'strike') { out.pose = h.m.cls.pose ?? out.pose; }
+            if (act === 'throw_at' && h.m.class === 'throwable') out.pose = 'push';
+            if (h.m.class === 'light_source' && ['lit', 'burning'].includes(h.o.state) && F.lights) F.lights.push({ wx: p.x + 4, wy: p.y - 12, r: h.m.cls.carriedLight ?? 40, k: 0.85, roomId: p.roomId, objectId: h.o.id });
+          }
+        }
 
         // ---- 2. facing
         if (!p.moving && !lying) {
@@ -377,6 +450,14 @@ export function createAnimator(ctx) {
           if (sway) mods.sway = Math.max(-2, Math.min(2, sway));
         }
         if (ms < st.awayUntil && st.partner) { const q = F.people.get(st.partner); if (q) { out.dir = awayFrom(dirToward(p, q)); out.pose = 'idle'; out.frame = 0; } }
+        // step 10: in a fight you face whom you act on or swing at, and whoever just hit you (over any other facing)
+        if (!lying) {
+          const swingT = st.swingTarget && ms - (st.swingAt ?? -1e9) < 1200 ? F.people.get(st.swingTarget) : null;
+          const hitter = st.hitAt && ms - st.hitAt < 1500 ? F.people.get(st.hitFrom) : null;
+          const thing = hnd && a.detail?.objectId ? F.objectPos?.get(a.detail.objectId) : null; // handling something: face it
+          const facing = (act && actTarget) || swingT || hitter || thing;
+          if (facing && facing !== p) out.dir = dirToward(p, facing);
+        }
         if (out.dir !== st.prevDir) {
           if (opposite(out.dir, st.prevDir)) { st.turnVia = character.turnVia ? character.turnVia(st.prevDir, out.dir) : (sideSign(out.dir) ? 'down' : 'left'); st.turnUntil = ms + 90; }
           st.prevDir = out.dir;

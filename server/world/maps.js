@@ -256,7 +256,7 @@ export function artContent() {
     ? fs.readdirSync(odir).filter((f) => f.endsWith('.json')).sort().flatMap((f) => JSON.parse(fs.readFileSync(path.join(odir, f), 'utf8')))
     : [];
   const readOpt = (f) => (fs.existsSync(path.join(dir, f)) ? JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) : null);
-  return { palette, recipes, clutter: readOpt('clutter.json'), activityPoses: readOpt('activity-poses.json') }; // step 9
+  return { palette, recipes, clutter: readOpt('clutter.json'), activityPoses: readOpt('activity-poses.json'), itemMotions: readOpt('item-motions.json') }; // step 9; step 10: item motions
 }
 
 /** A* that lets the start and end tiles be blocked (a bed, a chair). */
