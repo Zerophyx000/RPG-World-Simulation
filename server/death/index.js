@@ -31,6 +31,9 @@ const SCAN_EVERY = 1;                // bodies seen, news to break
 const VIOLENT = /bled|blood|blast|stab|cut|burn|crush|kill|slain|wound|fell|skull|blow|beaten|struck|shot|drown/i;
 const REMINDER_EVERY = 30;           // per reminder kind
 const DREAD_MAX = 10;
+// news of a death in plain words — including the words of burial ("lay him to rest", "Jonas's burial"), seen in a GLM run
+export const DEATH_WORDS = /\b(dead|died|dies|death|no breath|not breathing|isn't breathing|stopped breathing|passed|gone|killed|lifeless|cold and still|bury|buried|burial|funeral|grave|mourn\w*|laid to rest|lay \w+ to rest|laying \w+ to rest|to rest|vigil|wake for)\b/i;
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export class Deaths {
   constructor(world) {
@@ -128,6 +131,32 @@ export class Deaths {
     }
     w.saveCitizen(c);
     return e;
+  }
+
+  /**
+   * Plain speech counts as telling (seen in a GLM run: "It's her. I found her cold on the floor — no breath in her."
+   * left the listener merely suspecting for hours). When someone who knows of a death says it — the dead's name, or a
+   * pronoun while the body lies right here — together with words of death, the hearers learn it (believed or doubted
+   * by their trust in the speaker).
+   */
+  onSpeech(speaker, text, hearers) {
+    const w = this.world;
+    const said = String(text ?? '');
+    if (!hearers.length || !DEATH_WORDS.test(said)) return;
+    for (const deadId of this.knownDead(speaker)) {
+      const dead = w.citizens.get(deadId);
+      if (!dead) continue;
+      const named = new RegExp(`\\b${escapeRe(dead.name)}\\b`, 'i').test(said);
+      const p = pronouns(dead);
+      const bodyHere = [...w.objects.inRoom(speaker.location)].some((o) => o.typeId === 'corpse' && o.data?.citizenId === deadId);
+      const pointed = bodyHere && new RegExp(`\\b(${p.subj}|${p.obj}|${p.poss})\\b`, 'i').test(said);
+      if (!named && !pointed) continue;
+      for (const o of hearers) {
+        if (o.id === deadId || this.knows(o, deadId)) continue;
+        const trust = w.memory.rel(o.id, speaker.id)?.trust ?? 0;
+        this.learn(o, deadId, { how: `told:${speaker.id}`, certainty: trust < 0 ? 'doubted' : 'believed', where: this.entry(speaker, deadId)?.where ?? null, by: speaker.id });
+      }
+    }
   }
 
   /** Death itself (from body/death.js): ties are kept for grief, awake witnesses know at once. */
@@ -482,7 +511,7 @@ export class Deaths {
         if (things.length && c.location !== d.home) this.remind(c, deadId, 'belongings', `Things of ${ref(d)}'s are here.`);
         // their habits' windows ("This is when Jonas used to sweep the floor")
         const h = w.habits?.windowNow(d);
-        if (h) this.remind(c, deadId, `habit:${h.id}`, `This is when ${ref(d)} used to ${h.what}.`);
+        if (h) this.remind(c, deadId, `habit:${h.id}`, h.doing ? `At this hour ${plainRef(d)} would be ${h.doing.replace(/^(\w)/, (m) => m.toLowerCase())}.` : `This was ${plainRef(d)}'s time for: ${h.what.replace(/^(\w)/, (m) => m.toLowerCase())}.`);
         // others who grieve them
         for (const o of citizensIn(w.citizens, c.location, { exceptId: c.id })) if (this.griefFor(o, deadId) >= 3) { this.remind(c, deadId, 'mourner'); break; }
       }

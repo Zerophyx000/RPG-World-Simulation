@@ -115,6 +115,8 @@ export async function consolidate(world, c) {
   }, 'consolidate');
   const a = r.toolCalls?.find((t) => t.name === 'consolidate')?.arguments;
   if (!a || '_raw' in a) throw new Error('no usable consolidate call');
+  // step 9.5: they died while their mind was sorting the day — the dead keep no new memories or habits
+  if (!c.alive || world.citizens.get(c.id) !== c) return null;
   const record = apply(world, c, a, { allowed, gistIds: new Set(gistCands.map((m) => m.id)), labels, recent, gistCands, feelLabels });
   if (world.habits && Array.isArray(a.habit_changes)) record.habitChanges = world.habits.applyChanges(c, a.habit_changes);
   return record;

@@ -40,7 +40,7 @@ export function intentionsParam(world, c) {
   };
   return {
     type: 'object',
-    description: "Optional. Add, finish or drop things you mean to do. Drop anything that no longer matters.",
+    description: "Optional. Add, finish or drop things you mean to do LATER (not what you are doing right now). Drop anything that no longer matters.",
     properties: {
       add: { type: 'array', maxItems: MAX_ADDS, items: item },
       ...(ids.length ? { done: { type: 'array', items: { type: 'string', enum: ids } }, drop: { type: 'array', items: { type: 'string', enum: ids } } } : {}),

@@ -51,5 +51,6 @@
   {"id": "tavern_blanket", "type": "blanket", "room": "tavern", "owner": "anselm", "state": "folded", "short": "blanket"},
   {"id": "bakery_cloth", "type": "cloth", "room": "bakery", "owner": "greta", "state": "clean", "short": "linen cloth"},
   {"id": "tavern_cloth", "type": "cloth", "room": "tavern", "owner": "anselm", "state": "clean", "short": "linen cloth"},
-  {"id": "lena_cloth", "type": "cloth", "room": "house_lena", "owner": "lena", "state": "clean", "short": "linen cloth"}
+  {"id": "lena_cloth", "type": "cloth", "room": "house_lena", "owner": "lena", "state": "clean", "short": "linen cloth"},
+  {"id": "well_bucket", "type": "bucket", "room": "well", "state": "full", "surfaceText": "a wooden bucket by the winch, full of well water", "short": "bucket"}
 ]

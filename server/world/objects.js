@@ -545,6 +545,11 @@ export class Objects {
     const anchor = this.byId.get(p.of);
     if (!anchor) return '';
     if (viewer && anchor.typeId === o.typeId) return `${RELATION_WORD[p.relation]} ${this.shortFor(viewer, anchor)}`;
+    // step 9.5: something laid over the dead must not say "body" to someone who only sees a person lying still
+    if (anchor.typeId === 'corpse') {
+      const knows = viewer && anchor.data?.citizenId && this.world.deaths?.knows(viewer, anchor.data.citizenId);
+      return p.relation === 'on' ? (knows ? 'laid over the body' : 'laid over the one lying still') : `${RELATION_WORD[p.relation]} ${knows ? 'the body' : 'the one lying still'}`;
+    }
     return `${RELATION_WORD[p.relation]} ${this.short(anchor)}`;
   }
 

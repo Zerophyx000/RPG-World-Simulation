@@ -172,7 +172,8 @@ async function remember(world, conv, c, limits, path) {
 
   const labelList = [...labels.keys()];
   // step 9.5: everyone they know, the dead they know of included (for news and intentions about them)
-  const newsPeople = world.memory.labelsFor(c, world.memory.knownPeople(c, { dead: true }));
+  // everyone they have met — someone can hear in a conversation that a person they knew has died
+  const newsPeople = world.memory.labelsFor(c, world.memory.knownPeople(c, { dead: 'all' }));
   const newsLabels = [...newsPeople.keys()];
   const feelPeople = feelingPeople(world, c);
   const tools = [{
@@ -228,6 +229,7 @@ async function remember(world, conv, c, limits, path) {
     purpose: 'reflect', tier: path, citizenId: c.id, tools,
     messages: [{ role: 'system', content: systemPrompt(world, c) }, { role: 'user', content: user }],
   }, 'remember');
+  if (!c.alive) return; // step 9.5: they died while reflecting — nothing more is laid down
   const args = r.toolCalls?.find((t) => t.name === 'remember')?.arguments;
   if (!args || '_raw' in args) {
     templateMemory(world, conv, c, null); // no conversation is left without a memory

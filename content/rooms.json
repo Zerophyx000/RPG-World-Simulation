@@ -93,7 +93,7 @@
             "cauldron",
             "pot"
           ],
-          "words": "cook|stew|brew|serv|kitchen|pot|soup"
+          "words": "cook|stew|brew|kitchen|soup|ladl|tend(ing)? the (bar|taproom)|serv(e|ing) (ale|food|the)"
         }
       },
       "bed": {
@@ -149,7 +149,7 @@
             "dough_trough",
             "kneading_table"
           ],
-          "words": "bak|knead|dough|bread|loaves|oven"
+          "words": "bak(e|ing)|knead|dough|fir(e|ing) the oven|oven"
         }
       }
     },

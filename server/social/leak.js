@@ -27,7 +27,9 @@ export function findLeaks(world, prompt, citizenId) {
   for (const d of world.citizens.values()) {
     if (d.alive || d.id === citizenId || world.deaths?.knows(viewer, d.id)) continue;
     const n = escapeRe(d.name.toLowerCase());
-    const near = new RegExp(`\\b${n}\\b[^.\\n]{0,40}\\b(dead|died|dies|death|body|corpse|grave|buried|killed|passed away)\\b|\\b(death of|body of|grave of|mourn(?:ing)?|grie(?:f|ving) for|buried)\\b[^.\\n]{0,20}\\b${n}\\b|\\b${n}'s (body|grave|corpse|death)\\b`, 'i');
+    // statements of the death itself ("Jonas is dead", "Jonas (dead)", "Jonas's body", "the death of Jonas") — not
+    // any sentence where the name happens to stand near a word like "death" (a citizen's own words about another death)
+    const near = new RegExp(`\\b${n}\\b\\s*(\\(dead|is dead|was dead|has died|died|is gone for good|was killed|lies dead)|\\b(death of|body of|grave of|corpse of|mourn(?:ing)? for|grie(?:f|ving) for|buried|bury)\\s+${n}\\b|\\b${n}['’]s (body|grave|corpse|death|burial|funeral)\\b`, 'i');
     const m = near.exec(text);
     if (m) leaks.push({ kind: 'unknownDeath', of: d.id, text: m[0].slice(0, 80) });
   }

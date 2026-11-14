@@ -17,6 +17,7 @@ import { citizensIn, activeServices } from '../world/rooms.js';
 import { ref, plainRef } from '../memory/index.js';
 import { pronouns } from '../world/citizens.js';
 import { hasWater } from '../body/treat.js';
+import { DEATH_WORDS } from './index.js';
 import { setState } from '../db.js';
 
 export const TEND_HOW = ['close_eyes', 'check_breath', 'cover', 'wash', 'lay_out'];
@@ -175,7 +176,7 @@ export function gatheringTool(world, c, fn, INNER) {
   return fn('propose_gathering', 'Call people together: tell everyone who knows you when and where to meet, and why (a burial, a meeting, a celebration). Word spreads to all who know you; each decides for themselves whether to come.', {
     place: { type: 'string', enum: places, description: `Where: ${places.map((id) => `"${id}" = ${world.rooms.get(id).name}`).join('; ')}.` },
     time: { type: 'string', description: 'When, e.g. "noon" or "18:00" or "tomorrow at dawn".' },
-    purpose: { type: 'string', description: 'What for, in a few words, e.g. "to bury Greta".' },
+    purpose: { type: 'string', description: 'What for, in a few words, e.g. "to lay someone to rest" or "to talk about the thefts".' },
     inner_thought: INNER,
   }, ['place', 'time', 'purpose']);
 }
@@ -196,7 +197,10 @@ export function tendBody(world, c, call, { stale, logAction, remember }) {
     if (!cloth) return stale(world, c, call, 'You have nothing to cover the body with: no cloth or blanket here, and you would have to give up something you wear.');
     if (cloth.holderId && cloth.holderId !== c.id) return stale(world, c, call, 'That is not yours to lay over the body.');
   }
-  if (how === 'wash' && !hasWater(world, c)) return stale(world, c, call, 'There is no water here to wash the body with.');
+  if (how === 'wash' && !hasWater(world, c)) {
+    const well = Object.keys(c.knownPlaces ?? {}).find((id) => (world.rooms.get(id)?.tags ?? []).includes('water') || id === 'well');
+    return stale(world, c, call, `There is no water here to wash the body with.${well ? ` You would have to carry some here — there is a bucket at ${world.rooms.get(well)?.name ?? 'the well'}.` : ''}`);
+  }
   logAction(world, c, call, { objectId: o.id, deadId: dead?.id ?? null, how });
   const helpers = citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((x) => x.activity.type === 'doing' && x.activity.detail?.kind === 'tend' && x.activity.detail.objectId === o.id && x.activity.detail.how === how);
   const minutes = how === 'lay_out' && helpers.length ? 15 : TEND_MINUTES[how];
@@ -239,7 +243,16 @@ export function finishTend(world, c, a) {
       seen = `${ref(c)} covers the body.`;
       break;
     }
-    case 'wash': patch.washed = true; text = `You wash ${p.obj} gently and carefully.`; seen = `${ref(c)} has washed the body.`; break;
+    case 'wash': {
+      patch.washed = true; text = `You wash ${p.obj} gently and carefully.`; seen = `${ref(c)} has washed the body.`;
+      // carried water is used up (a bucket from the well goes from full to half, half to empty)
+      const water = world.objects.carriedBy(c.id).find((x) => (world.objects.type(x)?.tags ?? []).includes('water') && ['full', 'half'].includes(x.state));
+      if (water) {
+        const next = water.state === 'full' ? 'half' : 'empty';
+        if ((world.objects.type(water)?.transitions?.[water.state] ?? []).includes(next)) world.objects.change(water.id, { state: next }, { actorId: c.id, action: 'state', notify: false });
+      }
+      break;
+    }
     case 'lay_out': patch.laidOut = true; patch.eyesClosed = true; text = `You lay ${p.obj} out straight, hands folded.`; seen = `${ref(c)} has laid out the body.`; break;
     default: break;
   }
@@ -370,7 +383,7 @@ export function proposeGathering(world, c, call, { stale, logAction, remember })
     };
   });
   // telling of a death makes it known (believed) for whoever didn't know — the news travels with the notice
-  for (const id of deadIds) for (const o of listeners) if (!world.deaths.knows(o, id) && /bur|funeral|mourn|dead|grave/i.test(purpose)) {
+  for (const id of deadIds) for (const o of listeners) if (!world.deaths.knows(o, id) && DEATH_WORDS.test(purpose)) {
     const trust = world.memory.rel(o.id, c.id)?.trust ?? 0;
     world.deaths.learn(o, id, { how: `told:${c.id}`, certainty: trust < 0 ? 'doubted' : 'believed', by: c.id });
   }
@@ -387,6 +400,8 @@ export function proposeGathering(world, c, call, { stale, logAction, remember })
 /** Taking a dead person's things before the burial: shameful if witnessed. Called after a successful take. */
 export function onTake(world, c, o, witnessIds) {
   if (o.typeId === 'corpse') return; // carrying the dead to their rest is no theft
+  // what is needed to tend the dead — a cloth, water, a blanket — is taken for them, not from them (GLM run)
+  if ((world.objects.type(o)?.tags ?? []).some((t) => ['cloth', 'water', 'bedding'].includes(t))) return;
   const ownerId = o.ownerId;
   const owner = ownerId ? world.citizens.get(ownerId) : null;
   const fromHouse = [...world.citizens.values()].find((d) => !d.alive && d.home && d.home === c.location && d.buriedAt == null);

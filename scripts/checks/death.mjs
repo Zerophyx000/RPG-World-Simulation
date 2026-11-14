@@ -116,7 +116,7 @@ ok(w.deaths.entry(C('tomas'), 'jonas')?.how === 'told:lena' && ['believed', 'dou
 ok(w.deaths.griefFor(C('tomas'), 'jonas') >= 4, `his grief starts at that moment (${w.deaths.griefFor(C('tomas'), 'jonas').toFixed(1)}, household)`);
 ok(chooseTier(C('tomas'), { stimuli: [] }, w).tier === 'full' && chooseTier(C('lena'), { stimuli: [] }, w).tier === 'full', 'both decide at full');
 ok(db.prepare("SELECT COUNT(*) n FROM events WHERE type = 'learned_death'").get().n >= 5, 'the timeline can show the news travelling (learned_death events)');
-ok(!w.deaths.knows(C('anselm'), 'greta') && leaks('anselm').length === 0, 'Anselm, in the tavern, still knows nothing');
+ok(!w.deaths.knows(C('anselm'), 'greta') && leaks('anselm').length === 0, `Anselm, in the tavern, still knows nothing ${JSON.stringify(C('anselm').knownDeaths)} ${JSON.stringify(leaks('anselm'))} @${C('anselm').location}`);
 const anselmTier = chooseTier(C('anselm'), { stimuli: [{ kind: 'timer', importance: 6, data: {} }] }, w);
 ok(anselmTier.tier === 'none' || anselmTier.tier === 'light', `Anselm's mechanical moment: ${anselmTier.tier} (${anselmTier.reason})`);
 

@@ -15,6 +15,7 @@ import { config } from '../config.js';
 import { tierEffect } from '../emotions/present.js';
 
 const MECHANICAL = new Set(['timer']);
+const PROTECTED_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS_PROTECTED ?? 4500);
 
 /**
  * @param {object} c        citizen
@@ -46,7 +47,10 @@ export function chooseTier(c, trigger, world) {
       world.logEvent('tier_violation', { actorId: c.id, tier: adj.tier, reason: adj.reason ?? reason });
       if (config.debug.tierCheck) console.warn(`[tier] ASSERTION FAILED: ${c.id} addressed speech decided at "${adj.tier}" (wanted full)`);
     }
-    return { tier: adj.tier, maxTokens: adj.maxTokens, reason: adj.tier === tier ? reason : `${reason} (governor: ${tier}→${adj.tier})`, addressed, maxImportance, protect };
+    // step 9.5 (GLM run: 5.8% of full decisions cut off at 3,000, nearly all grief and death dilemmas): protected full
+    // decisions get PROTECTED_MAX_TOKENS (4,500) so the long deliberation fits the first time
+    const maxTokens = adj.maxTokens ?? (adj.tier === 'full' && protect ? PROTECTED_MAX_TOKENS : null);
+    return { tier: adj.tier, maxTokens, reason: adj.tier === tier ? reason : `${reason} (governor: ${tier}→${adj.tier})`, addressed, maxImportance, protect };
   };
 
   const fx = world.emotions ? tierEffect(world, c, stimuli) : { raise: false, lower: false };

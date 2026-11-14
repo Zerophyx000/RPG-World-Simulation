@@ -199,7 +199,7 @@ export class Memory {
   /** People this citizen has a row for (they've met or heard of them). With dead: also the dead they know are dead. */
   knownPeople(c, { dead = false } = {}) {
     return this.relsOf(c.id).map((r) => this.world.citizens.get(r.otherId))
-      .filter((o) => o && (o.alive || (dead && this.world.deaths?.knows(c, o.id))));
+      .filter((o) => o && (o.alive || dead === 'all' || (dead && this.world.deaths?.knows(c, o.id)))); // 'all': whoever they have met, dead or not (news about them)
   }
 
   // ---------- memories ----------

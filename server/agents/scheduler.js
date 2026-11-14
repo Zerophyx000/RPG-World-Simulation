@@ -45,8 +45,9 @@ export class Scheduler {
     switch (a) {
       case 'waiting':
       case 'doing': {
-        // step 9.5: a vigil is only broken by something urgent (>= 7)
-        const wakeAt = c.activity.detail?.kind === 'vigil' ? 7 : WAKE_IMPORTANCE;
+        // step 9.5: what is done for the dead (a vigil, washing, laying out, digging) is only broken by something
+        // urgent (>= 7) — a GLM run showed hunger reminders cutting every washing short
+        const wakeAt = ['vigil', 'tend', 'bury'].includes(c.activity.detail?.kind) ? 7 : WAKE_IMPORTANCE;
         return c.inbox.some((s) => s.importance >= wakeAt) ? 'decide' : null;
       }
       case 'talking': return c.inbox.some((s) => s.data?.wake || s.data?.interrupt) ? 'decide' : null;

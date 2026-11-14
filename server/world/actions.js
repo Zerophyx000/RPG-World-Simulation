@@ -333,6 +333,7 @@ function say(world, c, call, { released = false } = {}) {
   // Names: listeners learn the speaker's name if they say it, and overhear the addressee's (only those who heard the words).
   const hearers = present.filter((o) => canHear(o) && heardWords(world, c, o, volume, addressee));
   world.memory.hearSpeech(c, text, addressee, hearers);
+  world.deaths?.onSpeech(c, text, hearers); // step 9.5: "she's dead — no breath in her" tells whoever hears it
   if (call.introduce) for (const o of hearers) world.memory.learnName(o.id, c.id, 1);
   if ((call.teach || call.introduce) && rec?.conv) {
     rec.conv.flags ??= {};

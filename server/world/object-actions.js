@@ -262,7 +262,14 @@ export function finishExamine(world, c, a) {
   }
   const type = O.type(o);
   if (o.typeId === 'corpse') return examineBody(world, c, o); // step 9.5: looking closely at the dead makes it certain
-  const parts = [`You look closely at ${O.short(o)}: ${O.examineText(o)}`];
+  // step 9.5 (GLM run: the same ledger examined five times running): a second look soon after says so
+  c.examinedAt ??= {};
+  const lookedAgain = world.now - (c.examinedAt[o.id] ?? -Infinity) < 60 && (c.examinedAt[`${o.id}|state`] ?? o.state) === o.state;
+  c.examinedAt[o.id] = world.now;
+  c.examinedAt[`${o.id}|state`] = o.state;
+  const parts = [lookedAgain
+    ? `You look at ${O.short(o)} again. It is just as before: ${O.examineText(o)} Looking longer will not tell you more.`
+    : `You look closely at ${O.short(o)}: ${O.examineText(o)}`];
   if (type.container) {
     if (O.isClosed(o)) parts.push(`It is ${o.state}; you can't see inside.`);
     else {
@@ -290,11 +297,17 @@ function examineBody(world, c, o) {
   const named = dead && world.memory.rel(c.id, dead.id)?.nameKnown;
   const cold = world.now - (o.data?.diedAt ?? world.now) > 60;
   const wounds = dead ? (world.body?.active(dead.id) ?? []).filter((x) => x.visible !== false && x.severity >= 4).map((x) => world.body.content.parts?.[x.partId]?.label ?? x.partId) : [];
-  const text = `${cold ? `${Subj} ${p.subj === 'they' ? 'are' : 'is'} cold. ` : ''}${Subj} ${be} breathing. ${named ? `${dead.name} is dead.` : 'This person is dead.'}${wounds.length ? ` You see wounds: the ${[...new Set(wounds)].slice(0, 3).join(', the ')}.` : ''}`;
+  let text = `${cold ? `${Subj} ${p.subj === 'they' ? 'are' : 'is'} cold. ` : ''}${Subj} ${be} breathing. ${named ? `${dead.name} is dead.` : 'This person is dead.'}${wounds.length ? ` You see wounds: the ${[...new Set(wounds)].slice(0, 3).join(', the ')}.` : ' You find no wound and no mark.'}`;
+  // step 9.5 (seen in a GLM run: ten looks in a row): looking again shows nothing new — say so
+  c.bodyExamined ??= {};
+  const again = world.now - (c.bodyExamined[o.id] ?? -Infinity) < 90;
+  c.bodyExamined[o.id] = world.now;
+  if (again) text = `You look ${p.obj ?? 'them'} over once more. Nothing has changed: ${wounds.length ? `the same wounds (${[...new Set(wounds)].slice(0, 3).join(', ')})` : 'no wound, no mark'}. Looking longer will not tell you more.`;
   world.objects.learn(c, o, { touched: true });
   if (dead) world.deaths.learn(c, dead.id, { how: 'found', certainty: 'certain', where: o.roomId ?? c.location });
   world.logEvent('examine', { actorId: c.id, location: c.location, objectId: o.id, deadId: dead?.id ?? null });
-  world.perceive([c.id], { kind: 'timer', text, importance: 8, roomId: c.location, data: { objectId: o.id, death: dead?.id ?? null } });
+  world.perceive([c.id], { kind: 'timer', text, importance: again ? 4 : 8, roomId: c.location, data: { objectId: o.id, death: again ? null : dead?.id ?? null } });
+  if (again) return;
   remember(world, c, named ? `You found ${dead.name} dead.` : 'You found a dead stranger.');
 }
 

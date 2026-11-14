@@ -129,9 +129,12 @@ export class Habits {
         },
       }];
       let list = null;
+      const messages = [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }];
+      const habitsOf = (r) => r?.toolCalls?.find((t) => t.name === 'set_habits')?.arguments?.habits ?? null;
       try {
-        const r = await chatForTool(w.llm, { purpose: 'habits', tier: 'full', citizenId: c.id, tools, messages: [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }] }, 'set_habits');
-        list = r.toolCalls?.find((t) => t.name === 'set_habits')?.arguments?.habits ?? null;
+        list = habitsOf(await chatForTool(w.llm, { purpose: 'habits', tier: 'full', citizenId: c.id, tools, messages }, 'set_habits'));
+        // a long think can leave the tool call empty (seen with GLM at 3,000 tokens): once more without thinking
+        if (!Array.isArray(list) || list.length < 3) list = habitsOf(await w.llm.chat({ purpose: 'habits', tier: 'none', maxTokens: 3000, citizenId: c.id, tools, messages }));
       } catch (err) {
         if (err.code !== 'unavailable') w.logEvent('error', { actorId: c.id, message: `habit generation failed: ${String(err.message).slice(0, 200)}` });
       }
@@ -361,6 +364,7 @@ export class Habits {
   applyChanges(c, changes) {
     const w = this.world;
     const out = [];
+    if (!c.alive) return out; // step 9.5: the dead have no routine to change
     for (const ch of (Array.isArray(changes) ? changes : []).slice(0, MAX_CHANGES)) {
       const why = String(ch?.why ?? '').trim().slice(0, 200) || null;
       if (!why) continue;
