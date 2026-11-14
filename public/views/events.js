@@ -27,7 +27,18 @@ const pairable = (e) => e.type === 'action'
 export function mount(el) {
   root = el;
   el.innerHTML = `<div class="row"><div class="chipbar" id="ev-chips" style="flex:1 1 auto; margin-bottom:0"></div>
-      <label class="check"><input type="checkbox" id="ev-raw"> show raw</label></div>
+      <label class="check"><input type="checkbox" id="ev-raw"> show raw</label>
+      <details class="ev-export"><summary>⤓ Export</summary><div class="ev-export-box">
+        <label>Range <select id="ex-range"><option value="all">everything</option><option value="today">today (game day)</option>
+          <option value="day">one game day…</option><option value="last24">last 24 game hours</option></select>
+          <input type="number" id="ex-day" min="1" style="width:60px" hidden></label>
+        <label>Format <select id="ex-format"><option value="md">readable (.md)</option><option value="jsonl">data (.jsonl)</option></select></label>
+        <label class="check"><input type="checkbox" id="ex-llm" checked> LLM calls with reasoning</label>
+        <label class="check"><input type="checkbox" id="ex-prompts"> full prompts too (large)</label>
+        <label class="check"><input type="checkbox" id="ex-who"> only the filtered citizen</label>
+        <a class="button" id="ex-go" download>Download</a>
+        <div class="dim" style="font-size:11px">Every event with all its data; each decision's reasoning sits right before the action it produced.</div>
+      </div></details></div>
     <ul class="log events" id="ev-list"></ul>
     <div class="row"><button id="ev-older">Load older</button><span class="dim" id="ev-count"></span></div>`;
   el.querySelector('#ev-raw').checked = raw;
@@ -49,6 +60,7 @@ export function mount(el) {
     if (li) showEvent(li.dataset.id);
   });
   el.querySelector('#ev-older').addEventListener('click', loadOlder);
+  wireExport(el);
   const offs = [
     subscribe('event', (e) => {
       if (!visible(e)) return;
@@ -66,6 +78,30 @@ export function mount(el) {
     offs.forEach((off) => off());
     root = null;
   };
+}
+
+// Full export (GET /api/export): a plain download link, streamed by the server.
+function wireExport(el) {
+  const $ = (id) => el.querySelector(id);
+  const update = () => {
+    const now = store.clock?.gameMinutes ?? 0;
+    const today = Math.floor(now / 1440) + 1;
+    const range = $('#ex-range').value;
+    $('#ex-day').hidden = range !== 'day';
+    if (!$('#ex-day').value) $('#ex-day').value = today;
+    const q = new URLSearchParams({ format: $('#ex-format').value, llm: $('#ex-llm').checked ? '1' : '0', prompts: $('#ex-prompts').checked ? '1' : '0' });
+    $('#ex-prompts').disabled = !$('#ex-llm').checked;
+    const day = range === 'today' ? today : range === 'day' ? Math.max(1, Number($('#ex-day').value) || today) : null;
+    if (day != null) { q.set('from', String((day - 1) * 1440)); q.set('to', String(day * 1440 - 0.001)); }
+    if (range === 'last24') q.set('from', String(Math.max(0, now - 1440)));
+    $('#ex-who').disabled = !store.filterCitizen;
+    if (store.filterCitizen && $('#ex-who').checked) q.set('citizen', store.filterCitizen);
+    $('#ex-go').href = `/api/export?${q}`;
+  };
+  el.querySelector('.ev-export').addEventListener('change', update);
+  el.querySelector('.ev-export').addEventListener('input', update);
+  el.querySelector('.ev-export').addEventListener('toggle', update);
+  update();
 }
 
 function visible(e) {

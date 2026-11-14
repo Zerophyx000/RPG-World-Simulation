@@ -11,6 +11,7 @@ import { perceptionOf } from './ui/perception.js';
 import { interest } from './ui/interest.js';
 import { socialView } from './ui/social.js';
 import { replay } from './ui/replay.js';
+import { exportOptions, exportFilename, streamExport } from './ui/export.js';
 import { testDayRoutes, startTestDay } from './world/testdays.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
@@ -281,6 +282,25 @@ export function createServer(world, { observer = null } = {}) {
       res.write(`event: clock\ndata: ${JSON.stringify(world.clock.snapshot())}\n\n`);
       sseClients.add(res);
       req.on('close', () => sseClients.delete(res));
+      return;
+    }
+
+    // Full export of events + LLM calls (reasoning, answers, optional prompts), streamed as a download.
+    if (req.method === 'GET' && url.pathname === '/api/export') {
+      const opts = exportOptions(Object.fromEntries(url.searchParams));
+      res.writeHead(200, {
+        'Content-Type': opts.format === 'md' ? 'text/markdown; charset=utf-8' : 'application/x-ndjson; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${exportFilename(opts, world.clock.gameMinutes)}"`,
+        'Cache-Control': 'no-store',
+      });
+      try {
+        await streamExport(world.db, res, opts, { gameMinutes: world.clock.gameMinutes });
+      } catch (err) {
+        console.error('[export]', err);
+        res.end(`
+[export failed: ${err.message}]
+`);
+      }
       return;
     }
 

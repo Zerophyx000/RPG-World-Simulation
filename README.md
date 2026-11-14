@@ -416,6 +416,8 @@ LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":true}}
 
 Check your school's docs for the exact flag if that doesn't work.
 
+**Exporting everything.** The Events tab has an **⤓ Export** button: every event with all its data plus every LLM call with its reasoning, answer and tool calls (optionally the full prompts), in the order they happened, so each decision's thinking sits right before the action it produced. Readable Markdown or JSON Lines (one object per line, first line `kind: "meta"`); everything, today, one game day or the last 24 game hours; optionally only the filtered citizen. Action events record the ids of the LLM calls behind them (`data.callIds`); older events get the link inferred (`llmLink: "inferred"`). Without a running server: `node --disable-warning=ExperimentalWarning scripts/export-events.js --format md --day 3 --out day3.md` (read-only; `--db`, `--from`/`--to`, `--citizen`, `--types`, `--prompts`, `--no-llm`).
+
 ## API
 
 | Method | Path | Purpose |
@@ -474,6 +476,7 @@ Check your school's docs for the exact flag if that doesn't work.
 | PATCH | `/api/director/objects/:id` | `{state?, visibility?, searchDifficulty?, ownerId?, roomId?, placement?, holderId?, surfaceText?, trueText?, notify?}` through `objects.change()` |
 | POST | `/api/director/objects/reset` | `{objectId}`: back to its content definition (dev tool) |
 | GET | `/api/events` | `?limit=&before=&types=a,b` event log, newest first |
+| GET | `/api/export` | download of all events + LLM calls (reasoning, answers, tool calls) in time order: `?format=md|jsonl&from=&to=&citizen=&types=&llm=0|1&prompts=0|1` (streamed) |
 | GET | `/api/events/:id` | one event (speech events include their `conversationId`) |
 | GET | `/api/conversations` | `?active=1\|0&citizen=&limit=` active (live) and past (from `conversation_end`) |
 | GET | `/api/conversations/:id` | one conversation with all lines (incl. each speaker's thought) |

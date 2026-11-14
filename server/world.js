@@ -455,10 +455,10 @@ export class World {
 
     if (outcome.call) {
       if (outcome.innerThought) c.lastInnerThought = outcome.innerThought; // keep the latest thought if this decision had none
-      this.applyAction(c, { ...outcome.call, innerThought: outcome.innerThought || null });
+      this.applyAction(c, { ...outcome.call, innerThought: outcome.innerThought || null, callIds: outcome.callIds ?? null });
     } else if (outcome.fallback) {
       if (outcome.innerThought) c.lastInnerThought = outcome.innerThought;
-      this.logEvent('error', { actorId: c.id, location: c.location, message: `invalid tool call twice: ${outcome.error}` });
+      this.logEvent('error', { actorId: c.id, location: c.location, message: `invalid tool call twice: ${outcome.error}`, ...(outcome.callIds?.length ? { callIds: outcome.callIds } : {}) });
       this.setActivity(c, { type: 'waiting', until: this.now + NO_ACTION_WAIT_MINUTES, detail: { reason: 'hesitating', minutes: NO_ACTION_WAIT_MINUTES } });
     } else {
       // Text but no tool call: a private thought; the citizen lingers for a bit.

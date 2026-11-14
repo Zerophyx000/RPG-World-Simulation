@@ -29,9 +29,14 @@ export async function think(world, c, { mode = 'decide' } = {}) {
   t.tier = tierInfo.tier;
   // EMOTION_PARAM_EFFECTS (off by default): a slightly higher temperature under overwhelming anger or fear.
   const params = tierInfo.params?.temperatureDelta ? { temperature: Number(process.env.EMOTION_PARAM_BASE_TEMPERATURE ?? 0.7) + tierInfo.params.temperatureDelta } : undefined;
-  const call = (messages, tools, tier, maxTokens) => world.llm.chat({
-    purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, ...(params ? { params } : {}),
-  });
+  const callIds = []; // every LLM call of this think, so the action event can point at its reasoning (export)
+  const call = async (messages, tools, tier, maxTokens) => {
+    const r = await world.llm.chat({
+      purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, ...(params ? { params } : {}),
+    });
+    if (r?.callId) callIds.push(r.callId);
+    return r;
+  };
 
   try {
     let outcome;
@@ -49,6 +54,7 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     }
     outcome.tier = tierInfo.tier;
     outcome.tierReason = tierInfo.reason;
+    outcome.callIds = callIds;
     if (mode === 'plan') world.completePlanThink(c, t, outcome);
     else world.completeThink(c, t, outcome);
   } catch (err) {

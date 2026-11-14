@@ -11,6 +11,7 @@ A persistent LLM-driven RPG world: plain Node.js ESM server, SQLite via built-in
 - Mock knobs: `MOCK_DELAY_MS` (5000 to test interrupts), `MOCK_FAIL_RATE`, `MOCK_INVALID_RATE` (exercise retry paths).
 - Self-checks (step 9): `node --disable-warning=ExperimentalWarning scripts/checks/<name>.mjs .` (motion, traces-server, visual): small scripts with PASS/FAIL lines, throwaway data dirs, no LLM.
 - Smoke test: UI at http://localhost:3000 starts paused on day 1 06:00 → resume via `POST /api/clock {"action":"resume"}` or the Resume button.
+- `node scripts/export-events.js --format md --day 3 --out day3.md` exports events + LLM reasoning from a db file (read-only; same as the Events tab's Export / `GET /api/export`).
 - `node scripts/tokens.js 60` prints per-purpose/profile LLM usage (calls, tokens, duration) for the last N real minutes — quick sanity check without the Usage tab. Read-only, but reads `data/world.db`, so run it from the repo root and don't point it at a throwaway world by accident.
 
 ## Hard architecture rules

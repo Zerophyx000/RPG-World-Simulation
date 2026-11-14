@@ -472,7 +472,7 @@ function startWalk(world, c, call, { spot }) {
   world.hooks.onTripStart?.(c, { kind: 'spot', fromRoom: room, fromSpot: c.spot, toRoom: room, toSpot: spot, minutes });
   world.setActivity(c, {
     type: 'doing', until: world.now + minutes,
-    detail: { kind: 'walk', description: `walking over to ${label}`, minutes, fromSpot: c.spot, toSpot: spot, call: { name: call.name, arguments: call.arguments, innerThought: call.innerThought, planned: call.planned, introduce: call.introduce, teach: call.teach, truncated: call.truncated } },
+    detail: { kind: 'walk', description: `walking over to ${label}`, minutes, fromSpot: c.spot, toSpot: spot, call: { name: call.name, arguments: call.arguments, innerThought: call.innerThought, planned: call.planned, introduce: call.introduce, teach: call.teach, truncated: call.truncated, ...(call.callIds?.length ? { callIds: call.callIds } : {}) } },
   });
   return { ok: true, walking: true };
 }
@@ -876,6 +876,7 @@ export function logAction(world, c, call, extra = {}) {
     thought: call.innerThought || null,
     ...(call.truncated ? { truncated: true } : {}),
     ...(call.planned ? { planned: true } : {}),
+    ...(call.callIds?.length ? { callIds: call.callIds } : {}),
     ...extra,
   });
 }
