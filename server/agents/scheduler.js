@@ -38,7 +38,7 @@ export class Scheduler {
     const a = c.activity.type;
     if (a === 'idle') {
       if (w.now < c.thinkCooldownUntil) return null;
-      if (w.habits && maxImportance(c.inbox) < WAKE_IMPORTANCE && w.habits.autopilot(c)) return 'habit';
+      if (w.habits && w.habits.autopilot(c)) return 'habit'; // habits.calm() weighs the inbox (routine stimuli don't count)
       return 'decide';
     }
     if (w.now < c.thinkCooldownUntil) return null;

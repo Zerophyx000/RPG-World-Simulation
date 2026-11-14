@@ -35,6 +35,17 @@ function inWindow(t, [a, b]) {
   return a <= b ? t >= a && t <= b : t >= a || t <= b;
 }
 
+/**
+ * Stimuli that are part of an ordinary day, not something happening: their own activity ending, arriving, waking, a
+ * need reminder (pressing needs block the autopilot on their own). A calm-day GLM run showed the timer alone (importance
+ * 6) kept every habit from running.
+ */
+export function isRoutineStimulus(s) {
+  if (s.kind === 'timer' && !s.data?.wakeUp) return true;
+  if (s.kind === 'body' && s.data?.need && (s.data.level ?? 0) < 3) return true;
+  return s.kind === 'arrive' && /^You (arrive|reach)\b/.test(String(s.text ?? '')); // their own arrival, not someone walking in
+}
+
 export class Habits {
   constructor(world) {
     this.world = world;
@@ -213,7 +224,7 @@ export class Habits {
     if (c.activity.type !== 'idle') return { ok: false, why: 'busy' };
     if ((c.habitStreak ?? 0) >= MAX_IN_A_ROW) return { ok: false, why: 'two habits in a row' };
     if (c.conversationId) return { ok: false, why: 'in a conversation' };
-    if (maxImportance([...(c.inbox ?? [])]) >= 5) return { ok: false, why: 'something to react to' };
+    if (maxImportance((c.inbox ?? []).filter((x) => !isRoutineStimulus(x))) >= 5) return { ok: false, why: 'something to react to' };
     if ((c.lastStrongAt ?? -Infinity) > w.now - 30) return { ok: false, why: 'something important lately' };
     if ((c.lastAddressedAt ?? -Infinity) > w.now - 10) return { ok: false, why: 'spoken to lately' };
     if (w.emotions.of(c).some((e) => e.intensity >= 5 || w.emotions.expressed(c, e) >= 5)) return { ok: false, why: 'a strong feeling' };

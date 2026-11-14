@@ -31,6 +31,7 @@ import { Governor } from './agents/governor.js';
 import { Habits } from './agents/habits.js';
 import { applyEdits as applyIntentionEdits, touch as touchIntentions, fade as fadeIntentions, topIntention, intentionsView } from './agents/intentions.js';
 import { Deaths } from './death/index.js';
+import { isRoutineStimulus } from './agents/habits.js';
 import { Stock } from './world/stock.js';
 import { getState } from './db.js';
 import { Memory } from './memory/index.js';
@@ -387,7 +388,8 @@ export class World {
       const s = hearing(c, makeStimulus(partial, this.now)); // step 7B: deaf / hard of hearing hear less
       // step A2: an emergency (>= 7) that gets through to someone counts, asleep or not.
       if (s.importance >= 7) c.lastUrgentAt = this.now;
-      if (s.importance >= 5) c.lastStrongAt = this.now;       // step 9.5 (A3): no autopilot for 30 min after
+      // step 9.5 (A3): no autopilot for 30 min after something HAPPENED (not their own activity ending, not a need reminder)
+      if (s.importance >= 5 && !isRoutineStimulus(s)) c.lastStrongAt = this.now;
       if (s.data?.addressed) c.lastAddressedAt = this.now;
       if (c.activity.type === 'collapsed') continue;
       if (c.activity.type === 'sleeping') {
