@@ -4,6 +4,13 @@
   "actions": [
     {
       "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern",
+      "comment": "the stranger is in the village"
+    },
+    {
+      "at": 0,
       "type": "traits",
       "citizenId": "anselm",
       "honesty": 4,

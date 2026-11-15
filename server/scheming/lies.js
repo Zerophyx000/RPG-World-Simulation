@@ -264,7 +264,9 @@ export class Lies {
       if (other.checkFrom == null || other.checkTo < lie.checkFrom || other.checkFrom > lie.checkTo) continue;
       if (!other.heardBy.some((h) => h.citizen_id === listenerId) && other.liarId !== listenerId) continue;
       const teller = w.citizens.get(other.liarId);
-      return `${other.liarId === listenerId ? 'you yourself said' : `${ref(teller)} told you`} ${ref(w.citizens.get(lie.checkWho))} was at ${w.rooms.get(other.checkWhere)?.name ?? 'somewhere else'} then.`;
+      const whoC = w.citizens.get(lie.checkWho);
+      const subj = other.checkWho === other.liarId && other.liarId !== listenerId ? (whoC?.persona?.sex === 'female' ? 'she was' : whoC?.persona?.sex === 'male' ? 'he was' : 'they were') : `${ref(whoC)} was`;
+      return `${other.liarId === listenerId ? 'You yourself said' : `${other.liarId === lie.liarId ? 'Earlier ' : ''}${ref(teller)} told you`} ${subj} at ${w.rooms.get(other.checkWhere)?.name ?? 'somewhere else'} then.`;
     }
     return null;
   }

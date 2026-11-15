@@ -13,6 +13,7 @@ export class LeakCheck {
   constructor(world) {
     this.world = world;
     this.last = new Map(); // speaker -> game minute of the last call
+    this.judged = new Map(); // `speaker|listener|kind:id` -> { at, leaked }: not judged again for an hour (six after a hint)
   }
 
   /** Secrets this speaker holds that this listener isn't in on: [{ kind, id, text, involved: Set(words) }] */
@@ -29,6 +30,7 @@ export class LeakCheck {
     };
     for (const a of S.ambitions.of(c.id).filter((x) => x.secrecy === 'secret')) out.push({ kind: 'ambition', id: a.id, text: a.text, involved: words(a.text, a.targetIds) });
     for (const s of [...S.schemes.ownedBy(c), ...S.schemes.joinedBy(c)]) {
+      if (S.ambitions.get(s.ambitionId)?.secrecy === 'open') continue; // a plan toward something they talk about openly
       if (s.ownerId === listener.id || s.exposedTo.includes(listener.id) || s.accomplices.some((a) => a.citizen_id === listener.id && ['in', 'wavering'].includes(a.status))) continue;
       // someone the plan itself means to talk to (a step with them, or named in a step): that talk is the plan, not a leak
       // (never the one it is aimed at: telling them is exactly the leak)
@@ -50,7 +52,9 @@ export class LeakCheck {
     if (w.now - (this.last.get(c.id) ?? -Infinity) < EVERY_MINUTES) return;
     const low = String(text).toLowerCase();
     for (const o of hearers) {
-      const relevant = this.secrets(c, o).filter((sec) => [...sec.involved].some((word) => word && low.includes(word)));
+      const key = (sec) => `${c.id}|${o.id}|${sec.kind}:${sec.id}`;
+      const fresh = (sec) => { const j = this.judged.get(key(sec)); return !j || w.now - j.at >= (j.leaked === 'hint' ? 360 : 60); };
+      const relevant = this.secrets(c, o).filter((sec) => fresh(sec) && [...sec.involved].some((word) => word && low.includes(word)));
       if (!relevant.length) continue;
       this.last.set(c.id, w.now);
       let a = null;
@@ -58,12 +62,14 @@ export class LeakCheck {
         const tools = [{ type: 'function', function: { name: 'judge', description: 'Did the words give the secret away?', parameters: { type: 'object', properties: {
           leaked: { type: 'string', enum: ['none', 'hint', 'full'] }, which: { type: 'integer', description: 'The number of the secret it gave away (if any).' }, what: { type: 'string' },
         }, required: ['leaked'] } } }];
-        const user = `A person holds these secrets:\n${relevant.map((s, i) => `${i + 1}. ${w.memory.resolveNames(c, s.text)}`).join('\n')}\n\nThey just said to someone who doesn't know them: "${text}"\n\nDid these words give a secret away: not at all (none), a hint someone might wonder about (hint), or plainly (full)? Asking around, small talk and ordinary worries that don't reveal the secret purpose are none. Call judge once.`;
+        const user = `A person holds these secrets:\n${relevant.map((s, i) => `${i + 1}. ${w.memory.resolveNames(c, s.text)}`).join('\n')}\n\nThey just said to someone who doesn't know them: "${text}"\n\nDid these words give a secret away: not at all (none), a hint someone might wonder about (hint), or plainly (full)? Asking around, small talk and ordinary worries the person could voice anyway are none; hint means the listener could now guess the secret itself. Call judge once.`;
         const r = await chatForTool(w.llm, { purpose: 'leak_check', tier: 'none', citizenId: c.id, tools, messages: [{ role: 'user', content: user }] }, 'judge');
         a = r.toolCalls?.find((x) => x.name === 'judge')?.arguments;
       } catch { return; }
+      for (const sec of relevant) this.judged.set(key(sec), { at: w.now, leaked: 'none' });
       if (!a || a.leaked === 'none' || !['hint', 'full'].includes(a.leaked)) continue;
       const sec = relevant[Math.max(0, Math.min(relevant.length - 1, (Number(a.which) || 1) - 1))];
+      this.judged.set(key(sec), { at: w.now, leaked: a.leaked });
       const what = String(a.what ?? '').slice(0, 160);
       w.logEvent('leak', { actorId: c.id, to: o.id, kind: sec.kind, id: sec.id, leaked: a.leaked, what });
       if (a.leaked === 'hint') {
