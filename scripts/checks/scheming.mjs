@@ -182,7 +182,7 @@ console.log('\n--- schemes');
   ok(/# YOUR PLAN\nYour plan \(secret\): Make the village believe Tomas stole the flour[\s\S]*Now would be the moment: 1\. Get Tomas's apron/.test(buildMessages(w, owner, { tier: 'full' })[1].content), 'YOUR PLAN shows the goal and the due step');
   ok(owner.activity.type !== 'doing' || !/apron/.test(owner.activity.detail?.description ?? ''), 'code never performs the step');
   const st = buildTools(w, owner).find((x) => x.function.name === 'wait');
-  ok(st.function.parameters.properties.scheme?.properties.step_done, 'the scheme field is offered');
+  ok(st.function.parameters.properties.scheme?.properties.step, 'the scheme field is offered');
   S.afterDecision(owner, { name: 'wait', arguments: { scheme: { id: s.id, step_done: 's1', reason: 'Got it from the peg.' } } });
   S.afterDecision(owner, { name: 'wait', arguments: { scheme: { id: s.id, abandon: true } } });
   const s1 = S.schemes.get(s.id);

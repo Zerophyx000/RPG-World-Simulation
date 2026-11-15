@@ -182,10 +182,10 @@ function step11Fields(tool, args) {
     const s = p.scheme.properties;
     const r = Math.random();
     args.scheme = { id: pick(s.id.enum), reason: 'It went as I meant it to.' };
-    if (s.step_done && r < 0.7) args.scheme.step_done = s.step_done.enum[0];
-    else if (s.step_failed && r < 0.85) { args.scheme.step_failed = s.step_failed.enum[0]; args.scheme.reason = 'Someone was there.'; }
-    else if (r < 0.95) { args.scheme.pause = true; args.scheme.reason = 'Too many eyes on me right now.'; }
-    else { args.scheme.abandon = true; args.scheme.reason = 'It is not worth it any more.'; }
+    if (s.step && r < 0.7) Object.assign(args.scheme, { step: s.step.enum[0], outcome: 'done' });
+    else if (s.step && r < 0.85) Object.assign(args.scheme, { step: s.step.enum[0], outcome: 'failed', reason: 'Someone was there.' });
+    else if (r < 0.95) Object.assign(args.scheme, { status: 'pause', reason: 'Too many eyes on me right now.' });
+    else Object.assign(args.scheme, { status: 'abandon', reason: 'It is not worth it any more.' });
   }
   return args;
 }

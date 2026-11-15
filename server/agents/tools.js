@@ -365,13 +365,18 @@ export function buildTools(world, c) {
     const say = tools.find((t) => t.function.name === 'say');
     if (say) say.function.parameters.properties.intent = { type: 'string', enum: ['scare', 'subdue', 'hurt', 'kill', 'defend', 'care', 'none'], description: 'Optional: what you now mean toward the one you speak to (it changes what you came at them for; "none" lets it go).' };
   }
-  // step 11: deceive (speech, put / give / handle), confide and confess (say), scheme / proposal / trust_claim (any)
+  // step 11: deceive (speech, put / give / handle), confide and confess (say), scheme (any tool), proposal and
+  // trust_claim (the tools a conversation goes on with — they ride on every copy, so not on all twenty)
   const sf = world.scheming?.toolFields(c);
   if (sf) {
     for (const t of tools) {
       const n = t.function.name;
       const props = t.function.parameters.properties;
-      Object.assign(props, sf.all);
+      if (sf.all.scheme && !['tell_about_place', 'introduce_yourself', 'sleep', 'propose_party', 'propose_gathering', 'leave_conversation', 'refuse_treatment', 'accept_help'].includes(n)) props.scheme = sf.all.scheme;
+      if (['say', 'do', 'wait', 'leave_conversation', 'act_on', 'follow', 'move_to'].includes(n)) {
+        if (sf.all.proposal) props.proposal = sf.all.proposal;
+        if (sf.all.trust_claim) props.trust_claim = sf.all.trust_claim;
+      }
       if (n === 'say') Object.assign(props, sf.say);
       if (['tell_news', 'tell_about_place'].includes(n)) props.deceive = sf.say.deceive;
       if (['put', 'give', 'handle'].includes(n)) Object.assign(props, sf.object);
