@@ -4,6 +4,7 @@
 import { bySeverity } from './content.js';
 import { garmentsCovering, wornGarments } from './garments.js';
 import { pronouns } from '../world/citizens.js';
+import { cueFor, feelLine as starveFeel } from './starvation.js';
 
 export const statusOf = (c) => c.body?.status ?? [];
 export function senses(c) {
@@ -82,6 +83,8 @@ export function ownBody(world, c) {
   if (S.has('paralyzed')) lines.push("You can't feel your legs at all.");
   if (S.has('concussed')) lines.push('Your thoughts keep slipping; the edges of things blur.');
   if (S.has('in shock')) lines.push('You are shaking and cold, and everything feels unreal.');
+  const starved = starveFeel(world, c); // step 11.5 (B2)
+  if (starved) lines.push(starved);
 
   // bleeding
   const wounds = (st.bleedWounds ?? []).map((w) => ({ cond: B.conditionById(c.id, w.id), rate: w.rate })).filter((w) => w.cond && !w.cond.geometry?.internal).sort((a, b) => b.rate - a.rate);
@@ -144,7 +147,8 @@ export function cuesFor(world, o) {
   }
   if (world.objects.carriedBy(o.id).some((a) => a.typeId === 'crutch')) cues.push('leaning on a crutch');
   const uniq = [...new Set(cues.filter(Boolean))].slice(0, 5);
-  return uniq.length ? `Looks hurt: ${uniq.join('; ')}.` : '';
+  const starved = cueFor(world, o); // step 11.5 (B4): starving shows
+  return [uniq.length ? `Looks hurt: ${uniq.join('; ')}.` : '', starved].filter(Boolean).join(' ');
 }
 
 /** Dynamic appearance tags from step 5.5's cue list (wariness): wounded, bloodied, ragged. */

@@ -94,7 +94,7 @@ export function activityLabel(c) {
 // Need badges: level >= 2 shows an icon, colored from yellow to red by level.
 const NEED_ICONS = { hunger: '🍞', fatigue: '😴', hp: '❤️' };
 const NEED_LEVEL_NAMES = {
-  hunger: ['satisfied', 'peckish', 'hungry', 'starving', 'ravenous', 'dying of hunger'],
+  hunger: ['satisfied', 'peckish', 'hungry', 'very hungry', 'ravenous', 'famished'],
   fatigue: ['rested', 'sleepy', 'tired', 'exhausted', 'collapsing'],
   hp: ['healthy', 'hurting', 'weak', 'fading', 'dying'],
 };

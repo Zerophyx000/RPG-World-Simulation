@@ -2,6 +2,7 @@
 // ACCIDENT_RATE. A practiced, calm, rested person essentially never has an accident; the same person exhausted and
 // furious can. Practice is provisional (persona.practiced) until the RPG step has real skills: practiceFactor() is the
 // one function to replace. Every accident goes through the damage API (which also wears the covering garment).
+import { illnessFactor as starvationIllness } from './starvation.js'; // step 11.5
 import { config } from '../config.js';
 import { ref } from '../memory/index.js';
 import { pronouns } from '../world/citizens.js';
@@ -103,7 +104,7 @@ export function exposure(world, c, minutes) {
   const ragged = !torsoGarment.length || torsoGarment.every((g) => ['torn', 'rags'].includes(g.state));
   const exhausted = world.needs.levelIndex('fatigue', c.needs) >= world.needs.levelOf('fatigue', 'exhausted');
   const rough = c.activity.type === 'sleeping' && c.activity.detail?.quality === 'rough';
-  const per = X.perHour * rate * (exhausted ? X.exhaustedFactor : 1) * (ragged ? X.ragsFactor : 1) * (rough ? X.roughSleepFactor : 1);
+  const per = X.perHour * rate * starvationIllness(world, c) * (exhausted ? X.exhaustedFactor : 1) * (ragged ? X.ragsFactor : 1) * (rough ? X.roughSleepFactor : 1);
   const p = 1 - (1 - clamp(per, 0, 0.95)) ** (minutes / 60);
   if (B.rng() >= p) return;
   const had = B.active(c.id).find((x) => x.type === 'chill');

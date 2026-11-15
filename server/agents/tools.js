@@ -11,6 +11,8 @@ import { feelingParam } from '../emotions/report.js';
 import { CRAWL_FACTOR } from '../body/content.js';
 import { treatOptions, pendingList, carriable, WASH_OFFERED } from '../body/treat.js';
 import { cuesFor } from '../body/perceive.js';
+import { heldMeals, serverPresent } from '../world/meals.js'; // step 11.5 (B3)
+import { needsFeeding } from '../world/actions.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -199,9 +201,18 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, ['reason', 'minutes']));
 
-  // eat: only where there is food
+  // eat: only where there is food — or (step 11.5) a meal portion you carry, anywhere
+  const meals = heldMeals(world, c);
   if (services.food) {
     tools.push(fn('eat', `Sit down and eat here: ${services.food.description} (about ${services.food.minutes} minutes)${world.stock?.note(room.id, 'food') ?? ''}.`, {
+      inner_thought: INNER_THOUGHT,
+    }, []));
+  } else if (meals.length) {
+    tools.push(fn('eat', `Eat the meal portion you carry (${meals[0].data?.description ?? 'food'}).`, { inner_thought: INNER_THOUGHT }, []));
+  }
+  // step 11.5 (B3): a portion to take away, for later or for someone who can't come
+  if (services.food && serverPresent(world, room, services.food, c) && meals.length < 2 && (world.stock?.level(room.id, 'food') ?? 1) > 0) {
+    tools.push(fn('take_meal', `Get a portion of ${services.food.description} wrapped to take away: for later, or to bring to someone who can't come. It keeps a few hours.`, {
       inner_thought: INNER_THOUGHT,
     }, []));
   }
@@ -215,11 +226,12 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, []));
 
-  // feed: someone here has collapsed and there is food
-  const collapsed = present.filter((o) => o.activity.type === 'collapsed');
-  if (collapsed.length && services.food) {
-    tools.push(fn('feed', `Kneel down and feed someone who has collapsed here, with ${services.food.description}.`, {
-      who: { type: 'string', enum: [...world.memory.labelsFor(c, collapsed).keys()], description: 'Who you feed.' },
+  // feed: someone here who needs it (collapsed, weak from hunger, or hungry), with the food here or a portion you carry
+  const hungry = present.filter((o) => needsFeeding(world, o));
+  if (hungry.length && (services.food || meals.length)) {
+    tools.push(fn('feed', `Feed someone here who needs it, with ${meals.length ? `the portion you carry (${meals[0].data?.description ?? 'food'})` : services.food.description}.`, {
+      who: { type: 'string', enum: [...world.memory.labelsFor(c, hungry).keys()], description: 'Who you feed.' },
+      ...(meals.length && services.food ? { with: { type: 'string', enum: ['portion', 'here'], description: 'The portion you carry, or the food here.' } } : {}),
       inner_thought: INNER_THOUGHT,
     }, ['who']));
   }

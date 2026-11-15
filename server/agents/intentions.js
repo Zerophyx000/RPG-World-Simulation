@@ -3,7 +3,8 @@
 // an intention only happens when the citizen decides to do it.
 //
 //   c.intentions = [{ id, text, about: [citizenIds], place, source, createdAt, touchedAt, weight }]
-//   source: self (a decision) · promise (said they would, from reflection) · need · habit_break · carried (from a plan)
+//   source: self (a decision) · promise (said they would, from reflection) · need · habit_break · carried (from a plan) ·
+//           resolve (step 11.5: confront / go to others / wait and watch, decided in a planning call)
 //
 // At most 8 (the lowest weight drops). Weight fades 0.25 per untouched game day (promises half as fast, unless the person
 // is dead or gone); below 0.15 an intention is gone. Doing something related touches it (fade resets).
@@ -15,7 +16,7 @@ export const MAX_ADDS = 2;
 export const TEXT_MAX = 100;
 const FADE_PER_DAY = 0.25;
 const GONE_BELOW = 0.15;
-const START_WEIGHT = { self: 0.8, promise: 0.75, need: 0.7, habit_break: 0.5, carried: 0.6 };
+const START_WEIGHT = { self: 0.8, promise: 0.75, need: 0.7, habit_break: 0.5, carried: 0.6, resolve: 0.85 }; // step 11.5: resolve = what they decided about someone who wronged them
 
 const day = (t) => Math.floor(t / 1440);
 

@@ -15,6 +15,7 @@ import { exportOptions, exportFilename, streamExport } from './ui/export.js';
 import { intentionsView, setIntentions } from './agents/intentions.js';
 import { testDayRoutes, startTestDay } from './world/testdays.js';
 import { directorAmbition, directorTraits } from './scheming/director.js'; // step 11
+import { forceAct, forceSay } from './physical/director.js'; // step 11.5
 import { provoke, giveWeapon, igniteObject, startAltercation, endAltercation, coherenceLog, crimes } from './physical/director.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
@@ -160,6 +161,8 @@ export function createServer(world, { observer = null } = {}) {
     ['POST', /^\/api\/director\/provoke$/, (_req, body) => provoke(world, body)],
     ['POST', /^\/api\/director\/ambition$/, (_req, body) => directorAmbition(world, body ?? {})], // step 11
     ['POST', /^\/api\/director\/traits$/, (_req, body) => directorTraits(world, body ?? {})], // step 11
+    ['POST', /^\/api\/director\/act$/, (_req, body) => forceAct(world, body ?? {})], // step 11.5: a forced act (tests)
+    ['POST', /^\/api\/director\/say$/, (_req, body) => forceSay(world, body ?? {})], // step 11.5: a forced line (tests)
     ['POST', /^\/api\/director\/weapon$/, (_req, body) => giveWeapon(world, body)],
     ['POST', /^\/api\/director\/ignite$/, (_req, body) => igniteObject(world, body)],
     ['POST', /^\/api\/director\/altercation$/, (_req, body) => (body.action === 'end' ? endAltercation(world, body) : startAltercation(world, body))],

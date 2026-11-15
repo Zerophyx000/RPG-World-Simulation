@@ -9,6 +9,7 @@
 // critical, tourniquets… }. Conditions live in the `conditions` table (rows mirrored in memory per citizen).
 // Everything here is code: no LLM calls. Bleeding and clotting run every clock tick; healing, infection and the rest
 // every 10 game minutes per citizen with something going on.
+import * as starvation from './starvation.js'; // step 11.5 (B2)
 import { config } from '../config.js';
 import { citizensIn } from '../world/rooms.js';
 import { ref } from '../memory/index.js';
@@ -473,6 +474,7 @@ export class Body {
   }
 
   onMove(c, { crawl = false, toId = null } = {}) {
+    if (starvation.maybeFaint(this.world, c, { rng: this.rng })) return; // step 11.5: faint spells when exerting
     if (!c.body) return;
     moveAccident(this.world, c, { crawl, toId });
     const R = this.content.bleeding.rebleed;
@@ -532,7 +534,9 @@ export class Body {
       if (!c.body) this.ensureState(c);
       const st = c.body;
       const conds = this.active(c.id);
-      if (!conds.length && st.blood >= 100 && st.vitality >= 100 && !st.critical && (c.needs?.hunger ?? 0) < needs.starvingAt && !st.regenUntil) continue;
+      starvation.tick(this.world, c); // step 11.5: faint spells wear off, stages are felt and seen, the end at STARVATION_DEATH_DAYS
+      if (!c.alive) continue;
+      if (!conds.length && st.blood >= 100 && st.vitality >= 100 && !st.critical && starvation.vitalityDrain(this.world, c) === 0 && !st.regenUntil) continue;
       this.#step(c, conds, elapsed, now);
     }
   }
@@ -705,7 +709,7 @@ export class Body {
     const needs = this.world.needs;
     const hunger = c.needs?.hunger ?? 0;
     let drain = 0;
-    if (hunger >= needs.starvingAt) drain += needs.cfg.hp?.starvationDamagePerHour ?? 6;
+    drain += starvation.vitalityDrain(this.world, c); // step 11.5 (B1): days without food, not the hunger urge
     const heart = this.#frac(conds, 'heart');
     const lungs = (this.#frac(conds, 'lung_left') + this.#frac(conds, 'lung_right')) / 2;
     if (heart < 0.5) drain += (0.5 - heart) * 12;
@@ -720,7 +724,7 @@ export class Body {
     if (st.vitality < 30 && drain > 0) drain += 1; // shock deepens it
     if (st.blood < 50 && stage.vitalityDrain) drain += stage.vitalityDrain * (1 + (50 - st.blood) / 10);
     const asleep = c.activity.type === 'sleeping' || c.activity.type === 'collapsed';
-    const nutrition = hunger >= needs.starvingAt ? 0 : hunger >= 70 ? 0.4 : hunger >= 50 ? 0.8 : 1;
+    const nutrition = Math.min(hunger >= 85 ? 0.6 : hunger >= 50 ? 0.85 : 1, starvation.healFactor(this.world, c));
     const regen = (asleep ? 3 : 1) * nutrition * (fever >= 4 ? 0.5 : 1) * st.regen;
     st.vitality = clamp(st.vitality + (regen - drain) * hours, 0, 100);
   }
@@ -758,9 +762,9 @@ export class Body {
     const infected = new Set(conds.filter((x) => x.type === 'infection').map((x) => x.partId));
     const fever = conds.some((x) => x.type === 'fever' && x.severity >= 3);
     const ctx = {
-      scale: config.body.healTimeScale, illness: config.body.illnessRate,
+      scale: config.body.healTimeScale, illness: config.body.illnessRate * starvation.illnessFactor(this.world, c), // step 11.5: starving, illness comes easier
       rest: act === 'sleeping' || act === 'collapsed' ? 1.5 : act === 'waiting' ? 1.2 : act === 'moving' || act === 'doing' ? 0.7 : 1.0,
-      nutrition: hungerIdx >= 3 ? 0.4 : hungerIdx >= 2 ? 0.8 : 1, fever, anemic: conds.some((x) => x.type === 'anemia'), regen: st.regen,
+      nutrition: Math.min(hungerIdx >= 3 ? 0.6 : hungerIdx >= 2 ? 0.85 : 1, starvation.healFactor(this.world, c)), fever, anemic: conds.some((x) => x.type === 'anemia'), regen: st.regen,
       moved: act === 'moving', infectedParts: infected,
     };
     const healed = healTick(this.content, conds, ctx, minutes);
@@ -845,7 +849,7 @@ export class Body {
       if (worst?.geometry?.internal) return 'internal bleeding';
       return worst ? `bled out from ${/^[aeiou]/.test(worst.type) ? 'an' : 'a'} ${worst.type === 'cut' ? 'gash' : worst.type} in the ${this.content.partLabel(worst.partId)}` : 'blood loss';
     }
-    if ((c.needs?.hunger ?? 0) >= this.world.needs.starvingAt) return 'starvation';
+    if (starvation.vitalityDrain(this.world, c) > 0) return 'starvation';
     const fever = conds.find((x) => x.type === 'fever');
     if (fever) return 'fever from an infected wound';
     return 'their injuries';

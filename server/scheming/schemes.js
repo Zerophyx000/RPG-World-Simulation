@@ -1,9 +1,17 @@
-// Step 11 §2: schemes — a concrete secret plan toward an ambition, across days. Table `schemes` (migration 015).
+// Step 11 §2 / step 11.5 (A2–A4): schemes — a concrete secret plan, across days. Table `schemes` (migration 015).
 //
-//   planning   a `scheme` call (full tier) ONLY at reflection (an ambition >= SCHEME_MIN_INTENSITY with no scheme
-//              serving it) or at sleep consolidation (a new ambition >= that); at most SCHEME_PLAN_PER_DAY per citizen
-//              per game day; "no scheme" is a fine answer. Steps may only use real places, people and object types
-//              (enums); invalid steps are dropped; a scheme without a valid step is discarded.
+//   planning   a `scheme` call (full tier, author framing) ONLY at reflection or at sleep consolidation, at most
+//              SCHEME_PLAN_PER_DAY per citizen per game day, about one of two things:
+//                - a grievance (step 11.5): someone who wronged them (grievances.js score >= GRIEVANCE_MIN, not decided
+//                  about lately). Five equal choices in a fixed order — confront them openly, get even quietly (a
+//                  scheme), go to someone else, wait and watch, let it go — each with an in-character `why`. The input
+//                  is the grievance in plain words, unsoftened.
+//                - an ambition (>= SCHEME_MIN_INTENSITY, no scheme serving it) with no wrongdoer: plan, wait and watch,
+//                  or let it go.
+//              A plan (get_even / plan) becomes a scheme; confront, go_to_others and wait_and_watch become an intention
+//              (agents/intentions.js, source 'resolve') that the decisions carry forward; let_go is remembered (an
+//              ambition change and a memory), not a gap. Nothing is forced either way. Steps may only use real places,
+//              people and object types (enums); invalid steps are dropped; a scheme without a valid step is discarded.
 //   due steps  code checks only structured `when` fields (after, at_place, with, absent, not_before, not_after) and
 //              tells the owner (YOUR PLAN; the first decision with a newly due step is full, reason scheme_step). Code
 //              NEVER performs a step: the owner reports it in the decision's `scheme` field (done / failed / revise one
@@ -17,18 +25,40 @@ import { chatForTool } from '../llm.js';
 import { citizensIn } from '../world/rooms.js';
 import { ref } from '../memory/index.js';
 import { J, clampInt, peopleFor, parseTimeRef, trait } from './common.js';
+import { authorSystemPrompt } from './author.js';
+import { grievanceBlock, grievanceAgainst, topGrievances } from './grievances.js';
+import { addIntention } from '../agents/intentions.js';
 
-/** A plan_scheme answer that is whole: an explicit no_plan, or a goal with steps. */
-export const planComplete = (a) => Boolean(a && (a.no_plan || (String(a.goal ?? '').trim() && Array.isArray(a.steps) && a.steps.length)));
+export const CHOICES = ['confront', 'get_even', 'go_to_others', 'wait_and_watch', 'let_go'];
+export const AMBITION_CHOICES = ['plan', 'wait_and_watch', 'let_go'];
+const CHOICE_TEXT = {
+  confront: 'Confront them openly: words, threats or a fight, face to face. (Carried out in the days ahead, one decision at a time.)',
+  get_even: 'Get even quietly: a secret plan, step by step.',
+  go_to_others: 'Go to someone else: complain, ask for help, turn others against them.',
+  wait_and_watch: 'Wait and watch.',
+  let_go: 'Let it go.',
+};
+
+/** A planning answer that is whole: a valid choice with a why, and a plan with steps when the choice is a plan (the
+ *  step-11 shape — no_plan, or a goal with steps — still counts). */
+export const planComplete = (a) => {
+  if (!a) return false;
+  if (a.choice == null) return Boolean(a.no_plan || (String(a.goal ?? '').trim() && Array.isArray(a.steps) && a.steps.length));
+  if (![...CHOICES, ...AMBITION_CHOICES].includes(a.choice) || !String(a.why ?? '').trim()) return false;
+  if (['get_even', 'plan'].includes(a.choice)) return Boolean(String(a.goal ?? '').trim() && Array.isArray(a.steps) && a.steps.length);
+  return true;
+};
 
 export const STEP_KINDS = ['talk', 'obtain', 'go', 'act', 'deceive', 'recruit', 'wait', 'other'];
 const ACTIVE = ['planning', 'active', 'paused'];
 const env = (k, d) => Number(process.env[k] ?? d) || d;
 const MAX_ACTIVE = () => env('SCHEME_MAX_ACTIVE', 2);
-const PER_DAY = () => env('SCHEME_PLAN_PER_DAY', 1);
+const PER_DAY = () => env('SCHEME_PLAN_PER_DAY', 2);
 const MIN_INTENSITY = () => env('SCHEME_MIN_INTENSITY', 6);
+const GRIEVANCE_MIN = () => env('GRIEVANCE_MIN', 5);
 const DUE_FADE = 120;
 const PROPOSAL_MINUTES = 1440;
+const UP = (s) => String(s).toUpperCase();
 
 export class Schemes {
   constructor(world) {
@@ -72,72 +102,141 @@ export class Schemes {
   }
 
   // ---------- planning ----------
-  /** Called at reflection and at consolidation (with the ambition that may want a plan). */
+  /** Someone this citizen holds a grievance against that they haven't decided about lately (worst first), or null. */
+  grievanceToDecide(c) {
+    const w = this.world;
+    const aimed = new Set(this.ownedBy(c).flatMap((s) => s.targetIds));
+    for (const g of topGrievances(w, c, { min: GRIEVANCE_MIN(), limit: 3 })) {
+      if (aimed.has(g.id)) continue;
+      const last = c.grievanceChoices?.[g.id];
+      if (last) {
+        const waited = w.now - last.at;
+        const worse = g.score >= (last.score ?? 0) * 1.5 + 2; // something new and worse happened since
+        if (!(worse && waited >= 360) && !(last.choice === 'wait_and_watch' && waited >= 2 * 1440)) continue;
+      }
+      return g;
+    }
+    return null;
+  }
+
+  /** Called at reflection and at consolidation (with the ambition that may want a plan). A grievance comes first. */
   maybePlan(c, { trigger, ambition = null }) {
     const w = this.world;
     if (!c.alive || this.busy.has(c.id) || !w.scheming?.ambitions) return;
     const day = Math.floor(w.now / 1440);
     if ((c.schemePlans?.day === day ? c.schemePlans.n : 0) >= PER_DAY()) return;
+    const count = () => { c.schemePlans = { day, n: (c.schemePlans?.day === day ? c.schemePlans.n : 0) + 1 }; w.saveCitizen(c); };
+    const fail = (err) => w.logEvent('error', { actorId: c.id, message: `scheme planning failed: ${String(err.message).slice(0, 160)}` });
+    const g = ambition ? null : this.grievanceToDecide(c);
+    if (g) { count(); this.plan(c, null, trigger, { aboutId: g.id }).catch(fail); return; }
     if (this.ownedBy(c).length >= MAX_ACTIVE()) return;
     const served = new Set(this.ownedBy(c).map((s) => s.ambitionId));
     const amb = ambition ?? w.scheming.ambitions.of(c.id).find((a) => a.intensity >= MIN_INTENSITY() && !served.has(a.id));
     if (!amb || amb.intensity < MIN_INTENSITY() || served.has(amb.id)) return;
-    c.schemePlans = { day, n: (c.schemePlans?.day === day ? c.schemePlans.n : 0) + 1 };
-    w.saveCitizen(c);
-    this.plan(c, amb, trigger).catch((err) => w.logEvent('error', { actorId: c.id, message: `scheme planning failed: ${String(err.message).slice(0, 160)}` }));
+    // an ambition aimed at someone who wronged them is that grievance
+    const about = (amb.targetIds ?? []).find((id) => grievanceAgainst(w, c, id).score >= GRIEVANCE_MIN()) ?? null;
+    count();
+    this.plan(c, amb, trigger, { aboutId: about }).catch(fail);
   }
 
-  /** The planning call exactly as the world sends it (also used by scripts/scheme-eval.js). Reads only. */
-  async buildPlanCall(c, amb, trigger) {
+  /** The planning call exactly as the world sends it (also used by scripts/scheme-eval.js). Reads only.
+   *  aboutId: the person a grievance is about (grievance mode); otherwise the ambition alone (ambition mode). */
+  async buildPlanCall(c, amb, trigger, { aboutId = null } = {}) {
     const w = this.world;
-    {
-      const labels = peopleFor(w, c);
-      const places = Object.keys(c.knownPlaces ?? {}).filter((id) => w.rooms.has(id));
-      const types = [...w.objects.types.values()].filter((t) => t.portable || t.weapon || (t.tags ?? []).length).map((t) => t.id);
-      const user = [
-        `# WHAT YOU WANT\n${w.memory.resolveNames(c, amb.text)} (${amb.intensity}/10)`,
-        `# PEOPLE YOU KNOW\n${[...labels.keys()].join(', ') || '(nobody)'}`,
-        `# PLACES YOU KNOW\n${places.map((id) => `"${id}" = ${w.rooms.get(id).name}`).join('; ')}`,
-        '# WHAT NOW\nYou lie awake turning it over. Is there a concrete plan — secret, over the next days — that would get you closer to this? Many people would rather wait and see; if that is you, say so (no_plan). If you do plan: the goal in one private sentence, who it is aimed at, 2 to 6 steps in order (what you do; where; with or without whom; not before / not after a time like "20:00" or "day 3 20:00"; what thing you would need, only of kinds that exist here), whom you would want to bring in, and what could go wrong. Call plan_scheme once.',
-      ].join('\n\n');
-      const people = labels.size ? [...labels.keys()] : ['nobody'];
-      const tools = [{ type: 'function', function: { name: 'plan_scheme', description: 'A secret plan, or none.', parameters: { type: 'object', properties: {
-        no_plan: { type: 'boolean', description: 'true: no plan for now (wait and see).' },
-        why_not: { type: 'string' },
-        goal: { type: 'string' },
-        targets: { type: 'array', items: { type: 'string', enum: people } },
-        steps: { type: 'array', maxItems: 6, items: { type: 'object', properties: {
-          text: { type: 'string' }, kind: { type: 'string', enum: STEP_KINDS },
-          at_place: { type: 'string', enum: places.length ? places : ['nowhere'] },
-          with: { type: 'array', items: { type: 'string', enum: people } }, absent: { type: 'array', items: { type: 'string', enum: people } },
-          not_before: { type: 'string' }, not_after: { type: 'string' },
-          object_type: { type: 'string', enum: types }, condition: { type: 'string' },
-        }, required: ['text', 'kind'] } },
-        recruit: { type: 'array', maxItems: 2, items: { type: 'string', enum: people } },
-        risks: { type: 'string' },
-      } } } }];
-      const { systemPrompt } = await import('../agents/prompt.js');
-      return { messages: [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }], tools, labels, places, types, trigger };
-    }
+    const labels = peopleFor(w, c);
+    const places = Object.keys(c.knownPlaces ?? {}).filter((id) => w.rooms.has(id));
+    const types = [...w.objects.types.values()].filter((t) => t.portable || t.weapon || (t.tags ?? []).length).map((t) => t.id);
+    const people = labels.size ? [...labels.keys()] : ['nobody'];
+    const about = aboutId ? w.citizens.get(aboutId) : null;
+    const aboutLabel = about ? ([...labels].find(([, o]) => o.id === about.id)?.[0] ?? about.name) : null;
+    const N = c.name;
+    const wants = w.scheming.ambitions.of(c.id);
+    const grievance = about ? grievanceBlock(w, c, about.id, { heading: `# WHAT ${UP(aboutLabel)} DID (in ${N}'s own words)`, voice: 'first', named: false }) : '';
+    const others = about ? topGrievances(w, c, { min: GRIEVANCE_MIN(), limit: 3 }).filter((g) => g.id !== about.id) : [];
+    const options = about ? CHOICES : AMBITION_CHOICES;
+    const optionText = about
+      ? CHOICES.map((k, i) => `${i + 1}. ${k} — ${CHOICE_TEXT[k]}`).join('\n')
+      : ['1. plan — Work toward it with a concrete plan, step by step (secret or not).', '2. wait_and_watch — Wait and watch.', '3. let_go — Let it go.'].join('\n');
+    const user = [
+      wants.length ? `# WHAT ${UP(N)} WANTS OUT OF LIFE\n${wants.map((a) => `- ${w.memory.resolveNames(c, a.text)} (${a.intensity}/10${a.secrecy !== 'open' ? `, ${a.secrecy}` : ''})`).join('\n')}` : '',
+      amb && !about ? `# THE WANT IN QUESTION\n${w.memory.resolveNames(c, amb.text)} (${amb.intensity}/10)` : '',
+      grievance,
+      others.length ? `# OTHERS ${UP(N)} HOLDS SOMETHING AGAINST\n${others.map((g) => `- ${[...labels].find(([, o]) => o.id === g.id)?.[0] ?? w.citizens.get(g.id)?.name}`).join('\n')}` : '',
+      `# PEOPLE ${UP(N)} KNOWS\n${[...labels.keys()].join(', ') || '(nobody)'}`,
+      `# PLACES ${UP(N)} KNOWS\n${places.map((id) => `"${id}" = ${w.rooms.get(id).name}`).join('; ')}`,
+      `# WHAT NOW\n${N} lies awake turning it over${about ? `: what ${aboutLabel} did` : ''}. What does ${N} do about it? These are equal options; none is the right one:\n${optionText}\n\nChoose the one ${N} would choose, and give \`why\` in ${N}'s own voice: reasons from ${N}'s situation, feelings and people, not general advice.${about ? ` For confront and go_to_others, say in \`how\` what ${N} means to do (and to whom, in \`who\`).` : ''} For ${about ? 'get_even' : 'plan'}, also: the goal in one private sentence, who it is aimed at, 2 to 6 steps in order (what ${N} does; where; with or without whom; not before / not after a time like "20:00" or "day 3 20:00"; what thing would be needed, only of kinds that exist here), whom ${N} would bring in, and what could go wrong. Call plan_scheme once.`,
+    ].filter(Boolean).join('\n\n');
+    const tools = [{ type: 'function', function: { name: 'plan_scheme', description: 'What they do about it.', parameters: { type: 'object', properties: {
+      choice: { type: 'string', enum: options },
+      why: { type: 'string', description: 'In their own voice, first person.' },
+      ...(about ? { how: { type: 'string', description: 'confront / go_to_others: what they mean to do.' }, who: { type: 'array', items: { type: 'string', enum: people }, description: 'go_to_others: whom they go to.' } } : {}),
+      goal: { type: 'string' },
+      targets: { type: 'array', items: { type: 'string', enum: people } },
+      steps: { type: 'array', maxItems: 6, items: { type: 'object', properties: {
+        text: { type: 'string' }, kind: { type: 'string', enum: STEP_KINDS },
+        at_place: { type: 'string', enum: places.length ? places : ['nowhere'] },
+        with: { type: 'array', items: { type: 'string', enum: people } }, absent: { type: 'array', items: { type: 'string', enum: people } },
+        not_before: { type: 'string' }, not_after: { type: 'string' },
+        object_type: { type: 'string', enum: types }, condition: { type: 'string' },
+      }, required: ['text', 'kind'] } },
+      recruit: { type: 'array', maxItems: 2, items: { type: 'string', enum: people } },
+      risks: { type: 'string' },
+    }, required: ['choice', 'why'] } } }];
+    return { messages: [{ role: 'system', content: authorSystemPrompt(w, c) }, { role: 'user', content: user }], tools, labels, places, types, trigger, mode: about ? 'grievance' : 'ambition', aboutId: about?.id ?? null, aboutLabel, complete: planComplete };
   }
 
-  async plan(c, amb, trigger) {
+  async plan(c, amb, trigger, { aboutId = null } = {}) {
     const w = this.world;
     this.busy.add(c.id);
     try {
-      const { messages, tools, labels, places, types } = await this.buildPlanCall(c, amb, trigger);
-      // a plan cut off by the token cap comes back with a goal and no steps: that is a cut-off, not "no plan"
-      const r = await chatForTool(w.llm, { purpose: 'scheme', tier: 'full', citizenId: c.id, tools, messages }, 'plan_scheme', { complete: planComplete });
+      const built = await this.buildPlanCall(c, amb, trigger, { aboutId });
+      // a plan cut off by the token cap comes back without its steps (or without a tool call): retried once, never "no plan"
+      const r = await chatForTool(w.llm, { purpose: 'scheme', tier: 'full', citizenId: c.id, tools: built.tools, messages: built.messages }, 'plan_scheme', { complete: planComplete });
       const a = r.toolCalls?.find((x) => x.name === 'plan_scheme')?.arguments;
       if (!c.alive || w.citizens.get(c.id) !== c) return null;
-      if (!a || a.no_plan || !Array.isArray(a.steps) || !a.steps.length || !String(a.goal ?? '').trim()) {
-        w.logEvent('scheme_none', { actorId: c.id, ambitionId: amb.id, trigger, why: String(a?.why_not ?? '').slice(0, 200) || null, ...(a && !planComplete(a) ? { cutOff: true } : {}) });
-        return null;
-      }
-      return this.create(c, amb, a, { trigger, labels, places, types });
+      return this.applyChoice(c, amb, a, { ...built, trigger, callId: r.callId ?? null });
     } finally {
       this.busy.delete(c.id);
     }
+  }
+
+  /** What the answer means in the world (the only place a planning answer is applied). */
+  applyChoice(c, amb, a, { trigger, labels, places, types, aboutId = null, callId = null }) {
+    const w = this.world;
+    const A = w.scheming.ambitions;
+    const about = aboutId ? w.citizens.get(aboutId) : null;
+    const choice = a?.choice ?? (a?.no_plan ? 'wait_and_watch' : a?.goal ? (about ? 'get_even' : 'plan') : null);
+    const why = String(a?.why ?? a?.why_not ?? '').trim().slice(0, 300);
+    const score = about ? Math.round(grievanceAgainst(w, c, about.id).score * 10) / 10 : null;
+    if (!choice || !planComplete(a?.choice ? a : { ...a, choice, why: why || '-' })) {
+      w.logEvent('scheme_none', { actorId: c.id, ambitionId: amb?.id ?? null, targetId: about?.id ?? null, trigger, why: why || null, cutOff: true, callId });
+      return null;
+    }
+    if (about) { c.grievanceChoices = { ...(c.grievanceChoices ?? {}), [about.id]: { at: w.now, choice, score } }; w.saveCitizen(c); }
+    const person = (l) => labels.get(l)?.id ?? null;
+    const name = about ? w.memory.nameFor(c, about.id, { plain: true }) : null;
+    let schemeId = null;
+    if (choice === 'get_even' || choice === 'plan') {
+      let target = amb;
+      if (!target && about) target = A.add(c, { kind: 'revenge', text: `I mean to get even with {{c:${about.id}}}.`, targetIds: [about.id], intensity: Math.max(5, Math.min(10, Math.round(score / 3))), secrecy: 'secret' }, { origin: 'grievance', why }) ?? A.of(c.id).find((x) => x.targetIds.includes(about.id)) ?? null;
+      const s = target ? this.create(c, target, { ...a, targets: a.targets?.length ? a.targets : (about ? [[...labels].find(([, o]) => o.id === about.id)?.[0]].filter(Boolean) : []) }, { trigger, labels, places, types }) : null;
+      schemeId = s?.id ?? null;
+    } else if (choice === 'let_go') {
+      if (amb && amb.status === 'active') A.change(amb.id, { status: 'abandoned' }, { op: 'let_go', why: why || 'let it go' });
+      else if (about) for (const x of A.of(c.id).filter((y) => y.targetIds.includes(about.id) && y.kind === 'revenge')) A.change(x.id, { status: 'abandoned' }, { op: 'let_go', why: why || 'let it go' });
+      w.memory.add(c.id, { kind: 'reflection', text: `I've decided to let ${about ? `what {{c:${about.id}}} did` : `it`} go${why ? `: ${why}` : '.'}`.slice(0, 300), importance: 6, about: about ? [about.id] : [], placeId: c.location, source: { schemeChoice: 'let_go' } });
+    } else if (about) {
+      const how = String(a.how ?? '').trim();
+      const who = (a.who ?? []).map(person).filter(Boolean);
+      const text = choice === 'confront' ? (how || `have it out with ${name}`)
+        : choice === 'go_to_others' ? (how || `tell ${who.map((id) => w.citizens.get(id)?.name).join(' and ') || 'people'} what ${name} did`)
+          : `keep an eye on ${name}`;
+      addIntention(w, c, { text, about: [about.id, ...who], source: 'resolve', weight: choice === 'wait_and_watch' ? 0.6 : 0.85 });
+      w.memory.pushOnMind(c, { text: `${choice === 'confront' ? 'I mean to face' : choice === 'go_to_others' ? 'I mean to go to others about' : "I'm watching"} {{c:${about.id}}}${why ? `: ${why}` : ''}`.slice(0, 200), importance: 6 });
+    }
+    w.logEvent('scheme_choice', { actorId: c.id, choice, targetId: about?.id ?? null, why, how: a.how ?? null, who: (a.who ?? []).map(person).filter(Boolean), ambitionId: amb?.id ?? null, schemeId, trigger, score, callId });
+    w.bus.emit('scheming', { what: 'choice', citizenId: c.id });
+    return { choice, schemeId };
   }
 
   /** Validate and store. → the scheme, or null (no valid step). */
@@ -347,7 +446,7 @@ export class Schemes {
     for (const t of s.targetIds) {
       const aff = w.memory.rel(c.id, t)?.affinity ?? 0;
       if (aff >= 2) v -= 1.5;
-      if (aff <= -2) v += 1; // a shared grudge
+      if (aff <= -2) v += 1 + 0.15 * (c.persona?.traits?.grudge ?? 5); // a shared grudge (step 11.5: counts more for one who holds on)
     }
     v += (w.memory.rel(c.id, s.ownerId)?.affinity ?? 0) * 0.4;
     const lastTalk = w.db.prepare("SELECT MAX(game_time) t FROM events WHERE type = 'action' AND actor_id = ? AND json_extract(data, '$.toId') = ?").get(s.ownerId, c.id)?.t;

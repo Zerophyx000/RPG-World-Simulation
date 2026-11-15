@@ -11,6 +11,7 @@
 //
 // People are named only if this citizen knows the name; otherwise they are described by how they look.
 // Relationships appear in words, never numbers.
+import { hostLines } from '../body/starvation.js'; // step 11.5
 import { traitsToWords } from './traits.js';
 import { citizensIn, activeEffects, openExits } from '../world/rooms.js';
 import { pronouns } from '../world/citizens.js';
@@ -35,7 +36,7 @@ export { clockTime, timeOfDay, relativeTime };
 
 const MEMORY_CHAR_BUDGET = 4000; // ON YOUR MIND + YOU REMEMBER ≈ 1,000 tokens
 
-export const WORLD_RULES = `You are a person living in this world, not an assistant. You only know what you have been told here and what you perceive. Never invent people, places or events that are not mentioned; if you don't know something, you don't know it. You speak and act like your character, with their flaws. You are not obligated to be nice, helpful or talkative. Think through the situation privately first: what you notice, how you feel about it, what you want. Then act by calling exactly one tool.
+export const WORLD_RULES = `You are a person living in this world, not an assistant. You only know what you have been told here and what you perceive. Never invent people, places or events that are not mentioned; if you don't know something, you don't know it. You speak and act like your character, with their flaws. Act as this person would, not as a good example would. You are not obligated to be nice, helpful or talkative. Think through the situation privately first: what you notice, how you feel about it, what you want. Then act by calling exactly one tool.
 
 How your world works:
 - Time passes in minutes. Walking, working, eating, sleeping and waiting all take time, and other people act while you do.
@@ -81,6 +82,7 @@ function whoYouAre(world, c) {
   if (p.appearance) lines.push(`Appearance: ${p.appearance}`);
   const personality = [p.personality, ...traitsToWords(p.traits), ...(world.scheming?.traitWords(c) ?? [])].filter(Boolean).join(' '); // step 11: honesty and cunning, in words
   if (personality) lines.push(`Personality: ${personality}`);
+  lines.push(...(world.scheming?.flawWords(c) ?? [])); // step 11.5: faults and worst self, in words
   if (p.speechStyle) lines.push(`How you tend to talk (use sparingly): ${p.speechStyle}`);
   if (p.backstory) lines.push(`Your story: ${p.backstory}`);
   if (p.goals.length) lines.push(`What you want:\n${p.goals.map((g) => `- ${g}`).join('\n')}`);
@@ -162,6 +164,9 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   if (sch?.ambitions) blocks.push(`# YOUR AMBITIONS\n${sch.ambitions}`);
   if (sch?.plan) blocks.push(`# YOUR PLAN\n${sch.plan}`);
   if (sch?.stories) blocks.push(`# YOUR STORIES\n${sch.stories}`);
+  // step 11.5 (B4): someone weak with hunger under your roof, and where food is
+  const roof = hostLines(world, c);
+  if (roof.length) blocks.push(`# UNDER YOUR ROOF\n${mem.resolveNames(c, roof.join('\n'))}`);
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {

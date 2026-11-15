@@ -28,6 +28,7 @@ const MASK_MINUTES = 45;
 const SAMPLE_EVERY = 60;         // game minutes
 const CONTAGION_EVERY = 10;
 const HISTORY_KEEP = 96;         // hourly mood points kept on the citizen (4 game days)
+const GRUDGE_TYPES = new Set(['anger', 'disgust', 'envy', 'jealousy']); // step 11.5: feelings against someone that a grudge keeps alive
 const PRUNE_AFTER_DAYS = 30;
 const NEGATIVE_TENSION = ['fear', 'anger', 'jealousy', 'envy'];
 
@@ -253,7 +254,10 @@ export class Emotions {
       // low mood: bad feelings linger (up to 1.5×), good ones fade faster (up to 1.5×); the reverse when high
       const stretch = 1 + 0.5 * Math.abs(m);
       const mood = (negative ? m > 0 : m < 0) ? stretch : 1 / stretch;
-      const halfLife = (e.data?.halfLifeHours ?? def.halfLifeHours) * 60 * personality * (m === 0 ? 1 : mood); // step 7B: grief lingers for days
+      // step 11.5 (A5): anger and loathing aimed at someone fade at the grudge's pace (×0.5 at grudge 10 … ×1.5 at 1)
+      const g = t.grudge;
+      const grudge = g != null && e.target && GRUDGE_TYPES.has(e.type) ? 1 / (1.5 - (Math.max(1, Math.min(10, g)) - 1) / 9) : 1;
+      const halfLife = (e.data?.halfLifeHours ?? def.halfLifeHours) * 60 * personality * (m === 0 ? 1 : mood) * grudge; // step 7B: grief lingers for days
       e.intensity *= 0.5 ** (elapsed / halfLife);
       // step 9.5 (B2.2): close grief can't fall below its floor for the first days
       if (e.data?.floor && this.world.now < (e.data.floorUntil ?? 0)) e.intensity = Math.max(e.intensity, e.data.floor);

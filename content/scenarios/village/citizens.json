@@ -496,7 +496,8 @@
         "conscientiousness": 0.55,
         "extraversion": 0.6,
         "agreeableness": 0.25,
-        "neuroticism": 0.35
+        "neuroticism": 0.35,
+        "grudge": 7
       },
       "personality": "Charming, watchful and patient. Asks more questions than he answers and remembers every answer. Easy to like; hard to pin down.",
       "backstory": "You came up the Kellmarsh road yesterday. Your story: you are waiting for a tinker's cart that is a few days behind you, and you will mend or carry for your keep until it comes. The truth: there is no cart. You work for the Kellmarsh Crows, and you were sent to find out what in this village is worth taking.",
@@ -527,7 +528,18 @@
           "cloak": "grey",
           "hood": "grey"
         }
-      }
+      },
+      "flaws": [
+        {
+          "flaw": "greedy: takes what he wants when nobody is looking",
+          "serious": true
+        },
+        {
+          "flaw": "a smooth liar who believes his own stories",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When someone gets in his way, he smiles, waits, and makes sure they pay for it where it hurts most."
     },
     "relationships": [],
     "memories": [

@@ -3,6 +3,8 @@
 // so World stays the single owner of state.
 //
 // call = { name, arguments, innerThought?, truncated? }
+import { onMeal, stageOf } from '../body/starvation.js'; // step 11.5
+import { heldMeals, serverPresent, createMeal } from './meals.js'; // step 11.5 (B3)
 import { config } from '../config.js';
 import { exitTo, citizensIn, activeEffects, activeServices, serviceNames, blockedExit } from './rooms.js';
 import { IMPORTANCE } from './perception.js';
@@ -107,6 +109,7 @@ function applyBasic(world, c, call) {
     case 'eat': return eat(world, c, call);
     case 'sleep': return sleep(world, c, call);
     case 'feed': return feed(world, c, call);
+    case 'take_meal': return takeMeal(world, c, call); // step 11.5 (B3)
     case 'leave_conversation': return leaveConversation(world, c, call);
     case 'introduce_yourself': return introduceYourself(world, c, call);
     // step 9.5: follow, news, the dead, gatherings
@@ -533,6 +536,7 @@ function proximityTarget(world, c, call) {
     case 'say': case 'tell_about_place': case 'introduce_yourself': { const p = person(a.to); spot = p?.spot ?? null; must = false; break; }
     case 'give': spot = person(a.to)?.spot ?? null; break;
     case 'feed': spot = person(a.who)?.spot ?? null; break;
+    case 'take_meal': spot = activeServices(world.rooms.get(room), world.now).food ? M.serviceSpot(room, 'food') : null; must = false; break;
     case 'examine_person': case 'carry_person': spot = person(a.person)?.spot ?? null; break;
     case 'treat': {
       const m = /\[w(\d+)\]/.exec(String(a.wound ?? ''));
@@ -634,6 +638,14 @@ function sameConversation(a, b) {
 // ---------- eat / sleep / feed ----------
 function eat(world, c, call) {
   const food = activeServices(world.rooms.get(c.location), world.now).food;
+  const meal = !food ? heldMeals(world, c)[0] : null; // step 11.5: a portion you carry, anywhere
+  if (meal) {
+    logAction(world, c, call, { meal: meal.id });
+    world.objects.remove(meal.id, { actorId: c.id, reason: 'eaten' });
+    world.setActivity(c, { type: 'doing', until: world.now + 10, detail: { description: `eating ${meal.data?.description ?? 'a meal portion'}`, minutes: 10, kind: 'eat', hungerRelief: meal.data?.relief ?? 40 } });
+    remember(world, c, `You ate the meal portion you were carrying (${meal.data?.description ?? 'food'}).`);
+    return { ok: true };
+  }
   if (!food) return stale(world, c, call, "You look around for something to eat, but there's nothing to be had here.");
   if (world.stock && !world.stock.take(c.location, 'food')) return stale(world, c, call, 'The shelves are empty. There is nothing left to eat here.'); // step 9.5
   logAction(world, c, call);
@@ -658,6 +670,7 @@ export function finishMeal(world, c, activity, { completed }) {
   const relief = Math.round((d.hungerRelief ?? 0) * frac * (world.deaths?.mealFactor(c) ?? 1)); // step 9.5: grief takes the appetite
   if (relief <= 0) return 0;
   c.needs.hunger = Math.max(0, c.needs.hunger - relief);
+  onMeal(world, c); // step 11.5: any meal resets the days-without-food clock
   world.logEvent('meal', { actorId: c.id, location: c.location, relief, completed, hunger: Math.round(c.needs.hunger) });
   return relief;
 }
@@ -767,27 +780,64 @@ export function die(world, c, { reason = 'injury', cause = null } = {}) {
   return world.body.die(c, { reason, cause: cause ?? undefined });
 }
 
+/** step 11.5 (B3): who can be fed — collapsed (not out cold from wounds), weak from days without food, or hungry. */
+export function needsFeeding(world, o) {
+  if (!o.alive) return false;
+  if (o.activity.type === 'collapsed') return o.activity.detail?.reason !== 'unconscious';
+  return stageOf(world, o) >= 1 || (o.needs?.hunger ?? 0) >= 50;
+}
+
 function feed(world, c, call) {
   const room = world.rooms.get(c.location);
   const food = activeServices(room, world.now).food;
+  const meal = heldMeals(world, c)[0] ?? null;
   const target = findPerson(world, c, citizensIn(world.citizens, c.location, { exceptId: c.id }), call.arguments.who);
-  if (!food) return stale(world, c, call, "There's nothing here you could feed anyone with.");
-  if (!target || target.activity.type !== 'collapsed') return stale(world, c, call, 'You kneel down, but there is nobody here who needs feeding.');
-  if (target.activity.detail?.reason === 'unconscious') return stale(world, c, call, `You kneel by ${ref(target)}, but food won't bring ${pronouns(target).obj} round: ${pronouns(target).subj} ${pronouns(target).subj === 'they' ? 'are' : 'is'} out cold from ${pronouns(target).poss ?? 'their'} wounds.`);
-  logAction(world, c, call, { targetId: target.id });
-  target.needs.hunger = Math.max(0, target.needs.hunger - food.hungerRelief);
-  if (target.body) target.body.vitality = Math.max(target.body.vitality, 20);
-  world.setActivity(target, { type: 'idle' });
+  if (!food && !meal) return stale(world, c, call, "There's nothing here you could feed anyone with.");
+  if (target?.activity.type === 'collapsed' && target.activity.detail?.reason === 'unconscious') return stale(world, c, call, `You kneel by ${ref(target)}, but food won't bring ${pronouns(target).obj} round: ${pronouns(target).subj} ${pronouns(target).subj === 'they' ? 'are' : 'is'} out cold from ${pronouns(target).poss ?? 'their'} wounds.`);
+  if (!target || !needsFeeding(world, target)) return stale(world, c, call, 'You look, but there is nobody here who needs feeding.');
+  // the portion you brought first (that is what it is for), else the service here, from its stock
+  const useMeal = meal && (call.arguments.with !== 'here' || !food);
+  if (!useMeal && world.stock && !world.stock.take(c.location, 'food')) return stale(world, c, call, 'The shelves are empty. There is nothing left to feed anyone with.');
+  const relief = useMeal ? meal.data?.relief ?? 40 : food.hungerRelief;
+  const what = useMeal ? meal.data?.description ?? 'the food you brought' : food.description;
+  logAction(world, c, call, { targetId: target.id, ...(useMeal ? { meal: meal.id } : {}) });
+  if (useMeal) world.objects.remove(meal.id, { actorId: c.id, reason: 'fed' });
+  target.needs.hunger = Math.max(0, target.needs.hunger - relief);
+  onMeal(world, target);
+  const wasDown = target.activity.type === 'collapsed';
+  if (wasDown) {
+    if (target.body) target.body.vitality = Math.max(target.body.vitality, 20);
+    world.setActivity(target, { type: 'idle' });
+  }
   world.perceive([target.id], {
-    kind: 'body', text: `You come to. ${ref(c)} is kneeling beside you, feeding you ${food.description}.`, importance: 8, sourceId: c.id, roomId: room.id,
+    kind: 'body', text: wasDown ? `You come to. ${ref(c)} is kneeling beside you, feeding you ${what}.` : `${ref(c)} feeds you ${what}, a little at a time.`, importance: 8, sourceId: c.id, roomId: room.id,
   });
   world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).filter((o) => o.id !== target.id).map((o) => o.id), {
-    kind: 'action', text: `${ref(c)} kneels beside ${ref(target)} and feeds ${pronouns(target).obj}.`, importance: 5, sourceId: c.id, roomId: room.id,
+    kind: 'action', text: `${ref(c)} ${wasDown ? 'kneels beside' : 'sits with'} ${ref(target)} and feeds ${pronouns(target).obj}.`, importance: 5, sourceId: c.id, roomId: room.id,
   });
-  world.setActivity(c, { type: 'doing', until: world.now + 10, detail: { description: 'feeding someone who collapsed', minutes: 10 } });
-  world.logEvent('revive', { actorId: target.id, location: room.id, by: c.id, how: 'feed' });
-  remember(world, c, `You fed ${ref(target)}, who had collapsed.`);
+  world.setActivity(c, { type: 'doing', until: world.now + 10, detail: { description: `feeding ${wasDown ? 'someone who collapsed' : 'someone too weak to eat alone'}`, minutes: 10 } });
+  world.logEvent('revive', { actorId: target.id, location: room.id, by: c.id, how: 'feed', ...(useMeal ? { meal: true } : {}) });
+  remember(world, c, `You fed ${ref(target)}${wasDown ? ', who had collapsed' : ''}.`);
   return { ok: true };
+}
+
+/** step 11.5 (B3): one portion to take away, handed over by the service's operator, out of real stock. */
+function takeMeal(world, c, call) {
+  const room = world.rooms.get(c.location);
+  const food = activeServices(room, world.now).food;
+  if (!food) return stale(world, c, call, "There's no food to be had here.");
+  if (!serverPresent(world, room, food, c)) return stale(world, c, call, 'There is nobody here to serve you.');
+  if (heldMeals(world, c).length >= 2) return stale(world, c, call, 'Your hands are full with the portions you already carry.');
+  if (world.stock && !world.stock.take(c.location, 'food')) return stale(world, c, call, 'The shelves are empty. There is nothing left to take.');
+  logAction(world, c, call);
+  const meal = createMeal(world, c, room, food);
+  const by = food.operator && food.operator !== c.id ? world.citizens.get(food.operator) : null;
+  world.perceive(citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id), (o) => ({
+    kind: 'action', text: o.id === by?.id ? `You wrap up a portion of ${food.description} for ${ref(c)} to take away.` : `${by ? `${ref(by)} wraps up` : `${ref(c)} wraps up`} a portion of ${food.description}${by ? ` for ${ref(c)}` : ''} to take away.`, importance: 3, sourceId: c.id, roomId: room.id,
+  }));
+  world.setActivity(c, { type: 'doing', until: world.now + 3, detail: { description: 'waiting for a portion to be wrapped', minutes: 3 } });
+  remember(world, c, `You took a portion of ${food.description} away with you${by ? `, from ${ref(by)}` : ''}. It will keep for a few hours.`);
+  return { ok: true, objectId: meal?.id ?? null };
 }
 
 // ---------- introduce_yourself ----------

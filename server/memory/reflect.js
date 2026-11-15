@@ -8,7 +8,8 @@
 // Step B otherwise: significance score on the local profile (purpose 'score', structured output),
 // or — if 'score' is unavailable — the line-count fallback (<8 lines light, 8+ full).
 import { relationSentence } from './words.js';
-import { systemPrompt } from '../agents/prompt.js';
+import { authorSystemPrompt } from '../scheming/author.js'; // step 11.5 (A2): reflection is written by the author of their inner life
+import { grievanceBlock, grievanceAgainst } from '../scheming/grievances.js';
 import { chatForTool } from '../llm.js';
 import { relationLine } from '../social/describe.js';
 import { emotionsSummary } from '../emotions/present.js';
@@ -162,11 +163,16 @@ async function remember(world, conv, c, limits, path) {
   const onMind = (c.onMyMind ?? []).map((m) => `- ${m.text}`).join('\n');
   const feelNow = emotionsSummary(world, c);
   const seenThings = objectContext(world, conv, c, (id) => labelOf.get(id) ?? mem.nameFor(c, id));
+  // step 11.5 (A4): what any of them did to this citizen, in plain words (only real grievances)
+  const grievances = others.filter((o) => grievanceAgainst(world, c, o.id).score >= (Number(process.env.GRIEVANCE_MIN ?? 5) || 5)).slice(0, 2)
+    .map((o) => grievanceBlock(world, c, o.id, { heading: '# WHAT THEY DID TO YOU' })).filter(Boolean).join('\n\n');
   const user = [
+    `(Below, "you" is ${c.name}. Answer as ${c.name}, in ${c.name}'s own voice.)`,
     `# THE CONVERSATION THAT JUST ENDED\nAt ${room?.name ?? 'somewhere'}, with ${[...labels.keys()].join(', ')}.`,
     `Transcript:\n${transcript}`,
     seenThings ? `# WHAT YOU ALSO SAW MEANWHILE\n${seenThings}` : '',
     `# HOW YOU SEE THEM\n${relLines || '(nobody you know)'}`,
+    grievances,
     onMind ? `# ON YOUR MIND\n${onMind}` : '',
     feelNow ? `# HOW YOU FEEL RIGHT NOW\n${feelNow}` : '',
     `# WHAT NOW\nTake a private moment to take stock. What will you remember from this conversation, in your own words and from your own point of view? How do you feel about them now? Only what actually happened or was said; don't invent anything. If someone told you about something you don't remember yourself (including things you supposedly did), record it as what they said ("Greta says I promised…", firsthand: false), not as a fact.${limits.maxMemories === 1 ? ' Keep it to the one thing that matters most.' : ''} Under feelings, say what this conversation left you with (up to 3: a sting of envy, shame at an insult, warmth at a kindness…), if anything — emotion, who it is about, stronger or weaker, by how much (1–3), and why. Call remember exactly once.`,
@@ -229,7 +235,7 @@ async function remember(world, conv, c, limits, path) {
 
   const r = await chatForTool(world.llm, {
     purpose: 'reflect', tier: path, citizenId: c.id, tools,
-    messages: [{ role: 'system', content: systemPrompt(world, c) }, { role: 'user', content: user }],
+    messages: [{ role: 'system', content: authorSystemPrompt(world, c) }, { role: 'user', content: user }],
   }, 'remember');
   if (!c.alive) return; // step 9.5: they died while reflecting — nothing more is laid down
   const args = r.toolCalls?.find((t) => t.name === 'remember')?.arguments;

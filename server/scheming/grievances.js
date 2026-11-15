@@ -10,6 +10,8 @@
 import { ref } from '../memory/index.js';
 
 const ROUGH = new Set(['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag']);
+const PAST = { shove: 'shoved', grab: 'grabbed', slap: 'slapped', punch: 'punched', kick: 'kicked', strike: 'struck', throw_at: 'threw something at', snatch: 'snatched something from', pin_down: 'pinned down', choke: 'choked', tie_up: 'tied up', drag: 'dragged' };
+const NOT_GRIEVANCES = new Set(['seed', 'group', 'first_impression']); // standing rows, not things done
 const HOSTILE_EMOTIONS = ['anger', 'hatred', 'contempt', 'fear', 'envy', 'jealousy', 'disgust'];
 const BAND = ['a little', 'strongly', 'intensely', 'overwhelmingly'];
 const DAYS = 7;
@@ -22,8 +24,9 @@ export function grievanceAgainst(world, c, otherId) {
   if (!o || o.id === c.id) return { score: 0, sections: { events: [], done: [], memories: [], feelings: [] } };
   const since = w.now - DAYS * 1440;
   // relationship events that cost something, worst first (a week back, fresher weighs more)
-  const rel = w.db.prepare(`SELECT reason, d_affinity a, d_trust t, strength s, game_time g FROM relationship_events
+  const rel = w.db.prepare(`SELECT reason, source, d_affinity a, d_trust t, strength s, game_time g FROM relationship_events
     WHERE citizen_id = ? AND other_id = ? AND (d_affinity < 0 OR d_trust < 0) AND game_time > ?`).all(c.id, otherId, since)
+    .filter((r) => !NOT_GRIEVANCES.has(r.source))
     .map((r) => ({ reason: r.reason, sev: -(Math.min(0, r.a) + Math.min(0, r.t)) * (0.5 + 0.5 * (r.s ?? 1)) }))
     .sort((x, y) => y.sev - x.sev);
   const seen = new Set();
@@ -37,7 +40,8 @@ export function grievanceAgainst(world, c, otherId) {
   let severity = 0;
   for (const a of acts.slice(-4)) {
     const room = w.rooms.get(a.location)?.name;
-    const what = `${ref(o)} ${a.d.act === 'throw_at' ? 'threw something at' : `${a.d.act.replace('_', ' ')}${/e$/.test(a.d.act) ? 'd' : 'ed'}`} you${a.d.part ? ` (${String(a.d.part).replace(/_/g, ' ')})` : ''}${a.d.with ? ` with ${a.d.with}` : ''}${room ? ` at ${room}` : ''}`;
+    const part = a.d.part && !['drag', 'tie_up', 'pin_down', 'grab'].includes(a.d.act) ? w.body?.content?.partLabel?.(a.d.part) ?? String(a.d.part).replace(/_/g, ' ') : null;
+    const what = `${ref(o)} ${PAST[a.d.act] ?? `${a.d.act}ed`} you${part ? ` (${part})` : ''}${a.d.with ? ` with ${a.d.with}` : ''}${room ? ` at ${room}` : ''}`;
     const eff = (a.d.effects ?? []).filter((e) => !['welcome', 'unwelcome'].includes(e));
     done.push(`${what}${a.d.hit === false ? ', and missed' : eff.length ? ` — ${eff.join(', ')}` : ''}.${a.d.words ? ` ${o.persona?.sex === 'female' ? 'She' : 'He'} said: "${a.d.words}"` : ''}`);
     severity += 2 + eff.length;
@@ -45,7 +49,8 @@ export function grievanceAgainst(world, c, otherId) {
   if (witnesses.size) done.push(`${[...witnesses].map((id) => `{{c:${id}}}`).join(' and ')} saw it.`);
   for (const cond of w.body?.active(c.id) ?? []) {
     if (cond.sourceId !== otherId) continue;
-    done.push(`You still feel it: ${w.body.woundText(cond)}.`);
+    const wt = w.body.woundText(cond);
+    done.push(`You still feel it: ${String(wt.feel || wt.look).replace(/\.+$/, '')}${wt.bleed ? `, ${wt.bleed}` : ''}.`);
     severity += 2;
   }
   for (const l of w.scheming?.lies.caughtBy?.(c, otherId) ?? []) { done.push(`${ref(o)} lied to you: "${l.said}" — and you know it wasn't true.`); severity += 2; }
@@ -62,16 +67,18 @@ export function grievanceAgainst(world, c, otherId) {
 }
 
 /** The grievance as a prompt block (names resolved for this citizen), or '' when there is none. */
-export function grievanceBlock(world, c, otherId, { heading = '# WHAT WAS DONE TO YOU' } = {}) {
+export function grievanceBlock(world, c, otherId, { heading = '# WHAT WAS DONE TO YOU', voice = 'second', named = true } = {}) {
   const g = grievanceAgainst(world, c, otherId);
   const { events, done, memories, feelings } = g.sections;
   if (!events.length && !done.length && !memories.length && !feelings.length) return '';
   const o = world.citizens.get(otherId);
-  const parts = [`${heading} — ${ref(o)}`];
-  if (done.length) parts.push(done.map((x) => `- ${x}`).join('\n'));
-  if (events.length) parts.push(`What it cost between you:\n${events.map((x) => `- ${x}`).join('\n')}`);
-  if (memories.length) parts.push(`What you remember:\n${memories.map((x) => `- ${x}`).join('\n')}`);
-  if (feelings.length) parts.push(`What you feel toward ${ref(o)} now: ${feelings.join(', ')}.`);
+  const first = voice === 'first'; // planning calls (author framing) read it in the character's own words
+  const me = (s) => (first ? s.replace(/^You still feel it\b/, 'I still feel it').replace(/ and you know it\b/, ' and I know it').replace(/as if you had/g, 'as if I had').replace(/\bYour\b/g, 'My').replace(/\byour\b/g, 'my').replace(/\byou\b/g, 'me') : s);
+  const parts = [named ? `${heading} — ${ref(o)}` : heading];
+  if (done.length) parts.push(done.map((x) => `- ${me(x)}`).join('\n'));
+  if (events.length) parts.push(`${first ? 'What it cost between us' : 'What it cost between you'}:\n${events.map((x) => `- ${x}`).join('\n')}`);
+  if (memories.length) parts.push(`${first ? 'What I remember' : 'What you remember'}:\n${memories.map((x) => `- ${x}`).join('\n')}`);
+  if (feelings.length) parts.push(`${first ? 'What I feel' : 'What you feel'} toward ${ref(o)} now: ${feelings.join(', ')}.`);
   return world.memory.resolveNames(c, parts.join('\n'));
 }
 

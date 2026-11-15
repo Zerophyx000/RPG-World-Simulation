@@ -4,6 +4,8 @@
 //
 // Modules: world/* hold the logic (rooms, citizens, needs, places, perception, actions,
 // conversations, director, quiet, scenarios); agents/* hold the thinking loop.
+import { Meals } from './world/meals.js';
+import { fatigueFactor as starvationFatigue } from './body/starvation.js';
 import { EventEmitter } from 'node:events';
 import { Clock } from './clock.js';
 import { LLM } from './llm.js';
@@ -85,6 +87,7 @@ export class World {
     this.physical = new Physical(this);   // step 10: acts on people and things, consequences, fire
     this.altercations = new Altercations(this); // step 10: fights, tracked like conversations
     this.scheming = new Scheming(this);   // step 11: ambitions, schemes, deception
+    this.meals = new Meals(this);         // step 11.5 (B3): meal portions from food services
     this.debugLeakCheck = process.env.DEBUG_LEAK_CHECK === 'true'; // step 9.5: switchable by the director
     this.gatherings = [];
 
@@ -214,6 +217,7 @@ export class World {
     this.conversations.tick(now);
     this.physical.tick(elapsed);     // step 10: holds and chokes, fights ending, fire and smoke, fear of discovery
     this.scheming.tick();            // step 11: traits and ambitions jobs, due scheme steps, late contradictions
+    this.meals.tick();               // step 11.5: meal portions go sour
     this.emotions.tick(elapsed, now); // decay, mood drift, contagion, hourly samples
     this.deaths.tick(elapsed, now);   // step 9.5: bodies seen, news to break, own mortality, dread, decay
     this.habits.ensure();             // step 9.5: habits for whoever has none yet (LLM, a few at a time)
@@ -243,7 +247,7 @@ export class World {
       const f = this.needs.advance(c, elapsed);
       this.dirty.add(c.id);
       // step 9.5 (B2.3): deep grief tires faster, and sometimes wakes the sleeper in the dark
-      const gf = this.deaths.fatigueFactor(c);
+      const gf = this.deaths.fatigueFactor(c) * starvationFatigue(this, c); // step 11.5: days without food tire faster
       if (gf > 1 && !UNAWARE_ACT.has(c.activity.type)) {
         const base = this.needs.rate('fatigue', this.needs.rateKey(c));
         if (base > 0) c.needs.fatigue = Math.min(100, c.needs.fatigue + (base * (gf - 1) * elapsed) / 60);

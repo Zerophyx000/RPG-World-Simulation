@@ -227,7 +227,7 @@ export class Needs {
   describe(c) {
     const n = c.needs;
     const idx = Object.fromEntries(NEED_KINDS.map((k) => [k, this.levelIndex(k, n)]));
-    const hungerWords = [null, 'a little peckish', 'hungry', 'starving', 'ravenous', 'faint with hunger'];
+    const hungerWords = [null, 'a little peckish', 'hungry', 'very hungry', 'ravenous', 'famished'];
     const fatigueWords = [null, 'a little sleepy', 'tired', 'exhausted', 'barely able to stay awake'];
     const hpWords = ['unhurt', 'a little hurt', 'weak and badly hurt', 'fading', "at death's door"];
     const word = (k) => ({ hunger: hungerWords, fatigue: fatigueWords, hp: hpWords })[k][idx[k]] ?? this.levelName(k, idx[k]);

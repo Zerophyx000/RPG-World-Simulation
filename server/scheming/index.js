@@ -10,14 +10,14 @@
 //   promptBlocks(c, tier)  YOUR AMBITIONS, YOUR PLAN, YOUR STORIES
 //   toolFields(c)          the optional fields offered right now (never shown as rules, always optional)
 // Cost rule: planning only at reflection and sleep consolidation; ordinary decisions see short blocks only.
-import { Traits, traitWords } from './traits.js';
+import { Traits, traitWords, flawWords } from './traits.js';
 import { Ambitions } from './ambitions.js';
 import { Schemes } from './schemes.js';
 import { Lies, LIE_KINDS } from './lies.js';
 import { LeakCheck } from './leakcheck.js';
 import { trait } from './common.js';
 
-export { traitWords };
+export { traitWords, flawWords };
 
 /** The compact decision field ({ id, step, outcome, text, status, reason }) → applyDecision's shape (the old one passes). */
 export function schemeField(f) {
@@ -143,5 +143,6 @@ export class Scheming {
 
   /** The persona's honesty and cunning in words (system prompt). */
   traitWords(c) { return traitWords(c); }
+  flawWords(c) { return flawWords(c); }
   trait(c, k) { return trait(c, k); }
 }

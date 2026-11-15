@@ -5,9 +5,9 @@
       { "min": 0,  "name": "satisfied",       "importance": 0, "remindEvery": null },
       { "min": 30, "name": "peckish",         "importance": 3, "remindEvery": null },
       { "min": 50, "name": "hungry",          "importance": 5, "remindEvery": 120 },
-      { "min": 70, "name": "starving",        "importance": 7, "remindEvery": 60 },
-      { "min": 85, "name": "ravenous",        "importance": 8, "remindEvery": 30 },
-      { "min": 95, "name": "dying of hunger", "importance": 9, "remindEvery": 15 }
+      { "min": 70, "name": "very hungry",     "importance": 6, "remindEvery": 60 },
+      { "min": 85, "name": "ravenous",        "importance": 7, "remindEvery": 45 },
+      { "min": 95, "name": "famished",        "importance": 7, "remindEvery": 45 }
     ]
   },
   "fatigue": {
@@ -22,7 +22,7 @@
   },
   "hp": {
     "_doc": "Step 7B: 'hp' is vitality, mirrored from world.body (c.body.vitality). These levels are its reminders; the numbers that move it live in server/body.",
-    "starvationDamagePerHour": 6.0,
+    "_starvation": "Step 11.5: starving is days without food (server/body/starvation.js, STARVATION_DEATH_DAYS), not this meter. The hunger levels above are the urge.",
     "levels": [
       { "minPct": 90, "name": "healthy", "importance": 0, "remindEvery": null },
       { "minPct": 65, "name": "hurting", "importance": 4, "remindEvery": null },

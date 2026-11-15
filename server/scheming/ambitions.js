@@ -9,6 +9,7 @@
 //   in prompts   full tier: YOUR AMBITIONS (up to 3, secret ones marked); light: the strongest one; none: nothing.
 //                Context, not orders.
 import { chatForTool } from '../llm.js';
+import { grievanceBlock, topGrievances } from './grievances.js';
 import { relationLine } from '../social/describe.js';
 import { J, clampInt, peopleFor } from './common.js';
 
@@ -143,8 +144,8 @@ export class Ambitions {
       }, required: ['ambitions'] } } }];
       let list = null;
       try {
-        const { systemPrompt } = await import('../agents/prompt.js');
-        const r = await chatForTool(w.llm, { purpose: 'ambitions', tier: 'light', citizenId: c.id, tools, messages: [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }] }, 'set_ambitions');
+        const { authorSystemPrompt } = await import('./author.js'); // step 11.5 (A2)
+        const r = await chatForTool(w.llm, { purpose: 'ambitions', tier: 'light', citizenId: c.id, tools, messages: [{ role: 'system', content: authorSystemPrompt(w, c) }, { role: 'user', content: `(Below, "you" is ${c.name}. Answer as ${c.name}, in ${c.name}'s own voice.)\n\n${user}` }] }, 'set_ambitions');
         list = r.toolCalls?.find((x) => x.name === 'set_ambitions')?.arguments?.ambitions;
       } catch (err) {
         if (err.code !== 'unavailable') w.logEvent('error', { actorId: c.id, message: `ambitions failed: ${String(err.message).slice(0, 160)}` });
@@ -192,12 +193,13 @@ export class Ambitions {
     const list = this.of(c.id);
     const since = c.lastConsolidatedAt ?? w.now - 1440;
     const done = (c.deeds ?? []).filter((d) => d.lastAt > since);
-    const doneTo = w.db.prepare("SELECT other_id, reason FROM relationship_events WHERE citizen_id = ? AND game_time > ? AND source = 'witness' AND (d_trust < -0.5 OR d_affinity < -0.5) ORDER BY id DESC LIMIT 6").all(c.id, since);
+    // step 11.5 (A4): the worst grievances, as they happened (what was done, who saw, wounds still felt, what it cost)
+    const grievances = topGrievances(w, c, { min: Number(process.env.GRIEVANCE_MIN ?? 5) || 5, limit: 2 }).map((g) => grievanceBlock(w, c, g.id, { heading: '# WHAT WAS DONE TO YOU' })).filter(Boolean);
     const lines = [];
     lines.push(list.length ? `# WHAT YOU WANT OUT OF LIFE\n${list.map((a) => `- [${a.id}] (${a.kind}, ${a.intensity}/10, ${a.secrecy}) ${w.memory.resolveNames(c, a.text)}`).join('\n')}` : '# WHAT YOU WANT OUT OF LIFE\n(nothing in particular yet)');
     const done2 = done.length ? w.memory.resolveNames(c, (w.physical?.consequences.deedLines({ ...c, deeds: done, discovery: null }) ?? []).join('\n')) : '';
     if (done2) lines.push(`# WHAT YOU DID TODAY\n${done2}`);
-    if (doneTo.length) lines.push(`# WHAT WAS DONE TO YOU\n${doneTo.map((r) => `- ${w.memory.resolveNames(c, r.reason)}`).join('\n')}`);
+    lines.push(...grievances);
     return lines.join('\n\n');
   }
 

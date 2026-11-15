@@ -9,7 +9,8 @@
 //           objects-create | objects-patch | objects-reset | activate |
 //           provoke { a, b, cause, amount } | weapon { weaponType, to | room, quality } | ignite { objectId } |
 //           altercation { a, b, intent }   (step 10: levers only — nobody is made to act)
-//           ambition { citizenId, text, kind, intensity, secrecy, targets, plan } | traits { citizenId, honesty, cunning }
+//           ambition { citizenId, text, kind, intensity, secrecy, targets, plan } | traits { citizenId, honesty, cunning, grudge, flaws, worstSelf }
+//           act { a, b, action, intent, with, aim, words, untilHit } | say { a, to, text }   (step 11.5: a test's FORCED first exchange)
 //                                          (step 11: a want and a quiet moment to plan — no_plan stays an answer)
 //   chance  0..1 — the action only fires when the seeded roll is below it
 //   pick    [alternatives] — the seeded roll fires exactly one alternative (own type + fields)
@@ -21,7 +22,7 @@
 // Scheduling is on GAME time through a clock tick handler. The clock's horizon hook
 // (clock.horizonFn, normally quiet.nextEventAt) is wrapped for the duration of the run so the
 // quiet-time fast-forward cannot jump far past the next scheduled action; it is restored on stop.
-import { provoke, giveWeapon, igniteObject, startAltercation } from '../physical/director.js'; // step 10
+import { provoke, giveWeapon, igniteObject, startAltercation, forceAct, forceSay } from '../physical/director.js'; // step 10, 11.5
 import { directorAmbition, directorTraits } from '../scheming/director.js'; // step 11
 import fs from 'node:fs';
 import path from 'node:path';
@@ -58,6 +59,9 @@ const TYPES = {
   'altercation': 'physical/director.startAltercation',
   // step 11 (server/scheming/director.js)
   'ambition': 'scheming/director.directorAmbition',
+  // step 11.5 (Part D): the first exchange of a revenge test, forced and resolved by step 10
+  'act': 'physical/director.forceAct',
+  'say': 'physical/director.forceSay',
   'traits': 'scheming/director.directorTraits',
 };
 
@@ -131,6 +135,8 @@ function typeProblems(a) {
     case 'ignite': return missing(a, 'objectId');
     case 'altercation': return missing(a, 'a', 'b');
     case 'ambition': return missing(a, 'citizenId', 'text');
+    case 'act': return missing(a, 'a', 'b');
+    case 'say': return missing(a, 'a', 'text');
     case 'traits': return missing(a, 'citizenId');
     default: return [];
   }
@@ -209,6 +215,8 @@ function runAction(world, a) {
     case 'ignite': return igniteObject(world, { objectId: a.objectId });
     case 'altercation': return startAltercation(world, { a: a.a, b: a.b, intent: a.intent ?? 'hurt' });
     case 'ambition': return directorAmbition(world, a);
+    case 'act': return forceAct(world, a);
+    case 'say': return forceSay(world, a);
     case 'traits': return directorTraits(world, a);
     default: throw new Error(`unknown type "${a.type}"`); // filtered out at load
   }

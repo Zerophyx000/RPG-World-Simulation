@@ -9,6 +9,7 @@
 //   isDark(world, roomId)         → no light at night (precision and perception suffer)
 import { deriveLook } from '../../public/art/character.js';
 import { timeOfDay } from '../world/time.js';
+import { forceFactor } from '../body/starvation.js'; // step 11.5 (B2)
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -70,15 +71,16 @@ export function combatProfile(world, c, ctx = {}) {
   const build = buildOf(c);
   const painF = 1 - 0.04 * Math.max(0, pain - 2);
   const dark = ctx.dark ?? isDark(world, c.location);
+  const starved = forceFactor(world, c); // step 11.5: days without food take the strength and the speed
 
-  const force = (BUILD_FORCE[build] ?? 1) * (0.5 + 0.5 * manip) * (0.6 + 0.4 * moving) * (1 + 0.3 * anger) * (1 - 0.4 * fat) * painF * practice * (winded ? 0.7 : 1);
+  const force = (BUILD_FORCE[build] ?? 1) * (0.5 + 0.5 * manip) * (0.6 + 0.4 * moving) * (1 + 0.3 * anger) * (1 - 0.4 * fat) * painF * practice * (winded ? 0.7 : 1) * starved;
   const precision = (0.4 + 0.6 * sight) * (0.5 + 0.5 * manip) * practice * (concussed ? 0.8 : 1) * (1 - 0.25 * fear) * (anger > 0.5 ? 0.9 : 1)
     * (dazed ? 0.7 : 1) * (dark ? 0.6 : 1) * (ctx.weapon?.improvised ? 0.95 : 1);
   const evasion = (0.3 + 0.7 * moving) * (0.5 + 0.5 * sight) * clamp(cons, 0, 1) * (1 + 0.2 * fear) * (1 - 0.3 * fat) * Math.min(practice, 1.15)
     * (dazed ? 0.7 : 1) * (winded ? 0.8 : 1) * (dark ? 0.85 : 1);
   const toughness = (BUILD_TOUGH[build] ?? 1) * (0.5 + 0.5 * clamp((c.body?.vitality ?? 100) / 100, 0, 1)) * (0.5 + 0.5 * clamp((c.body?.blood ?? 100) / 100, 0, 1));
   const grip = Math.sqrt(BUILD_FORCE[build] ?? 1) * (0.3 + 0.7 * manip) * (1 - 0.3 * fat) * painF;
-  const speed = moving * (1 - 0.3 * fat) * painF * (winded ? 0.7 : 1);
+  const speed = moving * (1 - 0.3 * fat) * painF * (winded ? 0.7 : 1) * starved;
   const composure = (world.emotions?.composure(c) ?? 0.5) * Math.min(practice, 1.1) * (1 - 0.3 * fear);
   return {
     force: r2(Math.max(0.05, force)), precision: r2(Math.max(0.05, precision)), evasion: r2(Math.max(0, evasion)), toughness: r2(toughness),

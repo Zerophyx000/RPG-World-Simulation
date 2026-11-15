@@ -523,8 +523,10 @@ export function finishAct(world, c, a) {
   const ex = { actor: c.id, action: 'tie_up', target: t.id, hit: true, effects: ['tied'] };
   if (alt) world.altercations.record(alt, ex);
   announce(world, c, t, alt, ex, { serious: true });
-  world.physical.consequences.onAct({ actor: c, target: t, action: 'tie_up', intent: c.intents?.[t.id]?.intent ?? 'subdue', ex, alt, weapon: null });
-  world.physical.consequences.crime(c, t, 'unlawful_restraint', 3, {});
+  const tieIntent = c.intents?.[t.id]?.intent ?? 'subdue';
+  world.physical.consequences.onAct({ actor: c, target: t, action: 'tie_up', intent: tieIntent, ex, alt, weapon: null });
+  const law = world.physical.consequences.crimeFor(c, t, tieIntent, alt); // step 11.5 (C1)
+  if (law.crime) world.physical.consequences.crime(c, t, 'unlawful_restraint', 3, { intent: tieIntent, ...(law.claimed ? { claimed: law.claimed } : {}) });
 }
 
 // ---------- what everyone perceives ----------

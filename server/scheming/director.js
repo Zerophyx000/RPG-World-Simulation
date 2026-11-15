@@ -33,10 +33,11 @@ export function directorAmbition(world, { citizenId, text, kind = 'other', inten
   return { ok: true, ambition: a };
 }
 
-/** { citizenId, honesty, cunning, reason } */
-export function directorTraits(world, { citizenId, honesty, cunning, reason = null } = {}) {
+/** { citizenId, honesty, cunning, grudge, flaws: [{ flaw, serious }], worstSelf, reason } (step 11.5: grudge, flaws, worst self) */
+export function directorTraits(world, { citizenId, honesty, cunning, grudge = null, flaws = null, worstSelf = null, reason = null } = {}) {
   const c = need(world, citizenId);
   const t = c.persona?.traits ?? {};
-  world.scheming.traits.set(c, { honesty: honesty ?? t.honesty, cunning: cunning ?? t.cunning, reason: reason ?? 'set by the director' }, 'director');
-  return { ok: true, traits: { honesty: c.persona.traits.honesty, cunning: c.persona.traits.cunning } };
+  if (flaws != null && !Array.isArray(flaws)) throw bad('flaws must be an array of { flaw, serious }');
+  world.scheming.traits.set(c, { honesty: honesty ?? t.honesty, cunning: cunning ?? t.cunning, grudge: grudge ?? t.grudge, flaws, worst_self: worstSelf, reason: reason ?? 'set by the director' }, 'director');
+  return { ok: true, traits: { honesty: c.persona.traits.honesty, cunning: c.persona.traits.cunning, grudge: c.persona.traits.grudge ?? null }, flaws: c.persona.flaws ?? [], worstSelf: c.persona.worstSelf ?? null };
 }

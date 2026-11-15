@@ -1,0 +1,114 @@
+{
+  "name": "revenge-c",
+  "description": "Step 11.5 test (start at 06:00, three game days): a precious thing stolen. Kael takes Anselm's purse from the Tilted Cup while Anselm is out; Lena sees him do it, and tells Anselm by evening (the director only makes sure he finds out on day 1). Kael has a serious flaw, Anselm a proud streak and a long grudge. Watch Anselm: the grievance, the five-way choice (confront, get even, go to others, wait, let go), what he does about Kael, and Kael's lies when asked.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern"
+    },
+    {
+      "at": 1,
+      "type": "traits",
+      "citizenId": "kael",
+      "honesty": 3,
+      "cunning": 8,
+      "grudge": 6,
+      "flaws": [
+        {
+          "flaw": "greedy: takes what he wants when nobody is looking",
+          "serious": true
+        }
+      ],
+      "worstSelf": "Cornered, he lies smoothly and turns people against whoever accuses him.",
+      "reason": "test cast"
+    },
+    {
+      "at": 1,
+      "type": "traits",
+      "citizenId": "anselm",
+      "grudge": 8,
+      "flaws": [
+        {
+          "flaw": "proud: a slight to his house is a slight to him",
+          "serious": true
+        }
+      ],
+      "worstSelf": "When someone wrongs him under his own roof, he wants them run out of the village.",
+      "reason": "test cast"
+    },
+    {
+      "at": 30,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "anselm",
+          "to": "well",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "Anselm fetches water; Lena comes in"
+    },
+    {
+      "at": 40,
+      "type": "objects-patch",
+      "id": "tavern_purse",
+      "patch": {
+        "holderId": "kael"
+      },
+      "comment": "Kael pockets the purse"
+    },
+    {
+      "at": 41,
+      "type": "memory",
+      "citizenId": "kael",
+      "action": "add",
+      "importance": 8,
+      "about": [
+        "anselm"
+      ],
+      "text": "While the landlord was out at the well I slipped his purse off the shelf behind the counter and into my coat."
+    },
+    {
+      "at": 41,
+      "type": "memory",
+      "citizenId": "lena",
+      "action": "add",
+      "importance": 7,
+      "about": [
+        "kael",
+        "anselm"
+      ],
+      "text": "I saw the hooded stranger, Kael, slip Anselm's purse from the shelf behind the counter into his coat while Anselm was out."
+    },
+    {
+      "at": 600,
+      "type": "memory",
+      "citizenId": "anselm",
+      "action": "add",
+      "importance": 9,
+      "about": [
+        "kael",
+        "lena"
+      ],
+      "text": "My purse is gone from the shelf behind the counter — near all the coin I had. Lena told me she saw the stranger Kael slip it into his coat while I was at the well."
+    },
+    {
+      "at": 601,
+      "type": "relationship",
+      "citizenId": "anselm",
+      "otherId": "kael",
+      "reason": "Kael stole my purse from behind my own counter.",
+      "dAffinity": -3,
+      "dTrust": -4
+    }
+  ]
+}

@@ -67,6 +67,7 @@ export class Consequences {
   onAct({ actor: c, target: t, action, intent, ex, alt, withObj }) {
     const w = this.world;
     if (!AGGRESSIVE.includes(action)) return;
+    if (intent === 'care') return this.#roughCare(c, t, action, ex); // step 11.5 (C1/C2): never a deed, never a crime
     const d = this.#deed(c, t, alt);
     const first = Object.keys(d.acts).length === 0;
     d.lastAt = w.now;
@@ -116,11 +117,12 @@ export class Consequences {
         if (likeVictim >= likeActor) w.emotions.bump(o, { type: 'fear', target: null, delta: fx.includes('dead') || withObj ? 1.5 : 0.7, cause: `${ref(c)} ${what}`, source: 'violence', raw: true });
       }
     }
-    // ---- crime (law hook): one per kind per deed ----
+    // ---- crime (law hook): one per kind per deed; step 11.5 (C1): from the actor's intent ----
     const kind = fx.includes('dead') ? 'murder' : intent === 'kill' ? 'attempted_murder' : action === 'snatch' ? null : 'assault';
-    if (kind && !(d.crimes ?? []).includes(kind)) {
+    const law = this.crimeFor(c, t, intent, alt, { killing: kind === 'murder' });
+    if (kind && law.crime && !(d.crimes ?? []).includes(kind)) {
       d.crimes = [...(d.crimes ?? []), kind];
-      this.crime(c, t, kind, SEVERITY[kind], { witnesses: d.witnesses, altercationId: alt?.id ?? null });
+      this.crime(c, t, kind, SEVERITY[kind], { witnesses: d.witnesses, altercationId: alt?.id ?? null, intent, ...(law.claimed ? { claimed: law.claimed } : {}) });
     }
     // ---- dread: violence that drew blood or a weapon ----
     if ((fx.includes('dead') || fx.includes('bone broken') || (withObj && ex.hit)) && !d.dread) {
@@ -138,13 +140,18 @@ export class Consequences {
     w.saveCitizen(c);
   }
 
-/** Someone died: if a living person struck them within the day, the death is theirs (also when the wounds took time). */
-  onDeath(dead) {
+/** Someone died: if a living person struck them within the day and their wounds had a part in it, the death is theirs
+ *  (also when the wounds took time). Step 11.5: not a death from hunger, cold or illness, nor one without their wounds. */
+  onDeath(dead, { cause: deathCause = null } = {}) {
     const w = this.world;
     for (const c of w.citizens.values()) {
       if (!c.alive || c.id === dead.id) continue;
       const d = (c.deeds ?? []).filter((x) => x.victimId === dead.id && w.now - x.lastAt < DAY && Object.values(x.acts).some((n) => n >= 1)).at(-1);
       if (!d || d.effects.includes('dead')) continue;
+      // step 11.5: only a death their blows had a part in — starvation, fever or cold a day after a shove is not theirs
+      const cause = String(deathCause ?? '');
+      const theirWounds = (w.body?.allOf?.(dead.id) ?? []).some((x) => x.sourceId === c.id);
+      if (!theirWounds || /starvation|hunger|cold|chill|illness/i.test(cause)) continue;
       d.effects = [...d.effects, 'dead'];
       d.serious = true;
       d.until = w.now + SERIOUS_DEED;
@@ -153,6 +160,42 @@ export class Consequences {
       if (!(d.crimes ?? []).includes(kind)) { d.crimes = [...(d.crimes ?? []), kind]; this.crime(c, dead, kind, kind === 'murder' ? 5 : 4, { witnesses: d.witnesses ?? [], altercationId: d.altId, cause: dead.diedCause ?? null }); }
       this.#killed(c, dead, d);
     }
+  }
+
+  /** step 11.5 (C1): whether an act on someone is a crime, from the actor's intent. care: never. defend: not when the
+   *  other was an aggressor in this fight against the defender or someone on their side; otherwise assault with
+   *  claimed self-defense (a killing is always recorded; the claim goes with it). → { crime, claimed } */
+  crimeFor(c, t, intent, alt, { killing = false } = {}) {
+    if (intent === 'care') return { crime: false, claimed: null };
+    if (intent !== 'defend') return { crime: true, claimed: null };
+    const aggressor = this.wasAggressor(t, c, alt);
+    if (aggressor && !killing) return { crime: false, claimed: null };
+    return { crime: true, claimed: 'self-defense' };
+  }
+
+  /** Did t go at c (or at someone on c's side) in this fight — or, outside one, in the last hour? */
+  wasAggressor(t, c, alt) {
+    const w = this.world;
+    if (alt) {
+      const side = alt.participants.find((p) => p.id === c.id)?.side ?? null;
+      const mine = new Set(alt.participants.filter((p) => side != null && p.side === side).map((p) => p.id).concat(c.id));
+      if ((alt.exchanges ?? []).some((e) => e.actor === t.id && AGGRESSIVE.includes(e.action) && mine.has(e.target))) return true;
+    }
+    return (t.deeds ?? []).some((d) => (d.victimId === c.id || (alt && alt.participants.some((p) => p.id === d.victimId && p.side === alt.participants.find((q) => q.id === c.id)?.side))) && w.now - d.lastAt <= 60);
+  }
+
+  /** step 11.5 (C2): a rough act meant as care (pulling someone back, grabbing them out of the fire). No deed and no
+   *  crime. From the target's side it is welcome or not; unwanted, it is an unwanted touch (a relationship event and
+   *  a memory of what they felt — C3: they may well have taken it for an attack). */
+  #roughCare(c, t, action, ex) {
+    const w = this.world;
+    const wl = this.welcomeness(t, c);
+    if (t.alive && ex.hit && !wl.welcome) {
+      w.emotions.bump(t, { type: wl.harmed ? 'fear' : 'anger', target: c.id, delta: 1, cause: `${ref(c)} ${PAST[action] ?? 'grabbed'} me`, source: 'violence', raw: true });
+      w.relationships.change(t.id, c.id, { affinity: -0.5, trust: -0.3 }, { reason: `${ref(c)} ${PAST[action] ?? 'grabbed'} me when I didn't want it`, source: 'witness', evidence: { unwantedTouch: true, act: action } });
+      w.memory.add(t.id, { kind: 'episodic', text: `${ref(c)} ${PAST[action] ?? 'grabbed'} me. I didn't want it.`, importance: 6, about: [c.id], placeId: c.location, source: { unwantedTouch: true } });
+    }
+    w.logEvent('touch', { actorId: c.id, location: c.location, targetId: t.id, act: action, welcome: wl.welcome, harmed: wl.harmed, rough: true, ...(wl.welcome ? {} : { unwanted: true }) });
   }
 
   crime(c, t, kind, severity, extra = {}) {

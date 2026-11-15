@@ -100,7 +100,7 @@ function chooseNeedTool(byName, prompt, stimulus) {
   const enumOf = (tool, key) => tool?.function.parameters?.properties?.[key]?.enum ?? [];
   const preferFood = (ids) => ids.find((id) => /tavern|bakery/.test(id)) ?? pick(ids);
   const urgent = /^Above all, you are/m.test(prompt);
-  const hungry = /You're (hungry|starving|ravenous|faint with hunger)/.test(prompt) || urgent;
+  const hungry = /You're (hungry|very hungry|ravenous|famished)/.test(prompt) || urgent;
   if (urgent && byName.eat && Math.random() < 0.8) return { tool: byName.eat, args: {} };
   if (hungry && byName.eat && Math.random() < 0.6) return { tool: byName.eat, args: {} };
   // asked a question by someone → explain a place
@@ -125,7 +125,13 @@ const firstName = (label) => (/^[A-Z][a-z]+/.exec(String(label ?? ''))?.[0] ?? n
 function step11Helper(tool) {
   const p = tool.function.parameters?.properties ?? {};
   switch (tool.function.name) {
-    case 'set_traits': return { honesty: 2 + Math.floor(Math.random() * 8), cunning: 1 + Math.floor(Math.random() * 9), reason: pick(['Plain-spoken, hides nothing.', 'Keeps their cards close.', 'Says what suits them.']) };
+    case 'set_traits': { // step 11.5: grudge, flaws (about one in five serious), worst self
+      const serious = Math.random() < 0.2;
+      return { ...(p.honesty ? { honesty: 2 + Math.floor(Math.random() * 8), cunning: 1 + Math.floor(Math.random() * 9) } : {}), grudge: 1 + Math.floor(Math.random() * 10),
+        flaws: [{ flaw: serious ? pick(['vindictive', 'greedy', 'cruel when drunk', 'proud to the point of violence']) : pick(['impatient', 'vain', 'lazy', 'a sharp tongue']), serious }],
+        worst_self: serious ? 'When crossed, they wait for the right moment and make sure it hurts.' : 'When tired, they snap at whoever is nearest.',
+        reason: pick(['Plain-spoken, hides nothing.', 'Keeps their cards close.', 'Says what suits them.']) };
+    }
     case 'set_ambitions': {
       const item = p.ambitions.items.properties;
       const people = (item.targets?.items?.enum ?? []).filter((x) => x !== 'nobody');
@@ -139,7 +145,13 @@ function step11Helper(tool) {
       }) };
     }
     case 'plan_scheme': {
-      if (Math.random() < 0.5) return { no_plan: true, why_not: pick(['Better to wait and see.', 'It is not worth the risk yet.']) };
+      // step 11.5: a choice among equal options (grievance: confront … let_go; ambition: plan / wait_and_watch / let_go)
+      const opts = p.choice?.enum ?? ['plan'];
+      const choice = pick(opts);
+      const why = pick(["He made me small in front of everyone and I won't have it.", "I'm not strong enough to face him, not yet.", 'It cost me more than he knows.', "Let him have it. I'm too tired to carry this."]);
+      if (choice === 'confront') return { choice, why, how: 'Tell him to his face what he did, in front of people.' };
+      if (choice === 'go_to_others') return { choice, why, how: 'Tell Anselm what he did and ask him to bar him from the Cup.', who: (p.who?.items?.enum ?? []).slice(0, 1) };
+      if (['wait_and_watch', 'let_go'].includes(choice)) return { choice, why };
       const sp = p.steps.items.properties;
       const people = (p.targets?.items?.enum ?? []).filter((x) => x !== 'nobody');
       const target = people.length ? pick(people) : null;
@@ -152,7 +164,7 @@ function step11Helper(tool) {
         { text: 'Do it, and be home before anyone notices', kind: 'act', ...(target ? { absent: [target] } : {}) },
       ];
       const others = people.filter((x) => x !== target);
-      return { goal: target ? `Make ${firstName(target) ?? 'them'} sorry, without anyone knowing it was me.` : 'Get ahead without anyone noticing.', ...(target ? { targets: [target] } : {}), steps, ...(others.length && Math.random() < 0.4 ? { recruit: [pick(others)] } : {}), risks: 'Someone could see me on the way.' };
+      return { choice, why, goal: target ? `Make ${firstName(target) ?? 'them'} sorry, without anyone knowing it was me.` : 'Get ahead without anyone noticing.', ...(target ? { targets: [target] } : {}), steps, ...(others.length && Math.random() < 0.4 ? { recruit: [pick(others)] } : {}), risks: 'Someone could see me on the way.' };
     }
     case 'judge': return Math.random() < 0.7 ? { leaked: 'none' } : { leaked: pick(['hint', 'full']), which: 1, what: 'they let something slip' };
     default: return null;

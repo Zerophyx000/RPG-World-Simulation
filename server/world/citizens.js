@@ -242,8 +242,12 @@ export function citizenFromInput(input, { rooms, existingIds, now }) {
     if (p.age != null && !(Number(p.age) >= 0)) errors.push('persona.age must be a number');
     if (p.goals != null && !Array.isArray(p.goals)) errors.push('persona.goals must be an array of strings');
     for (const k of ['appearanceTags', 'secretGoals', 'covets']) if (p[k] != null && !Array.isArray(p[k])) errors.push(`persona.${k} must be an array of strings`);
+    // step 11.5: flaws [{ flaw, serious }] (or strings) and a one-line worst self
+    if (p.flaws != null && (!Array.isArray(p.flaws) || p.flaws.some((f) => typeof f !== 'string' && typeof f?.flaw !== 'string'))) errors.push('persona.flaws must be an array of { flaw, serious } (or strings)');
+    if (p.worstSelf != null && typeof p.worstSelf !== 'string') errors.push('persona.worstSelf must be a string');
     if (p.traits != null) {
       for (const [k, v] of Object.entries(p.traits)) {
+        if (['honesty', 'cunning', 'grudge'].includes(k)) { if (!(Number(v) >= 1 && Number(v) <= 10)) errors.push(`persona.traits.${k} must be between 1 and 10`); continue; } // step 11 / 11.5
         if (!TRAITS.includes(k)) errors.push(`persona.traits.${k} is not a Big Five trait`);
         else if (!(Number(v) >= 0 && Number(v) <= 1)) errors.push(`persona.traits.${k} must be between 0 and 1`);
       }

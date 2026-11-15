@@ -223,10 +223,10 @@ console.log('\n--- schemes');
   ok(events('leak').some((e) => e.actor === 'jonas' && e.leaked === 'full'), 'the leak check ran (a name in the words, then the judge)');
   w.llm.chat = realChat;
   // no plan more than once a day
-  owner.schemePlans = { day: Math.floor(w.now / 1440), n: 1 };
+  owner.schemePlans = { day: Math.floor(w.now / 1440), n: 2 };
   let planned = false; const realPlan = S.schemes.plan.bind(S.schemes); S.schemes.plan = async () => { planned = true; return null; };
   S.schemes.maybePlan(owner, { trigger: 'reflection' });
-  ok(!planned, 'at most one planning call per citizen per game day');
+  ok(!planned, 'at most SCHEME_PLAN_PER_DAY (2) planning calls per citizen per game day');
   S.schemes.plan = realPlan;
 }
 

@@ -101,7 +101,11 @@ async function worldFor(persona, sit) {
   w.db.prepare('UPDATE relationship_events SET game_time = ? WHERE citizen_id = ? AND source = ? AND game_time = ?').run(PLAN_AT - 300, c.id, 'witness', PLAN_AT);
   // baseline builders plan toward an ambition: a plain one about him (the after-builder reads the grievance itself)
   const amb = w.scheming.ambitions.add(c, { kind: 'other', text: `I can't stop thinking about what ${w.citizens.get(O).name} did to me.`, targetIds: [O], intensity: 7, secrecy: 'private' }, { origin: 'harness' });
-  const built = await w.scheming.schemes.buildPlanCall(c, amb, 'harness', { aboutId: O });
+  let built = await w.scheming.schemes.buildPlanCall(c, amb, 'harness', { aboutId: O });
+  if (built.mode === 'grievance') { // the step-11.5 builder reads the grievance itself: no stand-in ambition
+    w.scheming.ambitions.change(amb.id, { status: 'abandoned' }, { op: 'harness', why: 'stand-in removed' });
+    built = await w.scheming.schemes.buildPlanCall(c, null, 'harness', { aboutId: O });
+  }
   const label = [...w.memory.labelsFor(c, [w.citizens.get(O)]).keys()][0] ?? w.citizens.get(O).name;
   return { w, c, built, label };
 }

@@ -101,6 +101,7 @@ const DEFAULT_ROUTES = {
   observer: ['local', 'school'], director_text: ['local', 'school'], score: ['local'], test: ['school'],
   keeper: ['local', 'school'], // step 5: the room keeper (falls back to code rules when nothing is up)
   persona_traits: ['school'], ambitions: ['school'], scheme: ['school'], leak_check: ['local', 'school'], // step 11
+  persona_flaws: ['school'], // step 11.5
 };
 
 // DATA_DIR lets tests or a second world run against another folder.

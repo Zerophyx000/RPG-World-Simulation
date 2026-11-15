@@ -86,3 +86,38 @@ export function crimes(world, { limit = 100 } = {}) {
     return { id: r.id, gameTime: r.game_time, kind: d.kind, severity: d.severity, actor: name(r.actor_id), actorId: r.actor_id, victim: d.victimId ? name(d.victimId) : null, victimId: d.victimId ?? null, witnesses: (d.witnesses ?? []).map(name), location: r.location };
   });
 }
+
+// ---------- step 11.5 (Part D): forcing the first exchange of a test ----------
+const labelFor = (world, viewer, o) => [...world.memory.labelsFor(viewer, [o]).keys()][0] ?? o.name;
+
+/** The director makes A do one act on B, resolved by step 10 like any act (real wounds, real witnesses). `untilHit`:
+ *  repeat a missed blow up to that many times. { a, b, action, intent, with (object id), aim, words, untilHit } */
+export function forceAct(world, { a, b, action = 'punch', intent = 'hurt', with: withId = null, aim = null, words = null, untilHit = 1 }) {
+  const A = need(world, a);
+  const B = need(world, b);
+  if (A.location !== B.location) throw bad('they are not in the same place');
+  const weapon = withId ? world.objects.get(withId) : null;
+  if (withId && !weapon) throw bad(`unknown object "${withId}"`);
+  let last = null;
+  for (let i = 0; i < Math.max(1, Math.min(10, Number(untilHit) || 1)); i++) {
+    world.setActivity(A, { type: 'idle' });
+    const n = world.db.prepare("SELECT COUNT(*) n FROM events WHERE type = 'physical'").get().n;
+    last = world.applyAction(A, { name: 'act_on', arguments: { person: labelFor(world, A, B), action, intent, ...(weapon ? { with: world.objects.alias(weapon) } : {}), ...(aim ? { aim } : {}), ...(words ? { words } : {}) } });
+    const ev = world.db.prepare("SELECT data FROM events WHERE type = 'physical' ORDER BY id DESC LIMIT 1").get();
+    const hit = world.db.prepare("SELECT COUNT(*) n FROM events WHERE type = 'physical'").get().n > n && JSON.parse(ev?.data ?? '{}').hit !== false;
+    if (hit) break;
+  }
+  world.logEvent('director', { action: 'force_act', a: A.id, b: B.id, act: action, intent });
+  return { ok: Boolean(last?.ok ?? last), result: last };
+}
+
+/** The director makes A say a line (to B, or to the room), through the ordinary `say`. { a, to, text } */
+export function forceSay(world, { a, to = null, text }) {
+  const A = need(world, a);
+  if (!String(text ?? '').trim()) throw bad('needs "text"');
+  const B = to ? need(world, to) : null;
+  world.setActivity(A, { type: 'idle' });
+  const r = world.applyAction(A, { name: 'say', arguments: { text: String(text).trim(), ...(B ? { to: labelFor(world, A, B) } : {}) } });
+  world.logEvent('director', { action: 'force_say', a: A.id, to: B?.id ?? null, text });
+  return { ok: Boolean(r?.ok ?? r), result: r };
+}
