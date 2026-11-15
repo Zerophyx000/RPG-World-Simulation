@@ -18,6 +18,9 @@ import { citizensIn } from '../world/rooms.js';
 import { ref } from '../memory/index.js';
 import { J, clampInt, peopleFor, parseTimeRef, trait } from './common.js';
 
+/** A plan_scheme answer that is whole: an explicit no_plan, or a goal with steps. */
+export const planComplete = (a) => Boolean(a && (a.no_plan || (String(a.goal ?? '').trim() && Array.isArray(a.steps) && a.steps.length)));
+
 export const STEP_KINDS = ['talk', 'obtain', 'go', 'act', 'deceive', 'recruit', 'wait', 'other'];
 const ACTIVE = ['planning', 'active', 'paused'];
 const env = (k, d) => Number(process.env[k] ?? d) || d;
@@ -84,10 +87,10 @@ export class Schemes {
     this.plan(c, amb, trigger).catch((err) => w.logEvent('error', { actorId: c.id, message: `scheme planning failed: ${String(err.message).slice(0, 160)}` }));
   }
 
-  async plan(c, amb, trigger) {
+  /** The planning call exactly as the world sends it (also used by scripts/scheme-eval.js). Reads only. */
+  async buildPlanCall(c, amb, trigger) {
     const w = this.world;
-    this.busy.add(c.id);
-    try {
+    {
       const labels = peopleFor(w, c);
       const places = Object.keys(c.knownPlaces ?? {}).filter((id) => w.rooms.has(id));
       const types = [...w.objects.types.values()].filter((t) => t.portable || t.weapon || (t.tags ?? []).length).map((t) => t.id);
@@ -114,11 +117,21 @@ export class Schemes {
         risks: { type: 'string' },
       } } } }];
       const { systemPrompt } = await import('../agents/prompt.js');
-      const r = await chatForTool(w.llm, { purpose: 'scheme', tier: 'full', citizenId: c.id, tools, messages: [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }] }, 'plan_scheme');
+      return { messages: [{ role: 'system', content: systemPrompt(w, c) }, { role: 'user', content: user }], tools, labels, places, types, trigger };
+    }
+  }
+
+  async plan(c, amb, trigger) {
+    const w = this.world;
+    this.busy.add(c.id);
+    try {
+      const { messages, tools, labels, places, types } = await this.buildPlanCall(c, amb, trigger);
+      // a plan cut off by the token cap comes back with a goal and no steps: that is a cut-off, not "no plan"
+      const r = await chatForTool(w.llm, { purpose: 'scheme', tier: 'full', citizenId: c.id, tools, messages }, 'plan_scheme', { complete: planComplete });
       const a = r.toolCalls?.find((x) => x.name === 'plan_scheme')?.arguments;
       if (!c.alive || w.citizens.get(c.id) !== c) return null;
       if (!a || a.no_plan || !Array.isArray(a.steps) || !a.steps.length || !String(a.goal ?? '').trim()) {
-        w.logEvent('scheme_none', { actorId: c.id, ambitionId: amb.id, trigger, why: String(a?.why_not ?? '').slice(0, 200) || null });
+        w.logEvent('scheme_none', { actorId: c.id, ambitionId: amb.id, trigger, why: String(a?.why_not ?? '').slice(0, 200) || null, ...(a && !planComplete(a) ? { cutOff: true } : {}) });
         return null;
       }
       return this.create(c, amb, a, { trigger, labels, places, types });

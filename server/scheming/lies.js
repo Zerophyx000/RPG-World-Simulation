@@ -61,6 +61,10 @@ export class Lies {
 
   get(id) { return this.row(this.q.get.get(id)); }
   save(l) { this.q.save.run(JSON.stringify(l.heardBy), l.status, JSON.stringify(l.data), l.id); this.world.bus.emit('scheming', { what: 'lie', id: l.id }); }
+  /** step 11.5: lies of `liarId` that c saw through (c's own knowledge, for grievances). */
+  caughtBy(c, liarId) { return this.q.byLiar.all(liarId, 30).map((r) => this.row(r)).filter((l) => (l.data.caughtBy ?? []).some((x) => (x?.id ?? x) === c.id)); }
+  /** step 11.5: accusations and framing by `liarId` aimed at c that c knows of (heard, or caught). */
+  aimedAt(c, liarId) { return this.q.byLiar.all(liarId, 30).map((r) => this.row(r)).filter((l) => ['accuse', 'frame'].includes(l.kind) && l.aboutIds.includes(c.id) && (l.heardBy.some((h) => h.citizen_id === c.id) || (l.data.caughtBy ?? []).some((x) => (x?.id ?? x) === c.id))); }
   standingOf(c, limit = 20) { return this.q.byLiar.all(c.id, limit).map((r) => this.row(r)).filter((l) => l.status === 'standing'); }
 
   // ---------- recording ----------

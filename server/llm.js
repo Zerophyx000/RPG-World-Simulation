@@ -11,9 +11,9 @@ import { config } from './config.js';
 // operator can tune them without touching code. Heavy background purposes write long tool calls after
 // thinking, which is why PURPOSE_FULL_MAX overrides 'full' for them.
 export const TIER_MAX_TOKENS = { ...config.llm.maxTokens };
-export const PURPOSE_FULL_MAX = { habits: 6000, reflect: 4000, consolidate: 6000, bootstrap: 6000 };
+export const PURPOSE_FULL_MAX = { habits: 6000, reflect: 4000, consolidate: 6000, bootstrap: 6000, scheme: 6000 }; // step 11.5: 17 of 45 step-11 plans hit 3000 and lost their steps
 // When a call runs out of tokens without a usable tool call, the retry (thinking off) gets this many.
-export const RETRY_MAX = { decide: 600, habits: 3000, reflect: 1500, consolidate: 3000, bootstrap: 3000 };
+export const RETRY_MAX = { decide: 600, habits: 3000, reflect: 1500, consolidate: 3000, bootstrap: 3000, scheme: 3000 };
 // Cut-off ladder for citizen decisions (server/agents/think.js): one retry at the next higher cap.
 export const CAP_ABOVE = { none: 'light', light: 'full' }; // step A6
 
@@ -29,9 +29,13 @@ export function ranOut(res, toolName = null) {
  * chat() for one-tool background calls: if the model runs out of tokens while thinking,
  * retry once with thinking off (tier 'none') and a purpose-sized budget.
  */
-export async function chatForTool(llm, opts, toolName) {
+export async function chatForTool(llm, opts, toolName, { complete = null } = {}) {
   const first = await llm.chat(opts);
-  if (!ranOut(first, toolName)) return first;
+  // step 11.5: some servers report finish_reason 'tool_calls' for a call cut at the cap, with half the arguments;
+  // `complete(args)` says whether the answer is whole — a cut-off one that used the whole budget is retried too
+  const args = first.toolCalls?.find((t) => t.name === toolName)?.arguments;
+  const cut = complete && !complete(args) && (first.usage?.completion_tokens ?? 0) >= 0.97 * (opts.maxTokens ?? capFor(opts));
+  if (!ranOut(first, toolName) && !cut) return first;
   return llm.chat({ ...opts, tier: 'none', maxTokens: RETRY_MAX[opts.purpose] ?? 1500 });
 }
 const HEALTH_EVERY_MS = 60_000;
@@ -365,4 +369,11 @@ function parseJsonContent(s) {
       return null;
     }
   }
+}
+
+/** The max_tokens chat() would send for these options (mirrors the choice in chat()). */
+function capFor({ tier, purpose, maxTokens }) {
+  if (maxTokens) return maxTokens;
+  if (!tier) return Infinity;
+  return tier === 'full' && PURPOSE_FULL_MAX[purpose] ? PURPOSE_FULL_MAX[purpose] : TIER_MAX_TOKENS[tier];
 }
