@@ -1,6 +1,6 @@
 {
   "name": "revenge-b",
-  "description": "Step 11.5 test (start at 18:00, three game days): the same forced beating as revenge-a, but the one beaten is Lena — kind, with a low grudge. Expected: hurt, fear, maybe going to others (Anselm, Greta), rarely revenge. Compare her choices and why with Kael in revenge-a.",
+  "description": "Step 11.5 test (start at 06:00; the beating is at noon; three game days after it): the same forced beating as revenge-a, but the one beaten is Lena — kind, with a low grudge. Expected: hurt, fear, maybe going to others (Anselm, Greta), rarely revenge. Compare her choices and why with Kael in revenge-a.",
   "actions": [
     {
       "at": 0,
@@ -10,7 +10,7 @@
       "comment": "the stranger is in the Cup"
     },
     {
-      "at": 1,
+      "at": "11:50",
       "type": "apply",
       "effects": [
         {
@@ -38,7 +38,7 @@
           "notify": false
         }
       ],
-      "comment": "an evening at the Cup"
+      "comment": "midday at the Cup"
     },
     {
       "at": 2,
@@ -69,7 +69,7 @@
       "reason": "test cast: kind, low grudge"
     },
     {
-      "at": 5,
+      "at": "12:00",
       "type": "act",
       "a": "tomas",
       "b": "lena",
@@ -81,7 +81,7 @@
       "comment": "forced: the first blow"
     },
     {
-      "at": 6,
+      "at": "12:01",
       "type": "act",
       "a": "tomas",
       "b": "lena",
@@ -91,7 +91,7 @@
       "comment": "forced: a kick while she is down"
     },
     {
-      "at": 7,
+      "at": "12:02",
       "type": "say",
       "a": "jonas",
       "text": "Ha! Look at her on the floor!",

@@ -1,6 +1,6 @@
 {
   "name": "revenge-a",
-  "description": "Step 11.5 test (start at 18:00 on day 1, run three game days): a real grievance. The director FORCES the first exchange: Tomas punches Kael down in the Tilted Cup and kicks him, in front of Lena and Jonas, and Jonas laughs. Kael has a serious flaw and a long grudge. After that nothing is forced. Watch Kael at reflection and in sleep: the grievance block (what was done, who saw, wounds still felt, what it cost), the five-way choice and its why, a revenge ambition or an in-character decision against it, and, if he schemes, whether the steps are real and carried out in character over the days.",
+  "description": "Step 11.5 test (start at 06:00 on day 1; the beating is at noon in the Tilted Cup; run three game days after it): a real grievance. The director FORCES the first exchange: Tomas punches Kael down in the Tilted Cup and kicks him, in front of Lena and Jonas, and Jonas laughs. Kael has a serious flaw and a long grudge. After that nothing is forced. Watch Kael at reflection and in sleep: the grievance block (what was done, who saw, wounds still felt, what it cost), the five-way choice and its why, a revenge ambition or an in-character decision against it, and, if he schemes, whether the steps are real and carried out in character over the days.",
   "actions": [
     {
       "at": 0,
@@ -10,7 +10,7 @@
       "comment": "the stranger is in the Cup"
     },
     {
-      "at": 1,
+      "at": "11:50",
       "type": "apply",
       "effects": [
         {
@@ -38,7 +38,7 @@
           "notify": false
         }
       ],
-      "comment": "an evening at the Cup"
+      "comment": "midday at the Cup"
     },
     {
       "at": 2,
@@ -75,7 +75,7 @@
       "reason": "test cast"
     },
     {
-      "at": 5,
+      "at": "12:00",
       "type": "act",
       "a": "tomas",
       "b": "kael",
@@ -87,7 +87,7 @@
       "comment": "forced: the first blow"
     },
     {
-      "at": 6,
+      "at": "12:01",
       "type": "act",
       "a": "tomas",
       "b": "kael",
@@ -97,7 +97,7 @@
       "comment": "forced: a kick while he is down"
     },
     {
-      "at": 7,
+      "at": "12:02",
       "type": "say",
       "a": "jonas",
       "text": "Ha! Look at him on the floor!",
