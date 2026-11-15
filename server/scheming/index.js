@@ -113,7 +113,9 @@ export class Scheming {
     const claims = this.lies.claimsFor(c);
     if (claims.length) {
       const labels = w.memory.labelsFor(c, [...new Set(claims.map((x) => x.from))].map((id) => w.citizens.get(id)).filter(Boolean));
-      all.trust_claim = { type: 'object', description: 'Optional: whether you believe what someone told you in the last hour.', properties: {
+      const byId = new Map([...labels].map(([l, o]) => [o.id, l]));
+      const heard = claims.slice(-3).map((x) => `${byId.get(x.from) ?? 'someone'}: "${x.text.slice(0, 70)}"`).join('; ');
+      all.trust_claim = { type: 'object', description: `Optional: what you make of something you were told in the last hour (${heard}). Fill it once you believe it, doubt it or don't believe it — your words alone don't settle it for you.`, properties: {
         from: { type: 'string', enum: [...labels.keys()] }, verdict: { type: 'string', enum: ['believe', 'doubt', 'disbelieve'] }, why: { type: 'string' },
       }, required: ['from', 'verdict'] };
     }

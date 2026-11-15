@@ -95,6 +95,7 @@ export class Ambitions {
     const vocab = this.vocabulary();
     for (const m of text.matchAll(/(?<![.!?]\s|^)\b([A-Z][a-z']{2,})\b/g)) {
       const word = m[1].replace(/'s$/, '');
+      if (/^I'/.test(word)) continue; // I've, I'd, I'll, I'm
       if (!vocab.has(word)) return { bad: `names someone or somewhere that isn't here ("${word}")` };
     }
     return { kind: KINDS.includes(a.kind) ? a.kind : 'other', text, targetIds, intensity: clampInt(a.intensity, 1, 10, 5), secrecy: SECRECY.includes(a.secrecy) ? a.secrecy : 'private' };

@@ -30,6 +30,10 @@ export class LeakCheck {
     for (const a of S.ambitions.of(c.id).filter((x) => x.secrecy === 'secret')) out.push({ kind: 'ambition', id: a.id, text: a.text, involved: words(a.text, a.targetIds) });
     for (const s of [...S.schemes.ownedBy(c), ...S.schemes.joinedBy(c)]) {
       if (s.ownerId === listener.id || s.exposedTo.includes(listener.id) || s.accomplices.some((a) => a.citizen_id === listener.id && ['in', 'wavering'].includes(a.status))) continue;
+      // someone the plan itself means to talk to (a step with them, or named in a step): that talk is the plan, not a leak
+      // (never the one it is aimed at: telling them is exactly the leak)
+      const first = listener.name.split(/\s+/)[0].toLowerCase();
+      if (!s.targetIds.includes(listener.id) && s.steps.some((st) => st.status === 'pending' && ((st.when?.with ?? []).includes(listener.id) || String(st.text).toLowerCase().includes(first))) || (s.data?.recruit ?? []).includes(listener.id)) continue;
       // the one behind it is involved too ("Anselm means to…"), unless that is the speaker
       out.push({ kind: 'scheme', id: s.id, text: `${w.memory.resolveNames(c, `{{c:${s.ownerId}}}`)} means to: ${s.goal} (steps: ${s.steps.map((st) => st.text).join('; ')})`, involved: words(`${s.goal} ${s.steps.map((st) => st.text).join(' ')}`, [...s.targetIds, ...(s.ownerId !== c.id ? [s.ownerId] : [])]) });
     }
@@ -54,7 +58,7 @@ export class LeakCheck {
         const tools = [{ type: 'function', function: { name: 'judge', description: 'Did the words give the secret away?', parameters: { type: 'object', properties: {
           leaked: { type: 'string', enum: ['none', 'hint', 'full'] }, which: { type: 'integer', description: 'The number of the secret it gave away (if any).' }, what: { type: 'string' },
         }, required: ['leaked'] } } }];
-        const user = `A person holds these secrets:\n${relevant.map((s, i) => `${i + 1}. ${w.memory.resolveNames(c, s.text)}`).join('\n')}\n\nThey just said to someone who doesn't know them: "${text}"\n\nDid these words give a secret away: not at all (none), a hint someone might wonder about (hint), or plainly (full)? Call judge once.`;
+        const user = `A person holds these secrets:\n${relevant.map((s, i) => `${i + 1}. ${w.memory.resolveNames(c, s.text)}`).join('\n')}\n\nThey just said to someone who doesn't know them: "${text}"\n\nDid these words give a secret away: not at all (none), a hint someone might wonder about (hint), or plainly (full)? Asking around, small talk and ordinary worries that don't reveal the secret purpose are none. Call judge once.`;
         const r = await chatForTool(w.llm, { purpose: 'leak_check', tier: 'none', citizenId: c.id, tools, messages: [{ role: 'user', content: user }] }, 'judge');
         a = r.toolCalls?.find((x) => x.name === 'judge')?.arguments;
       } catch { return; }
