@@ -6,7 +6,7 @@
 // an ended conversation says why for a few seconds. The lines are drawn by `lineRenderer`, so a later dialogue box
 // (portraits, typewriter text) can replace it.
 import { subscribe } from '../../store.js';
-import { esc } from '../../util.js';
+import { esc, lineMarkHtml } from '../../util.js';
 
 const ENDED_MS = 4000;
 const MAX_PINNED = 4;
@@ -36,6 +36,7 @@ export function visibleLines(conv, { god = true, selectedId = null, thoughts = t
       speakerId: l.speakerId, toId: l.toId ?? null, whisper, shout: l.volume === 'shout',
       text: whisper && !god && !party ? '…' : l.text,
       thought: god && thoughts ? (l.thought ?? null) : null,
+      mark: god ? (l.mark ?? null) : null, // step 11: lies / confiding / confessions, director view only
     };
   });
 }
@@ -45,7 +46,7 @@ export const lineRenderer = {
   render(container, lines, { name, color }) {
     container.innerHTML = lines.map((l) => `<div class="cp-line${l.shout ? ' shout' : ''}">
       <b style="color:${color(l.speakerId)}">${esc(name(l.speakerId))}</b>${l.toId ? `<span class="cp-to"> → ${esc(name(l.toId))}</span>` : ''}${l.whisper ? ' <span class="cp-tag">(whispered)</span>' : ''}
-      <span class="cp-text">${esc(l.text)}</span>${l.thought ? `<div class="cp-thought">${esc(l.thought)}</div>` : ''}</div>`).join('');
+      <span class="cp-text">${esc(l.text)}${lineMarkHtml(l)}</span>${l.thought ? `<div class="cp-thought">${esc(l.thought)}</div>` : ''}</div>`).join('');
   },
 };
 

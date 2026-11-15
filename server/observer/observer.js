@@ -5,6 +5,7 @@
 // this folder; it is wired up in main.js and read only by http.js.
 // Step 6: it also READS each citizen's current feelings (world.emotions.top) and the hourly emotion_log
 // samples, to tell what has lasted most of the day. Reading only — it never writes world state.
+// Step 11: it also reads ambitions (private / secret), schemes and standing lies with their truth (hiddenSchemes).
 //
 // Batched triggers (step 4) — a run starts when ANY of these holds AND at least
 // OBSERVER_MIN_INTERVAL_REAL_SECONDS passed since the last run started:
@@ -134,7 +135,7 @@ export class Observer {
     if (!lines.length && reason !== 'manual') return { skipped: 'no new events' };
 
     const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen')
-      .map((c) => ({ ...c, feels: this.world.emotions.top(c, 3, 4).map((e) => ({ type: e.type, target: e.target, targetName: this.world.citizens.get(e.target)?.name ?? null, band: ['slight', 'strong', 'intense', 'overwhelming'][this.world.emotions.band(e.intensity)] })), lasting: lastingFeelings(this.world, c), hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name) }));
+      .map((c) => ({ ...c, feels: this.world.emotions.top(c, 3, 4).map((e) => ({ type: e.type, target: e.target, targetName: this.world.citizens.get(e.target)?.name ?? null, band: ['slight', 'strong', 'intense', 'overwhelming'][this.world.emotions.band(e.intensity)] })), lasting: lastingFeelings(this.world, c), hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name), ...hiddenSchemes(this.world, c) }));
     const ids = citizens.map((c) => c.id);
     const tools = [reportTool(ids)];
     const messages = buildMessages(prev, citizens, lines);
@@ -217,6 +218,21 @@ function lastingFeelings(world, c) {
     });
 }
 
+// Step 11: the long game, out of world: private / secret ambitions, live schemes (and whose plan someone is in on),
+// standing lies with their truth. Read only, through the scheming read methods; the report never reaches a citizen.
+function hiddenSchemes(world, c) {
+  const S = world.scheming;
+  if (!S) return {};
+  const name = (id) => world.citizens.get(id)?.name ?? id;
+  const wants = S.ambitions.of(c.id).filter((a) => a.secrecy !== 'open').map((a) => ({ secrecy: a.secrecy, text: a.text }));
+  const plots = [
+    ...S.schemes.ownedBy(c).map((s) => `${s.goal} (${s.status}, ${s.steps.filter((st) => st.status === 'done').length}/${s.steps.length} steps${s.accomplices.length ? `, with ${s.accomplices.map((a) => `${name(a.citizen_id)} ${a.status}`).join(', ')}` : ''})`),
+    ...S.schemes.joinedBy(c).map((s) => `in on ${name(s.ownerId)}'s plan: ${s.goal}`),
+  ];
+  const lies = S.lies.standingOf(c, 4).map((l) => `told ${l.heardBy.map((h) => name(h.citizen_id)).join(', ') || 'nobody'} "${l.said}" (truth: ${l.truth})`);
+  return { wants, plots, lies };
+}
+
 function buildMessages(prev, citizens, lines) {
   const people = citizens.map((c) => {
     const p = c.persona;
@@ -226,6 +242,9 @@ function buildMessages(prev, citizens, lines) {
     const secret = [
       ...(p.secretGoals ?? []).map((g) => `secret aim: ${g}`),
       ...(c.hiddenGroups ?? []).map((g) => `secretly of ${g}`),
+      ...(c.wants ?? []).map((g) => `wants (${g.secrecy}): ${g.text}`),
+      ...(c.plots ?? []).map((g) => `scheme: ${g}`),
+      ...(c.lies ?? []).map((g) => `standing lie: ${g}`),
     ];
     return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}${feels.length ? ` Feeling now: ${feels.join(', ')}.` : ''}${c.lasting?.length ? ` Lasting: ${c.lasting.join('; ')}.` : ''}${secret.length ? ` [hidden from the villagers: ${secret.join('; ')}]` : ''}`;
   }).join('\n');

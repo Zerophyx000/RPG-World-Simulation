@@ -1,7 +1,7 @@
 // Conversations: active ones as live chat panels (bubbles in the speaker's color, the speaker's
 // inner thought under each line, "…" for lines held by the reading floor), past ones below.
 import { store, subscribe, subscribeMany } from '../store.js';
-import { api, esc, gameTime, clockOnly, citizenName, roomName, who, dot, prefs } from '../util.js';
+import { api, esc, gameTime, clockOnly, citizenName, roomName, who, dot, prefs, lineMarkHtml } from '../util.js';
 import { colorOf, tint } from '../colors.js';
 
 let root = null;
@@ -17,7 +17,7 @@ export function bubblesHtml(conv, { thoughts = true, compact = false } = {}) {
     return `<div class="bubble" style="--c:${colorOf(l.speakerId)};--bg:${tint(l.speakerId, 0.14)}">
       <div class="b-head"><span class="b-who" data-citizen="${esc(l.speakerId)}">${esc(citizenName(l.speakerId))}</span>${to}
         <span class="b-time">${esc(clockOnly(l.gameTime))}</span></div>
-      <div class="b-text">${esc(l.text)}</div>
+      <div class="b-text">${esc(l.text)}${lineMarkHtml(l)}</div>
       ${thoughts && l.thought ? `<div class="b-thought">${esc(l.thought)}</div>` : ''}
     </div>`;
   }).join('');

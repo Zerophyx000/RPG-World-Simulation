@@ -16,6 +16,7 @@ import * as llmView from './views/llm.js';
 import * as directorView from './views/director.js';
 import * as usageView from './views/usage.js';
 import * as groupsView from './views/groups.js';
+import * as schemesView from './views/schemes.js'; // step 11
 import { onObjectMessage, openObject } from './views/objects-ui.js';
 
 const VIEWS = [
@@ -25,6 +26,7 @@ const VIEWS = [
   { id: 'timeline', label: 'Timeline', mod: timelineView },
   { id: 'relationships', label: 'Relationships', mod: relationshipsView },
   { id: 'groups', label: 'Groups', mod: groupsView },
+  { id: 'schemes', label: 'Schemes', mod: schemesView },    // step 11: ambitions, schemes, lies (director only)
   { id: 'story', label: 'Story', mod: storyView },
   { id: 'events', label: 'Events', mod: eventsView },
   { id: 'llm', label: 'LLM', mod: llmView },
@@ -259,6 +261,7 @@ function connect() {
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
   es.addEventListener('dread', (m) => { store.dread = JSON.parse(m.data); renderDread(); emit('dread', store.dread); });
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
+  es.addEventListener('scheming', (m) => emit('scheming', JSON.parse(m.data))); // step 11
   es.addEventListener('altercation', (m) => { store.altercations = JSON.parse(m.data).list ?? []; emit('altercation', store.altercations); }); // step 10
   es.addEventListener('group', () => emit('groups'));
   es.addEventListener('emotion_room', (m) => emit('emotion_room', JSON.parse(m.data)));

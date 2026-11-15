@@ -384,7 +384,7 @@ function say(world, c, call, { released = false } = {}) {
 
   const volume = ['whisper', 'shout'].includes(args.volume) ? args.volume : 'normal';
   const ev = logAction(world, c, call, { toId: addressee?.id ?? null, ...(volume !== 'normal' ? { volume } : {}) });
-  const rec = speak(world, c, text, addressee, present, room, { thought: call.innerThought, eventId: ev.id, volume });
+  const rec = speak(world, c, text, addressee, present, room, { thought: call.innerThought, eventId: ev.id, volume, mark: lineMark(args) });
   // Names: listeners learn the speaker's name if they say it, and overhear the addressee's (only those who heard the words).
   const hearers = present.filter((o) => canHear(o) && heardWords(world, c, o, volume, addressee));
   world.memory.hearSpeech(c, text, addressee, hearers);
@@ -460,8 +460,17 @@ function heardWords(world, c, o, volume, addressee) {
   return true;
 }
 
-function speak(world, c, text, addressee, present, room, { thought = null, eventId = null, volume = 'normal' } = {}) {
-  const rec = world.conversations.recordLine(c, text, addressee, { thought, eventId, volume });
+/** step 11: what the director sees on a conversation line (the truth behind a lie, a confiding, a confession). */
+function lineMark(args) {
+  const d = args.deceive;
+  if (d && typeof d === 'object' && d.truth) return { kind: 'lie', lieKind: String(d.kind ?? 'other').slice(0, 20), truth: String(d.truth).slice(0, 240), why: String(d.why ?? '').slice(0, 200) };
+  if (args.confide && typeof args.confide === 'object') return { kind: 'confide', scheme: Number(args.confide.scheme) || null, ask: String(args.confide.ask ?? 'none') };
+  if (args.confess != null) return { kind: 'confess', lie: Number(args.confess) || null };
+  return null;
+}
+
+function speak(world, c, text, addressee, present, room, { thought = null, eventId = null, volume = 'normal', mark = null } = {}) {
+  const rec = world.conversations.recordLine(c, text, addressee, { thought, eventId, volume, mark });
   const toId = rec?.toId ?? null;
   const target = toId ? world.citizens.get(toId) : null;
   const cutIn = new Set(rec?.cutIn ?? []);

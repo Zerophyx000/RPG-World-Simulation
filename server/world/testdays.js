@@ -9,6 +9,8 @@
 //           objects-create | objects-patch | objects-reset | activate |
 //           provoke { a, b, cause, amount } | weapon { weaponType, to | room, quality } | ignite { objectId } |
 //           altercation { a, b, intent }   (step 10: levers only — nobody is made to act)
+//           ambition { citizenId, text, kind, intensity, secrecy, targets, plan } | traits { citizenId, honesty, cunning }
+//                                          (step 11: a want and a quiet moment to plan — no_plan stays an answer)
 //   chance  0..1 — the action only fires when the seeded roll is below it
 //   pick    [alternatives] — the seeded roll fires exactly one alternative (own type + fields)
 //   The action body is otherwise exactly the body the director route would take.
@@ -20,6 +22,7 @@
 // (clock.horizonFn, normally quiet.nextEventAt) is wrapped for the duration of the run so the
 // quiet-time fast-forward cannot jump far past the next scheduled action; it is restored on stop.
 import { provoke, giveWeapon, igniteObject, startAltercation } from '../physical/director.js'; // step 10
+import { directorAmbition, directorTraits } from '../scheming/director.js'; // step 11
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_DIR, loadDirectorPresets } from './scenarios.js';
@@ -53,6 +56,9 @@ const TYPES = {
   'weapon': 'physical/director.giveWeapon',
   'ignite': 'physical/director.igniteObject',
   'altercation': 'physical/director.startAltercation',
+  // step 11 (server/scheming/director.js)
+  'ambition': 'scheming/director.directorAmbition',
+  'traits': 'scheming/director.directorTraits',
 };
 
 // ---------- scripts on disk ----------
@@ -124,6 +130,8 @@ function typeProblems(a) {
     case 'weapon': return [...missing(a, 'weaponType'), ...(!a.to && !a.room ? ['needs "to" (a citizen) or "room"'] : [])];
     case 'ignite': return missing(a, 'objectId');
     case 'altercation': return missing(a, 'a', 'b');
+    case 'ambition': return missing(a, 'citizenId', 'text');
+    case 'traits': return missing(a, 'citizenId');
     default: return [];
   }
 }
@@ -200,6 +208,8 @@ function runAction(world, a) {
     case 'weapon': return giveWeapon(world, { type: a.weaponType, to: a.to ?? null, room: a.room ?? null, quality: a.quality ?? null });
     case 'ignite': return igniteObject(world, { objectId: a.objectId });
     case 'altercation': return startAltercation(world, { a: a.a, b: a.b, intent: a.intent ?? 'hurt' });
+    case 'ambition': return directorAmbition(world, a);
+    case 'traits': return directorTraits(world, a);
     default: throw new Error(`unknown type "${a.type}"`); // filtered out at load
   }
 }

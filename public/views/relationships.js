@@ -41,6 +41,7 @@ export function mount(el) {
       </select>
       <label class="check"><input type="checkbox" id="rel-spring"> spring layout</label>
       <label class="check" title="Aimed emotions as arcs: anger red, fear orange, affection pink, gratitude gold, envy green, jealousy purple (the dot on a jealousy arc is who it is about)"><input type="checkbox" id="rel-emotions"> emotions</label>
+      <label class="check" title="Step 11: a dashed dark-red arrow from each schemer to the people their live schemes are aimed at (director view)"><input type="checkbox" id="rel-schemes"> schemes</label>
       <label class="check" title="Highlight pairs where warning signs (followed, carrying your property, intruder…) cost trust"><input type="checkbox" id="rel-signals"> signal-driven distrust</label>
       <button id="rel-refresh">Refresh observer</button>
       <span class="dim" id="rel-status"></span>
@@ -78,6 +79,11 @@ export function mount(el) {
     if (emoOverlay) await loadAimed();
     render();
   });
+  el.querySelector('#rel-schemes').addEventListener('change', async (e) => {
+    schemeOverlay = e.target.checked;
+    if (schemeOverlay) await loadSchemes();
+    render();
+  });
   el.querySelector('#rel-signals').addEventListener('change', async (e) => {
     signalFilter = e.target.checked;
     if (signalFilter) signalPairs = await api.get('/api/relationships/signals').catch(() => []);
@@ -88,6 +94,7 @@ export function mount(el) {
 
   const offs = [
     subscribe('observer', () => loadHistory(true)),
+    subscribe('scheming', debounce(() => schemeOverlay && loadSchemes().then(render), 1500)),
     subscribeMany(['citizens', 'filter'], () => { fillSources(); render(); }),
     subscribe('relationship', debounce((r) => r?.citizenId === source && loadBeliefs().then(render), 1500)),
     subscribe('event', debounce((e) => e?.type === 'action' && index === history.length - 1 && loadCounts(), 2000)),
@@ -308,6 +315,43 @@ function emotionArcs(pos) {
   return out;
 }
 
+// step 11: who is scheming against whom — a dashed arrow schemer → target, bowed the other way from the emotion arcs.
+let schemeOverlay = false;
+let schemeList = [];
+async function loadSchemes() {
+  schemeList = await api.get('/api/schemes?limit=200').catch(() => []);
+}
+function schemeArcs(pos) {
+  const out = [];
+  for (const s of schemeList) {
+    if (!['planning', 'active', 'paused'].includes(s.status)) continue;
+    for (const t of s.targetIds ?? []) {
+      const p1 = pos.get(s.ownerId);
+      const p2 = pos.get(t);
+      if (!p1 || !p2 || s.ownerId === t) continue;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      const off = len * 0.22;
+      const cx = (p1.x + p2.x) / 2 + (dy / len) * off;
+      const cy = (p1.y + p2.y) / 2 - (dx / len) * off;
+      // arrowhead a little short of the target node
+      const ex = p2.x - (p2.x - cx) / Math.max(1, Math.hypot(p2.x - cx, p2.y - cy)) * 22;
+      const ey = p2.y - (p2.y - cy) / Math.max(1, Math.hypot(p2.x - cx, p2.y - cy)) * 22;
+      const ang = Math.atan2(ey - cy, ex - cx);
+      const head = [[ex, ey], [ex - 9 * Math.cos(ang - 0.4), ey - 9 * Math.sin(ang - 0.4)], [ex - 9 * Math.cos(ang + 0.4), ey - 9 * Math.sin(ang + 0.4)]].map((p) => p.join(',')).join(' ');
+      const done = (s.steps ?? []).filter((st) => st.status === 'done').length;
+      const title = `${citizenName(s.ownerId)} → ${citizenName(t)}: ${s.goal} (${s.status}, ${done}/${(s.steps ?? []).length} steps)${(s.accomplices ?? []).length ? `
+with ${s.accomplices.map((a) => `${citizenName(a.citizen_id)} (${a.status})`).join(', ')}` : ''}`;
+      out.push(`<g class="scheme-arc"><title>${esc(title)}</title>
+        <path d="M${p1.x},${p1.y} Q${cx},${cy} ${ex},${ey}" fill="none" stroke="#b0303a" stroke-width="2" stroke-opacity="0.85" stroke-dasharray="4 4"/>
+        <polygon points="${head}" fill="#b0303a"/>
+        <text x="${(p1.x + 2 * cx + p2.x) / 4}" y="${(p1.y + 2 * cy + p2.y) / 4 - 5}" text-anchor="middle" class="emo-arc-label" fill="#d06070">🕸</text></g>`);
+    }
+  }
+  return out;
+}
+
 let signalFilter = false;
 let signalPairs = [];
 let pairReasons = null; // { ab: [...], ba: [...] } for the selected edge
@@ -360,6 +404,7 @@ function render() {
     }
   }
   if (emoOverlay) out.push(...emotionArcs(pos));
+  if (schemeOverlay) out.push(...schemeArcs(pos)); // step 11
   for (const c of list) {
     const p = pos.get(c.id);
     // step 9.5: the dead are grey — in "what X believes" only when X knows

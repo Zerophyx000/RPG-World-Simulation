@@ -1,0 +1,98 @@
+{
+  "name": "revenge-day",
+  "description": "Step 11 test day, run for three game days (start it at 18:00 on day 1): the brawl-day setup (Tomas, armed with a hammer and provoked, squares up to Kael in the Tilted Cup), then nothing more from the director. Nobody is given an ambition or asked to plan. Watch the nights: does consolidation turn the fight into a revenge ambition (ambition_changes add, with the deed in WHAT WAS DONE TO YOU), does a scheme get planned at reflection or in sleep (or no_plan), does it reach YOUR PLAN with a step falling due (tier scheme_step), and does anyone confide or recruit. Kael is cunning, Tomas is not: the traits are set so the two sides differ.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "traits",
+      "citizenId": "kael",
+      "honesty": 3,
+      "cunning": 8,
+      "reason": "test day: a drifter who lives on his wits"
+    },
+    {
+      "at": 0,
+      "type": "traits",
+      "citizenId": "tomas",
+      "honesty": 7,
+      "cunning": 2,
+      "reason": "test day: a blunt smith"
+    },
+    {
+      "at": 1,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern",
+      "comment": "the stranger is in the tavern"
+    },
+    {
+      "at": 3,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "anselm",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "an evening at the Cup"
+    },
+    {
+      "at": 5,
+      "type": "weapon",
+      "weaponType": "hammer",
+      "to": "tomas",
+      "quality": 0.6,
+      "comment": "he came straight from the forge"
+    },
+    {
+      "at": 7,
+      "type": "provoke",
+      "a": "tomas",
+      "b": "kael",
+      "amount": 8,
+      "cause": "The stranger Kael took my last coins at dice with loaded bones, and he laughed in my face about it."
+    },
+    {
+      "at": 11,
+      "type": "whisper",
+      "citizenId": "tomas",
+      "text": "Kael is grinning at you across the room, rattling the dice he cheated you with."
+    },
+    {
+      "at": 9,
+      "type": "provoke",
+      "a": "kael",
+      "b": "tomas",
+      "amount": 5,
+      "cause": "The drunk smith called me a cheat in front of the whole tavern, and nobody calls me that twice."
+    },
+    {
+      "at": 13,
+      "type": "altercation",
+      "a": "tomas",
+      "b": "kael",
+      "intent": "hurt",
+      "comment": "Tomas squares up to Kael"
+    }
+  ]
+}

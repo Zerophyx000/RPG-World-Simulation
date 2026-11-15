@@ -139,7 +139,7 @@ export function timeline(world, { from = null, to = null } = {}) {
   const points = [];
   const pointRows = db.prepare(`SELECT id, type, actor_id, game_time, location, data FROM events
     WHERE game_time >= ? AND game_time <= ?
-      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news', 'physical', 'crime', 'fire_start', 'room_fire', 'altercation_start', 'barricade')
+      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news', 'physical', 'crime', 'fire_start', 'room_fire', 'altercation_start', 'barricade', 'scheme', 'scheme_step_due', 'lie_caught', 'lie_confessed', 'contradiction')
            OR (type = 'body' AND json_extract(data, '$.importance') >= 7)
            OR (type = 'action' AND json_extract(data, '$.tool') IN ('say', 'leave_conversation', 'tell_about_place', 'eat')))
     ORDER BY id`).all(from, to);
@@ -208,6 +208,12 @@ export function timeline(world, { from = null, to = null } = {}) {
         : r.type === 'room_fire' ? 'the whole room is on fire'
         : r.type === 'altercation_start' ? `goes at ${world.citizens.get(d.targetId)?.name ?? d.targetId} (${d.intent})`
         : r.type === 'barricade' ? 'barricades the door'
+        // step 11: the long game (director view)
+        : r.type === 'scheme' ? `scheme #${d.schemeId} ${d.op}${d.goal ? `: ${d.goal}` : d.why ? `: ${d.why}` : ''}`
+        : r.type === 'scheme_step_due' ? `plan step due: ${d.text}`
+        : r.type === 'lie_caught' ? `sees through ${world.citizens.get(d.liarId)?.name ?? d.liarId}'s lie (${d.how})`
+        : r.type === 'lie_confessed' ? `owns up to a lie (#${d.lieId})`
+        : r.type === 'contradiction' ? `something doesn't fit in ${world.citizens.get(d.liarId)?.name ?? d.liarId}'s story`
         : d.reason ?? d.cause?.text ?? d.cause ?? null;
       if (r.type === 'physical' && !['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act)) continue; // caring touches stay off the timeline
       const severity = r.type === 'physical' ? ((d.effects ?? []).some((f) => ['dead', 'unconscious', 'bone broken'].includes(f)) ? 3 : (d.effects ?? []).some((f) => ['bleeding', 'knocked down', 'choking'].includes(f)) || d.with ? 2 : 1) : r.type === 'crime' ? d.severity : null;

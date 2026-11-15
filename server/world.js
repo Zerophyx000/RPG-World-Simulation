@@ -989,6 +989,7 @@ export class World {
       emotionsView: this.emotions.view(c),
       bodyView: this.body.view(c.id), // step 7B
       physical: this.physical?.profileView(c) ?? null, // step 10: combat profile, weapons, deeds, intents, holds
+      scheming: this.scheming ? { traits: { honesty: this.scheming.trait(c, 'honesty'), cunning: this.scheming.trait(c, 'cunning'), reason: c.traitsReason ?? null }, ambitions: this.scheming.ambitions.view(c.id), schemes: this.scheming.schemes.view({ ownerId: c.id }), stories: this.scheming.lies.view({ liarId: c.id, limit: 50 }), heard: this.scheming.lies.view({ listenerId: c.id, limit: 50 }), proposals: c.proposals ?? [] } : null, // step 11
       promptPreview: buildMessages(this, c),
       toolsPreview: buildTools(this, c).map((t) => t.function.name),
       conversation: conv && { ...this.conversations.view(conv), participantNames: conv.participants.map(name) },

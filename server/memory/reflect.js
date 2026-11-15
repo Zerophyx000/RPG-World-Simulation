@@ -154,7 +154,8 @@ async function remember(world, conv, c, limits, path) {
   const transcript = conv.lines.map((l) => {
     const who = l.speakerId === c.id ? 'You' : labelOf.get(l.speakerId) ?? mem.nameFor(c, l.speakerId, { start: true });
     const to = l.toId ? (l.toId === c.id ? ' (to you)' : ` (to ${labelOf.get(l.toId) ?? mem.nameFor(c, l.toId)})`) : '';
-    const thought = l.speakerId === c.id && l.thought ? `\n   (you thought: ${l.thought})` : '';
+    const thought = (l.speakerId === c.id && l.thought ? `\n   (you thought: ${l.thought})` : '')
+      + (l.speakerId === c.id && l.mark?.kind === 'lie' ? `\n   (that wasn't true: ${l.mark.truth})` : ''); // step 11: your own lie
     return `${who}${to}: "${l.text}"${thought}`;
   }).join('\n');
   const relLines = others.map((o) => `- ${labelOf.get(o.id)}: ${relationLine(world, c, o).text}`).join('\n');

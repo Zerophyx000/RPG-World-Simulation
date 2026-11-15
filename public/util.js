@@ -163,6 +163,9 @@ export const EVENT_CATEGORY = {
   physical: () => 'action', crime: () => 'social', altercation_start: () => 'social', altercation_end: () => 'social', altercation_join: () => 'social', aftermath: () => 'memory', coherence: () => 'system', coherence_retry: () => 'system', intent: () => 'memory', touch: () => 'social',
   fire_start: () => 'director', fire_out: () => 'object', fire_burnt: () => 'object', room_fire: () => 'director', room_fire_out: () => 'object', barricade: () => 'object', barricade_removed: () => 'object', object_broken: () => 'object', light_knocked_over: () => 'object', restraint_end: () => 'body', vigil_relieved: () => 'action', habit_blocked: () => 'system', tier_capped: () => 'system', learned_from_reflection: () => 'social',
   intention: () => 'memory', habits: () => 'memory', habit: () => 'activity', habit_change: () => 'memory', mortality: () => 'body', dread: () => 'director', stock: () => 'object',
+  // step 11
+  persona_traits: () => 'memory', ambition: () => 'memory', ambition_rejected: () => 'system', scheme: () => 'director', scheme_none: () => 'memory', scheme_rejected: () => 'system', scheme_step_due: () => 'memory',
+  lie: () => 'social', lie_retold: () => 'speech', lie_caught: () => 'social', lie_confessed: () => 'social', trust_claim: () => 'social', contradiction: () => 'social', tell: () => 'social', leak: () => 'social', deceive_incomplete: () => 'system',
   feeling_repaired: () => 'system', feeling_dropped: () => 'system', feeling_target_unmapped: () => 'system',
   reflection_gate: () => 'memory',
   consolidation: () => 'memory',
@@ -284,6 +287,22 @@ export function eventHtml(e) {
     // step 10
     case 'physical': return `${who(actor)} <span class="${['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act) ? 'bad' : ''}">${esc(String(d.act).replace('_', ' '))}</span> ${who(d.targetId)}${d.with ? ` <span class="dim">with ${esc(d.with)}</span>` : ''}${d.hit === false ? ' <span class="dim">— misses</span>' : (d.effects ?? []).length ? ` — <span class="bad">${esc(d.effects.join(', '))}</span>` : ''}${d.words ? ` “${esc(d.words)}”` : ''}${d.reason ? ` <span class="dim">(why: ${esc(d.reason)})</span>` : ''}`;
     case 'crime': return `⚖ ${who(actor)} <span class="bad">${esc(String(d.kind).replace('_', ' '))}</span>${d.victimId ? ` against ${who(d.victimId)}` : ''} <span class="dim">(severity ${esc(d.severity)}, ${(d.witnesses ?? []).length ? `seen by ${(d.witnesses ?? []).length}` : 'unseen'})</span>`;
+    // step 11 (director view: the truth is shown next to the lie)
+    case 'persona_traits': return `${who(actor)} <span class="dim">is honesty ${esc(d.honesty)}/10, cunning ${esc(d.cunning)}/10${d.reason ? ` — ${esc(d.reason)}` : ''} (${esc(d.origin)})</span>`;
+    case 'ambition': return `${who(actor)} <span class="dim">ambition ${esc(d.op)}:</span> ${esc(d.text)}${d.intensity != null ? ` <span class="dim">(${esc(d.kind)}, ${esc(d.intensity)}/10${d.secrecy ? `, ${esc(d.secrecy)}` : ''})</span>` : ''}${d.why ? ` — <i>${esc(d.why)}</i>` : ''}`;
+    case 'ambition_rejected': return `${who(actor)} <span class="dim">ambition rejected: ${esc(d.text)} (${esc(d.why)})</span>`;
+    case 'scheme': return `🕸 ${who(actor)} <span class="dim">scheme #${esc(d.schemeId)} ${esc(d.op)}${d.status ? ` → ${esc(d.status)}` : ''}:</span> ${esc(d.goal ?? d.why ?? '')}`;
+    case 'scheme_none': return `${who(actor)} <span class="dim">makes no plan</span>${d.why ? ` — <i>${esc(d.why)}</i>` : ''}`;
+    case 'scheme_rejected': return `<span class="dim">${who(actor)}'s plan had invalid steps: ${esc(JSON.stringify(d.rejected).slice(0, 200))}</span>`;
+    case 'scheme_step_due': return `🕸 ${who(actor)} <span class="dim">plan step due:</span> ${esc(d.text)}`;
+    case 'lie': return `🤥 ${who(actor)} <span class="bad">lies</span> <span class="dim">(${esc(d.kind)})</span>: “${esc(d.said)}” <span class="dim">— truth: ${esc(d.truth)}${d.why ? `; why: ${esc(d.why)}` : ''}</span>`;
+    case 'lie_retold': return `${who(actor)} <span class="dim">passes lie #${esc(d.lieId)} on to</span> ${who(d.to)}`;
+    case 'lie_caught': return `🤥 ${who(actor)} <span class="bad">sees through</span> ${who(d.liarId)}'s lie <span class="dim">(${esc(d.how)})</span>`;
+    case 'lie_confessed': return `🙏 ${who(actor)} <span class="good">owns up</span> to lie #${esc(d.lieId)} <span class="dim">(to ${(d.to ?? []).map((id) => store.citizens.get(id)?.name ?? id).join(', ') || 'nobody'})</span>`;
+    case 'trust_claim': return `${who(actor)} <span class="dim">${esc(d.verdict)}s</span> ${who(d.from)}: “${esc(d.claim)}”${d.why ? ` <span class="dim">— ${esc(d.why)}</span>` : ''}${d.lieId ? ' <span class="dim">(a lie)</span>' : ''}`;
+    case 'contradiction': return `${who(actor)} <span class="dim">notices something doesn't fit</span> in ${who(d.liarId)}'s story <span class="dim">— ${esc(String(d.why ?? '').replace(/\{\{[cp]:(\w+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id))}</span>`;
+    case 'tell': return `${who(d.to)} <span class="dim">notices</span> ${who(actor)} <span class="dim">${d.nervousTruth ? 'seems nervous (telling the truth)' : 'giving something away'}</span>`;
+    case 'leak': return `${who(actor)} <span class="bad">${d.leaked === 'full' ? 'gives away' : 'hints at'}</span> a secret ${esc(d.kind)} to ${who(d.to)}${d.what ? ` <span class="dim">— ${esc(d.what)}</span>` : ''}`;
     case 'altercation_start': return `⚔ ${who(actor)} goes at ${who(d.targetId)} <span class="dim">(${esc(d.intent)})</span>`;
     case 'altercation_end': return `⚔ a fight ends: ${esc(d.reason)} <span class="dim">(${(d.participants ?? []).map((id) => store.citizens.get(id)?.name ?? id).join(', ')})</span>`;
     case 'coherence': return `${who(actor)} <span class="dim">${esc(d.kind)}:</span> ${esc(d.action)} → ${who(d.victimId)}${d.reason ? ` — “${esc(d.reason)}”` : ''}`;
@@ -432,3 +451,14 @@ export const prefs = {
     } catch { /* ignore */ }
   },
 };
+
+/** step 11: a director-only marker on a conversation line: a lie (hover: the truth), a confiding, a confession. */
+export function lineMarkHtml(l) {
+  const m = l?.mark;
+  if (!m) return '';
+  if (m.kind === 'lie') return ` <span class="line-mark lie" title="${esc(`A lie (${m.lieKind}). Truth: ${m.truth}${m.why ? `
+Why: ${m.why}` : ''}`)}">🤥</span>`;
+  if (m.kind === 'confide') return ` <span class="line-mark confide" title="${esc(`Confiding a secret plan (scheme #${m.scheme ?? '?'}, asks: ${m.ask})`)}">🤫</span>`;
+  if (m.kind === 'confess') return ` <span class="line-mark confess" title="${esc(`Owning up to lie #${m.lie ?? '?'}`)}">🙏</span>`;
+  return '';
+}

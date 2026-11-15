@@ -8,6 +8,8 @@
 //               three game days; clickable (they become 'pin' hits for the map view)
 //   storyline   a storyline focused in the Story view: gold rings around its people and the rooms they are in
 //   rumors      a hook for the knowledge step (rumor.add), drawn later
+//   deceit      step 11: a small mark over the head of someone who just lied (violet mask), did or failed a scheme
+//               step (dark-red web), or saw through a lie (amber "!"), for MARK_MINUTES (30) game minutes; clickable
 // Read-only: everything comes from S.social, S.events, S.observer.
 import { Img } from '../art/pixels.js';
 import { TILE } from '../art/mapdata.js';
@@ -21,6 +23,8 @@ const GREY = [190, 190, 200, 255];
 const GOLD = [236, 196, 90, 255];
 const PIN_COLORS = { death: [200, 200, 205, 255], blast: [236, 140, 50, 255], injury: [214, 64, 58, 255], critical: [255, 70, 70, 255], theft: [168, 110, 220, 255] };
 const DAYS3 = 4320;
+const MARK_MINUTES = 30; // step 11
+const MARK_COLORS = { lie: [168, 96, 210, 255], scheme: [176, 48, 58, 255], caught: [236, 176, 60, 255] };
 
 export function createStory(ctx) {
   const { layout, quality } = ctx;
@@ -59,6 +63,28 @@ export function createStory(ctx) {
       line(F, px, py, x, y, color, { w: 1, alpha: 0.85 });
       px = x; py = y;
     }
+  }
+
+  // step 11: a 7×7 mark over the head (lie: a mask with two eye holes; scheme: a web; caught: "!")
+  const markCache = new Map();
+  function markImg(kind) {
+    let img = markCache.get(kind);
+    if (img) return img;
+    img = new Img(7, 7);
+    const c = MARK_COLORS[kind];
+    const dark = [24, 20, 28, 255];
+    if (kind === 'lie') { img.ellipse(0, 1, 7, 5, c); img.set(2, 3, dark); img.set(4, 3, dark); }
+    else if (kind === 'scheme') { for (let i = 0; i < 7; i++) { img.set(i, 3, c); img.set(3, i, c); img.set(i, i, c); img.set(6 - i, i, c); } }
+    else { img.rect(2, 0, 3, 4, c); img.rect(2, 5, 3, 2, c); }
+    img.outline([20, 18, 22, 255]);
+    markCache.set(kind, img);
+    return img;
+  }
+  function markKind(e) {
+    if (e.type === 'lie') return 'lie';
+    if (e.type === 'scheme' && ['step_done', 'step_failed'].includes(e.data?.op)) return 'scheme';
+    if (e.type === 'lie_caught') return 'caught';
+    return null;
   }
 
   function pinKind(e, S) {
@@ -137,6 +163,26 @@ export function createStory(ctx) {
         const who = e.actorId ?? e.actor_id;
         const label = `${kind === 'blast' ? 'event' : kind}${who ? `: ${S.citizens?.get(who)?.name ?? who}` : ''}${e.data?.texts?.here ? ` — ${String(e.data.texts.here).slice(0, 50)}` : ''}`;
         F.hits.push({ type: 'pin', id: e.id, event: { ...e, actorId: who }, label, x, y, w: img.w * z, h: img.h * z });
+      }
+      // step 11: deceit marks over heads (newest per person)
+      const marked = new Set();
+      for (const e of S.events ?? []) {
+        const t = e.gameTime ?? e.game_time ?? 0;
+        if (F.now - t > MARK_MINUTES) break; // newest first
+        const kind = markKind(e);
+        const id = e.actorId ?? e.actor_id;
+        if (!kind || !id || marked.has(id)) continue;
+        const a = at(id);
+        if (!a) continue;
+        marked.add(id);
+        const img = markImg(kind);
+        const x = a.x + 6 * z; const y = a.y - 14 * z + Math.round(Math.sin(F.ms / 300) * z);
+        F.target.blit(img, x, y, { scale: z, alpha: 1 - Math.max(0, F.now - t) / MARK_MINUTES * 0.6 });
+        const d = e.data ?? {};
+        const label = kind === 'lie' ? `lie: "${String(d.said ?? '').slice(0, 50)}" — truth: ${String(d.truth ?? '').slice(0, 60)}`
+          : kind === 'scheme' ? `scheme step ${d.op === 'step_done' ? 'done' : 'failed'}${d.why ? `: ${String(d.why).slice(0, 60)}` : ''}`
+          : `saw through ${S.citizens?.get(d.liarId)?.name ? `${S.citizens.get(d.liarId).name}'s` : 'a'} lie`;
+        F.hits.push({ type: 'pin', id: e.id, event: { ...e, actorId: id }, label, x, y, w: img.w * z, h: img.h * z });
       }
       // storyline highlight
       if (S.storylineFocus) {

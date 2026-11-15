@@ -15,6 +15,7 @@ import { openReasons, warinessHtml, groupChip } from './social-ui.js';
 import { emotionsPanelHtml, emotionTypes } from './emotions-ui.js';
 import { bodyPanelHtml } from './body-ui.js';
 import { physicalHtml, physicalSummary } from './physical-ui.js'; // step 10
+import { schemingHtml, schemingSummary } from './scheming-ui.js'; // step 11
 
 let emoHistory = null; // GET /api/citizens/:id/emotions/history (last game days)
 let emoFor = null;
@@ -235,6 +236,7 @@ function render() {
 
     ${details('reasoning', 'Model reasoning', reasoningHtml(c) + reasoningFinishHtml(c))}
 
+    ${details('scheming', `Ambitions, schemes, stories${c.scheming ? ` · ${schemingSummary(c.scheming)}` : ''}`, `<div class="life-panel">${schemingHtml(c.scheming)}</div>`)}
     ${details('physical', `Physical${c.physical ? ` · ${physicalSummary(c.physical)}` : ''}`, `<div class="life-panel">${physicalHtml(c.physical)}</div>`)}
     ${details('life', `Life · ${(c.intentions ?? []).length} intention${(c.intentions ?? []).length === 1 ? '' : 's'} · ${(c.habits ?? []).length} habits${(c.knownDeaths ?? []).length ? ` · knows ${c.knownDeaths.length} death${c.knownDeaths.length === 1 ? '' : 's'}` : ''}${c.grief ? ' · 🎗' : ''}${c.mortal ? ' · ☠' : ''}`, `<div class="life-panel">${lifeHtml(c)}</div>`)}
 

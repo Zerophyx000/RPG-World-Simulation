@@ -7,6 +7,9 @@
 // Usage: npm run mock-llm   (then LLM_BASE_URL=http://localhost:4000/v1)
 // Env:   MOCK_PORT=4000  MOCK_DELAY_MS=400  MOCK_FAIL_RATE=0 (0–1, returns HTTP 500)
 //        MOCK_INVALID_RATE=0 (0–1, returns a tool call with bad arguments, to test the retry path)
+// Step 11: set_traits / set_ambitions (real names from the target enum) / plan_scheme (a plan about half the time) /
+// judge (leak check) get shaped answers; in decisions the optional step-11 fields are filled on purpose, not at random:
+// say + deceive with a check (~12%), confide asking to join, confess, proposal answers, trust_claim, scheme updates.
 import http from 'node:http';
 
 const PORT = Number(process.env.MOCK_PORT ?? 4000);
@@ -117,8 +120,84 @@ function chooseNeedTool(byName, prompt, stimulus) {
   return null;
 }
 
+// ---- step 11 ----
+const firstName = (label) => (/^[A-Z][a-z]+/.exec(String(label ?? ''))?.[0] ?? null);
+function step11Helper(tool) {
+  const p = tool.function.parameters?.properties ?? {};
+  switch (tool.function.name) {
+    case 'set_traits': return { honesty: 2 + Math.floor(Math.random() * 8), cunning: 1 + Math.floor(Math.random() * 9), reason: pick(['Plain-spoken, hides nothing.', 'Keeps their cards close.', 'Says what suits them.']) };
+    case 'set_ambitions': {
+      const item = p.ambitions.items.properties;
+      const people = (item.targets?.items?.enum ?? []).filter((x) => x !== 'nobody');
+      const max = Math.max(1, Math.min(p.ambitions.maxItems ?? 2, 2));
+      return { ambitions: Array.from({ length: 1 + Math.floor(Math.random() * max) }, () => {
+        const t = people.length && Math.random() < 0.6 ? pick(people) : null;
+        const name = firstName(t);
+        const [kind, text] = name ? pick([['revenge', `I want ${name} to pay for how I was treated.`], ['bond', `I want ${name} to think well of me.`], ['status', `I want to be thought more of than ${name}.`], ['protect', `I want to keep ${name} safe.`]])
+          : pick([['mastery', 'I want to be the best at my trade in this village.'], ['wealth', 'I want to put enough coin aside for a hard winter.'], ['belonging', 'I want people here to count me as one of them.'], ['freedom', 'I want to answer to nobody.']]);
+        return { kind, text, ...(name ? { targets: [t] } : {}), intensity: 3 + Math.floor(Math.random() * 8), secrecy: pick(['open', 'private', 'secret']) };
+      }) };
+    }
+    case 'plan_scheme': {
+      if (Math.random() < 0.5) return { no_plan: true, why_not: pick(['Better to wait and see.', 'It is not worth the risk yet.']) };
+      const sp = p.steps.items.properties;
+      const people = (p.targets?.items?.enum ?? []).filter((x) => x !== 'nobody');
+      const target = people.length ? pick(people) : null;
+      const places = (sp.at_place?.enum ?? []).filter((x) => x !== 'nowhere');
+      const types = sp.object_type?.enum ?? [];
+      const steps = [
+        { text: 'Find out when they are away from home', kind: 'talk', ...(target ? { with: [target] } : {}) },
+        ...(types.length && Math.random() < 0.5 ? [{ text: 'Get hold of what I need', kind: 'obtain', object_type: pick(types) }] : []),
+        { text: 'Go there when nobody is about', kind: 'go', ...(places.length ? { at_place: pick(places) } : {}), not_before: pick(['+1h', '+2h', '21:00']) },
+        { text: 'Do it, and be home before anyone notices', kind: 'act', ...(target ? { absent: [target] } : {}) },
+      ];
+      const others = people.filter((x) => x !== target);
+      return { goal: target ? `Make ${firstName(target) ?? 'them'} sorry, without anyone knowing it was me.` : 'Get ahead without anyone noticing.', ...(target ? { targets: [target] } : {}), steps, ...(others.length && Math.random() < 0.4 ? { recruit: [pick(others)] } : {}), risks: 'Someone could see me on the way.' };
+    }
+    case 'judge': return Math.random() < 0.7 ? { leaked: 'none' } : { leaked: pick(['hint', 'full']), which: 1, what: 'they let something slip' };
+    default: return null;
+  }
+}
+const STEP11_KEYS = ['deceive', 'confide', 'confess', 'scheme', 'proposal', 'trust_claim'];
+/** Fill the optional step-11 fields deliberately (genArgs alone would put a lie in 70% of lines). */
+function step11Fields(tool, args) {
+  const p = tool.function.parameters?.properties ?? {};
+  for (const k of STEP11_KEYS) delete args[k];
+  const name = tool.function.name;
+  if (name === 'say' && p.deceive) {
+    if (p.confess && Math.random() < 0.1) { args.confess = pick(p.confess.enum); args.text = "I wasn't honest with you before. I'm sorry."; }
+    else if (p.confide && Math.random() < 0.3) { args.confide = { scheme: pick(p.confide.properties.scheme.enum), reveal: pick(['partial', 'full']), ask: pick(['join', 'join', 'keep_quiet']) }; args.text = 'I have a plan. Keep this between us. Will you help?'; }
+    else if (Math.random() < 0.12) {
+      const who = Math.random() < 0.5 ? 'me' : (firstName(args.to) ?? 'me');
+      const where = pick(['at home', 'at the tavern', 'at the bakery']);
+      const when = pick(['last night', 'this morning']);
+      args.text = who === 'me' ? `I was ${where} ${when}, ask anyone.` : `${who} was ${where} ${when}, I saw them.`;
+      args.deceive = { truth: 'I was somewhere else entirely.', kind: who === 'me' ? 'self' : 'cover', why: 'Nobody needs to know.', check: { who, where, when } };
+    }
+  }
+  if (['put', 'give', 'handle'].includes(name) && p.deceive && Math.random() < 0.05) args.deceive = { truth: 'I want it to look like someone else did this.', kind: 'frame', why: 'To turn them against each other.' };
+  if (p.proposal && Math.random() < 0.7) args.proposal = { scheme: pick(p.proposal.properties.scheme.enum), answer: pick(['join', 'refuse', 'think_about_it']), reason: 'I need to think about what it costs me.' };
+  if (p.trust_claim && Math.random() < 0.5) args.trust_claim = { from: pick(p.trust_claim.properties.from.enum), verdict: pick(['believe', 'believe', 'doubt', 'disbelieve']), why: 'That does not square with what I saw.' };
+  if (p.scheme && Math.random() < 0.25) {
+    const s = p.scheme.properties;
+    const r = Math.random();
+    args.scheme = { id: pick(s.id.enum), reason: 'It went as I meant it to.' };
+    if (s.step_done && r < 0.7) args.scheme.step_done = s.step_done.enum[0];
+    else if (s.step_failed && r < 0.85) { args.scheme.step_failed = s.step_failed.enum[0]; args.scheme.reason = 'Someone was there.'; }
+    else if (r < 0.95) { args.scheme.pause = true; args.scheme.reason = 'Too many eyes on me right now.'; }
+    else { args.scheme.abandon = true; args.scheme.reason = 'It is not worth it any more.'; }
+  }
+  return args;
+}
+
 function chooseTool(tools, prompt = '', stimulus = '') {
   const byName = Object.fromEntries(tools.map((t) => [t.function.name, t]));
+  if (tools.length === 1) { const a = step11Helper(tools[0]); if (a) return { tool: tools[0], args: a }; }
+  const r = chooseTool10(tools, byName, prompt, stimulus);
+  return { tool: r.tool, args: step11Fields(r.tool, r.args) };
+}
+
+function chooseTool10(tools, byName, prompt, stimulus) {
   const needy = chooseNeedTool(byName, prompt, stimulus);
   if (needy) return needy;
   // Step 7B: tend the hurt (mostly sensible, sometimes a wrong method to exercise the "does nothing" feedback)
