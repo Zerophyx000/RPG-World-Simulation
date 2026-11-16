@@ -48,7 +48,7 @@ export function minutesLeft(activity) {
 
 // ---------- names ----------
 /** Stored world texts may carry per-viewer name tokens {{c:id}}; the UI always shows real names. */
-export const detok = (t) => String(t ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
+export const detok = (t) => String(t ?? '').replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
 
 export const citizenName = (id) => store.citizens.get(id)?.name ?? id ?? '?';
 export const roomName = (id) => (id ? store.rooms.get(id)?.name ?? id : 'on the way');
@@ -94,9 +94,9 @@ export function activityLabel(c) {
 // Need badges: level >= 2 shows an icon, colored from yellow to red by level.
 const NEED_ICONS = { hunger: '🍞', fatigue: '😴', hp: '❤️' };
 const NEED_LEVEL_NAMES = {
-  hunger: ['satisfied', 'peckish', 'hungry', 'starving', 'ravenous', 'dying of hunger'],
+  hunger: ['satisfied', 'peckish', 'hungry', 'very hungry', 'ravenous', 'famished'],
   fatigue: ['rested', 'sleepy', 'tired', 'exhausted', 'collapsing'],
-  hp: ['healthy', 'hurting', 'badly hurt', 'critical'],
+  hp: ['healthy', 'hurting', 'weak', 'fading', 'dying'],
 };
 export function needLevel(c, kind) {
   return c?.needs?.levels?.[kind] ?? 0;
@@ -133,6 +133,11 @@ export const EVENT_CATEGORY = {
   examine: () => 'object',
   keeper: () => 'object',
   notice: () => 'object',
+  emotion: () => 'emotion',
+  feeling: () => 'emotion',
+  relationship: () => 'social',
+  signal: () => 'social',
+  group: () => 'social',
   arrive: () => 'movement',
   conversation_end: () => 'speech',
   director: (e) => (String(e.data?.action ?? '').startsWith('clock.') ? 'system' : 'director'),
@@ -142,6 +147,7 @@ export const EVENT_CATEGORY = {
   rethink_stale: () => 'interrupt',
   action_stale: () => 'interrupt',
   activity: () => 'activity',
+  position: () => 'activity', // step 9: position changes (for map replay) sit with the raw activity events
   body: () => 'body',
   meal: () => 'body',
   wake: () => 'body',
@@ -151,6 +157,16 @@ export const EVENT_CATEGORY = {
   death: () => 'body',
   learn_place: () => 'speech',
   plan: () => 'memory',
+  // step 9.5
+  learned_death: () => 'social', news: () => 'speech', gathering: () => 'social', burial: () => 'social', tend_body: () => 'action', vigil: () => 'action',
+  // step 10
+  physical: () => 'action', crime: () => 'social', altercation_start: () => 'social', altercation_end: () => 'social', altercation_join: () => 'social', aftermath: () => 'memory', coherence: () => 'system', coherence_retry: () => 'system', intent: () => 'memory', touch: () => 'social',
+  fire_start: () => 'director', fire_out: () => 'object', fire_burnt: () => 'object', room_fire: () => 'director', room_fire_out: () => 'object', barricade: () => 'object', barricade_removed: () => 'object', object_broken: () => 'object', light_knocked_over: () => 'object', restraint_end: () => 'body', vigil_relieved: () => 'action', habit_blocked: () => 'system', tier_capped: () => 'system', learned_from_reflection: () => 'social',
+  intention: () => 'memory', habits: () => 'memory', habit: () => 'activity', habit_change: () => 'memory', mortality: () => 'body', dread: () => 'director', stock: () => 'object',
+  // step 11
+  persona_traits: () => 'memory', ambition: () => 'memory', ambition_rejected: () => 'system', scheme: () => 'director', scheme_none: () => 'memory', scheme_rejected: () => 'system', scheme_step_due: () => 'memory',
+  lie: () => 'social', lie_retold: () => 'speech', lie_caught: () => 'social', lie_confessed: () => 'social', trust_claim: () => 'social', contradiction: () => 'social', tell: () => 'social', leak: () => 'social', deceive_incomplete: () => 'system',
+  feeling_repaired: () => 'system', feeling_dropped: () => 'system', feeling_target_unmapped: () => 'system',
   reflection_gate: () => 'memory',
   consolidation: () => 'memory',
   error: () => 'system',
@@ -225,12 +241,24 @@ export function eventHtml(e) {
         case 'feed': return `${who(actor)} feeds ${who(d.targetId)}${thought}`;
         case 'take': case 'put': case 'give': case 'examine': case 'search': case 'use':
           return `${who(actor)} <span class="dim">${esc(d.tool)}${d.conceal || args.conceal ? ' (hide)' : ''}</span> ${objName(d.objectId ?? d.targetId)}${args.intent ? `: “${esc(args.intent)}”` : ''}${d.toId ? ` → ${who(d.toId)}` : ''}${d.anchorId ? ` <span class="dim">${esc(args.relation ?? 'on')}</span> ${objName(d.anchorId)}` : ''}${thought}`;
+        case 'hide_feelings': return `${who(actor)} <span class="dim">🎭 hides ${args.emotion ? esc(args.emotion) : 'what they feel'}</span>${thought}`;
+        case 'propose_party': return `${who(actor)} <span class="dim">proposes a party to</span> ${(d.invited ?? []).map((x) => who(x)).join(', ')}: ${esc(args.purpose)}${thought}`;
+        case 'accept_invitation': return `${who(actor)} <span class="good">accepts</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
+        case 'decline_invitation': return `${who(actor)} <span class="bad">declines</span> ${who(d.fromId)}<span class="dim">'s invitation</span>${thought}`;
+        case 'leave_group': return `${who(actor)} <span class="dim">leaves the party</span>${args.farewell ? `: <span class="speech">“${esc(args.farewell)}”</span>` : ''}${thought}`;
         case 'leave_conversation':
           return `${who(actor)} leaves the conversation${args.farewell ? `: <span class="speech">“${esc(args.farewell)}”</span>` : ''}${thought}`;
         default: return `${who(actor)} ${esc(d.tool)} ${esc(JSON.stringify(args))}`;
       }
     }
     case 'arrive': return `${who(actor)} arrives at ${esc(roomName(e.location))}`;
+    case 'emotion': return d.contagion
+      ? `${who(actor)} <span class="dim">catches the</span> <b>${esc(d.emotion)}</b> <span class="dim">spreading at ${esc(roomName(e.location))}${d.otherId ? ' (aimed at ' : ''}</span>${d.otherId ? `${who(d.otherId)}<span class="dim">)</span>` : ''} <span class="dim">→ ${esc(d.intensity)}</span>`
+      : `${who(actor)} <span class="dim">is gripped by</span> <b>${esc(d.emotion)}</b> <span class="dim">of</span> ${who(d.otherId)}${d.about && store.citizens.has(d.about) ? ` <span class="dim">over</span> ${who(d.about)}` : ''} <span class="dim">(${esc(d.intensity)})</span>${d.cause ? `: <span class="ithought">${esc(detok(d.cause))}</span>` : ''}`;
+    case 'feeling': return `${who(actor)} <span class="dim">feels:</span> ${d.parsed ? `<b>${esc(d.parsed.type)} ${d.parsed.change > 0 ? '+' : ''}${esc(d.parsed.change)}</b>${d.parsed.target ? ` → ${who(d.parsed.target)}` : ''}${d.parsed.why ? ` <span class="ithought">${esc(d.parsed.why)}</span>` : ''}` : `<span class="dim">(not understood) ${esc(d.raw)}</span>`}`;
+    case 'relationship': return `${who(actor)} <span class="dim">now sees</span> ${who(d.otherId)} <span class="dim">differently</span> ${d.dTrust ? `<span class="${d.dTrust > 0 ? 'good' : 'bad'}">trust ${d.dTrust > 0 ? '+' : ''}${esc(d.dTrust)}</span>` : ''} ${d.dAffinity ? `<span class="${d.dAffinity > 0 ? 'good' : 'bad'}">liking ${d.dAffinity > 0 ? '+' : ''}${esc(d.dAffinity)}</span>` : ''} <span class="dim">(${esc(d.source)})</span>: “${esc(detok(d.reason))}”`;
+    case 'signal': return `${who(actor)} <span class="bad">⚠ warning sign</span> about ${who(d.otherId)}: <b>${esc(d.sign)}</b>${d.text ? ` <span class="dim">“${esc(detok(d.text))}”</span>` : ''}${d.dTrust ? ` <span class="bad">trust ${esc(d.dTrust)}</span>` : ''}`;
+    case 'group': return groupEventHtml(d, actor);
     case 'object': return objectEventHtml(e, d, actor);
     case 'notice': return `${who(actor)} <span class="${d.importance >= 7 ? 'bad' : 'dim'}">notices:</span> ${esc(d.text)}`;
     case 'search': return `${who(actor)} searches ${d.targetId ? `around ${objName(d.targetId)}` : esc(roomName(e.location))}: ${d.found?.length ? `<span class="good">finds ${d.found.map(objName).join(', ')}</span>` : '<span class="dim">nothing</span>'}${(d.rolls ?? []).length ? ` <span class="dim">[${d.rolls.map((r) => `${esc(r.id)} d${esc(r.difficulty)} ${Math.round(r.chance * 100)}% ${r.hit ? '✓' : '✗'}`).join(', ')}]</span>` : ''}`;
@@ -239,6 +267,7 @@ export function eventHtml(e) {
     case 'action_stale': return `${who(actor)} <span class="dim">couldn't ${esc(d.tool)}: ${esc(detok(d.reason))}</span>`;
     case 'interrupt': return `${who(actor)} <span class="bad">is interrupted mid-thought</span>${d.cause ? ` <span class="dim">by: ${esc(truncate(detok(d.cause.text), 90))}</span>` : ''}`;
     case 'rethink_stale': return `${who(actor)} <span class="bad">rethinks</span> <span class="dim">(${esc(d.linesSince)} new lines while thinking)</span>`;
+    case 'position': return `${who(actor)} <span class="dim">${esc(d.kind ?? 'moves')}: ${esc(d.fromRoom ?? '?')}${d.fromSpot ? ` (${esc(d.fromSpot)})` : ''} → ${esc(d.toRoom ?? '?')}${d.toSpot ? ` (${esc(d.toSpot)})` : ''}</span>`;
     case 'activity': return `${who(actor)} <span class="dim">${esc(d.from ?? '?')} → ${esc(d.to)}${d.detail?.description ? `: ${esc(d.detail.description)}` : ''}</span>`;
     case 'damage': return `${who(actor)} <span class="bad">is hurt</span> <span class="dim">(−${esc(d.amount)} hp, now ${esc(d.hp)})</span>`;
     case 'body': return `${who(actor)} <span class="${d.importance >= 7 ? 'bad' : 'dim'}">feels ${esc(d.level)}${d.reminder ? ' (still)' : ''}:</span> <span class="ithought">${esc(d.text)}</span>`;
@@ -248,6 +277,46 @@ export function eventHtml(e) {
     case 'collapse': return `${who(actor)} <span class="bad">collapses</span> at ${esc(roomName(e.location))} <span class="dim">(${esc(d.reason)})</span>`;
     case 'revive': return `${who(actor)} comes to${d.by && d.by !== 'director' ? `, fed by ${who(d.by)}` : d.by === 'director' ? ' <span class="dim">(director)</span>' : ''}`;
     case 'death': return `${who(actor)} <span class="bad">dies</span> <span class="dim">(${esc(d.reason)})</span>`;
+    // step 9.5
+    case 'learned_death': return `${who(actor)} ${d.certainty === 'suspected' ? 'sees someone lying still:' : 'learns'} ${who(d.deadId)} ${d.certainty === 'suspected' ? '' : 'is dead'} <span class="dim">(${esc(String(d.how).startsWith('told:') ? `told by ${store.citizens.get(d.how.slice(5))?.name ?? d.how.slice(5)}` : d.how)}, ${esc(d.certainty)})</span>`;
+    case 'news': return `${who(actor)} tells ${who(d.to)}: ${who(d.person)} <span class="bad">${esc(String(d.news).replace('_', ' '))}</span> <span class="dim">(heard by ${(d.heardBy ?? []).length})</span>`;
+    case 'gathering': return `${who(actor)} calls people to ${esc(roomName(d.place))} (${esc(d.time)}): ${esc(d.purpose)} <span class="dim">(${esc(d.told)} told)</span>`;
+    case 'burial': return `${who(actor)} <span class="bad">buries</span> ${who(d.deadId)}${d.words ? ` — “${esc(d.words)}”` : ''} <span class="dim">(${(d.present ?? []).length} present)</span>`;
+    case 'tend_body': return `${who(actor)} tends the body of ${who(d.deadId)}: ${esc(String(d.how).replace('_', ' '))}`;
+    case 'vigil': return `${who(actor)} keeps vigil over ${who(d.deadId)}`;
+    // step 10
+    case 'physical': return `${who(actor)} <span class="${['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act) ? 'bad' : ''}">${esc(String(d.act).replace('_', ' '))}</span> ${who(d.targetId)}${d.with ? ` <span class="dim">with ${esc(d.with)}</span>` : ''}${d.hit === false ? ' <span class="dim">— misses</span>' : (d.effects ?? []).length ? ` — <span class="bad">${esc(d.effects.join(', '))}</span>` : ''}${d.words ? ` “${esc(d.words)}”` : ''}${d.reason ? ` <span class="dim">(why: ${esc(d.reason)})</span>` : ''}`;
+    case 'crime': return `⚖ ${who(actor)} <span class="bad">${esc(String(d.kind).replace('_', ' '))}</span>${d.victimId ? ` against ${who(d.victimId)}` : ''} <span class="dim">(severity ${esc(d.severity)}, ${(d.witnesses ?? []).length ? `seen by ${(d.witnesses ?? []).length}` : 'unseen'})</span>`;
+    // step 11 (director view: the truth is shown next to the lie)
+    case 'persona_traits': return `${who(actor)} <span class="dim">is honesty ${esc(d.honesty)}/10, cunning ${esc(d.cunning)}/10${d.reason ? ` — ${esc(d.reason)}` : ''} (${esc(d.origin)})</span>`;
+    case 'ambition': return `${who(actor)} <span class="dim">ambition ${esc(d.op)}:</span> ${esc(d.text)}${d.intensity != null ? ` <span class="dim">(${esc(d.kind)}, ${esc(d.intensity)}/10${d.secrecy ? `, ${esc(d.secrecy)}` : ''})</span>` : ''}${d.why ? ` — <i>${esc(d.why)}</i>` : ''}`;
+    case 'ambition_rejected': return `${who(actor)} <span class="dim">ambition rejected: ${esc(d.text)} (${esc(d.why)})</span>`;
+    case 'scheme': return `🕸 ${who(actor)} <span class="dim">scheme #${esc(d.schemeId)} ${esc(d.op)}${d.status ? ` → ${esc(d.status)}` : ''}:</span> ${esc(d.goal ?? d.why ?? '')}`;
+    case 'scheme_none': return `${who(actor)} <span class="dim">makes no plan</span>${d.why ? ` — <i>${esc(d.why)}</i>` : ''}`;
+    case 'scheme_rejected': return `<span class="dim">${who(actor)}'s plan had invalid steps: ${esc(JSON.stringify(d.rejected).slice(0, 200))}</span>`;
+    case 'scheme_step_due': return `🕸 ${who(actor)} <span class="dim">plan step due:</span> ${esc(d.text)}`;
+    case 'lie': return `🤥 ${who(actor)} <span class="bad">lies</span> <span class="dim">(${esc(d.kind)})</span>: “${esc(d.said)}” <span class="dim">— truth: ${esc(d.truth)}${d.why ? `; why: ${esc(d.why)}` : ''}</span>`;
+    case 'lie_retold': return `${who(actor)} <span class="dim">passes lie #${esc(d.lieId)} on to</span> ${who(d.to)}`;
+    case 'lie_caught': return `🤥 ${who(actor)} <span class="bad">sees through</span> ${who(d.liarId)}'s lie <span class="dim">(${esc(d.how)})</span>`;
+    case 'lie_confessed': return `🙏 ${who(actor)} <span class="good">owns up</span> to lie #${esc(d.lieId)} <span class="dim">(to ${(d.to ?? []).map((id) => store.citizens.get(id)?.name ?? id).join(', ') || 'nobody'})</span>`;
+    case 'trust_claim': return `${who(actor)} <span class="dim">${esc(d.verdict)}s</span> ${who(d.from)}: “${esc(d.claim)}”${d.why ? ` <span class="dim">— ${esc(d.why)}</span>` : ''}${d.lieId ? ' <span class="dim">(a lie)</span>' : ''}`;
+    case 'contradiction': return `${who(actor)} <span class="dim">notices something doesn't fit</span> in ${who(d.liarId)}'s story <span class="dim">— ${esc(String(d.why ?? '').replace(/\{\{[cp]:(\w+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id))}</span>`;
+    case 'tell': return `${who(d.to)} <span class="dim">notices</span> ${who(actor)} <span class="dim">${d.nervousTruth ? 'seems nervous (telling the truth)' : 'giving something away'}</span>`;
+    case 'leak': return `${who(actor)} <span class="bad">${d.leaked === 'full' ? 'gives away' : 'hints at'}</span> a secret ${esc(d.kind)} to ${who(d.to)}${d.what ? ` <span class="dim">— ${esc(d.what)}</span>` : ''}`;
+    case 'altercation_start': return `⚔ ${who(actor)} goes at ${who(d.targetId)} <span class="dim">(${esc(d.intent)})</span>`;
+    case 'altercation_end': return `⚔ a fight ends: ${esc(d.reason)} <span class="dim">(${(d.participants ?? []).map((id) => store.citizens.get(id)?.name ?? id).join(', ')})</span>`;
+    case 'coherence': return `${who(actor)} <span class="dim">${esc(d.kind)}:</span> ${esc(d.action)} → ${who(d.victimId)}${d.reason ? ` — “${esc(d.reason)}”` : ''}`;
+    case 'coherence_retry': return `${who(actor)} <span class="dim">asked again:</span> ${esc(d.message)}`;
+    case 'fire_start': return `🔥 <span class="bad">fire</span> in ${esc(roomName(e.location))} <span class="dim">(${esc(d.cause)})</span>${actor ? ` — ${who(actor)}` : ''}`;
+    case 'room_fire': return `🔥 <span class="bad">${esc(roomName(e.location))} is on fire</span>`;
+    case 'fire_out': return `the fire on ${esc(d.objectId)} is out <span class="dim">(${esc(d.how)})</span>${actor ? ` — ${who(actor)}` : ''}`;
+    case 'intention': return `${who(actor)} <span class="dim">intention ${esc(d.op)}:</span> ${esc(d.text ?? d.id)}`;
+    case 'habits': return `${who(actor)} <span class="dim">habits (${esc(d.origin)}):</span> ${esc((d.habits ?? []).join('; '))}`;
+    case 'habit': return `<span class="dim">↺ out of habit,</span> ${who(actor)} ${esc(d.what)} <span class="dim">(${esc(d.step)})</span>`;
+    case 'habit_change': return `${who(actor)} <span class="dim">habit ${esc(d.op)}:</span> ${esc(d.what)} — “${esc(d.why)}”`;
+    case 'mortality': return `${who(actor)} <span class="bad">${d.state ? `fears for ${esc(d.state === 'critical' ? 'their life — critical' : 'their life')}` : 'is out of danger'}</span>`;
+    case 'dread': return `<span class="director">village dread ${esc(d.delta > 0 ? '+' : '')}${esc(d.delta)} → ${esc(d.value)}</span> <span class="dim">(${esc(d.why)})</span>`;
+    case 'stock': return `${who(actor)} restocks ${esc(roomName(e.location))} <span class="dim">(${esc(d.service)}: ${esc(Math.round(d.before))} → ${esc(Math.round(d.after))})</span>`;
     case 'learn_place': return `${who(actor)} learns about ${esc(roomName(d.placeId))} from ${who(d.from)} <span class="dim">(${esc((d.services ?? []).join(', ') || 'no services')})</span>`;
     case 'director_effect': return `<span class="director">✨ ${effectHtml(d)}</span>${d.notify ? ` <span class="dim">“${esc(d.notify)}”</span>` : ''}`;
     case 'conversation_end': {
@@ -269,6 +338,20 @@ export function eventHtml(e) {
     case 'consolidation': return `${who(actor)} <span class="dim">sleeps on the day: ${esc(d.lasting)} lasting, ${esc(d.merged)} merged, ${esc(d.faded)} faded, ${esc(d.gists)} gists</span>`;
     case 'error': return `<span class="bad">${actor ? `${esc(citizenName(actor))}: ` : ''}${esc(d.message)}</span>`;
     default: return `<span class="dim">${esc(JSON.stringify(d))}</span>`;
+  }
+}
+
+// ---------- groups (step 5.5) ----------
+function groupEventHtml(d, actor) {
+  const lock = d.secret || d.public === false ? ' 🔒' : '';
+  switch (d.action) {
+    case 'create': return `<span class="dim">👥 group formed:</span> <b>${esc(d.name)}</b> <span class="dim">(${esc(d.kind)}, ${esc(d.origin)})${lock}</span>`;
+    case 'join': return `${who(actor)} <span class="dim">joins</span> <b>${esc(d.name)}</b>${d.role && d.role !== 'member' ? ` <span class="dim">as ${esc(d.role)}</span>` : ''}${lock}`;
+    case 'leave': return `${who(actor)} <span class="dim">leaves</span> <b>${esc(d.name)}</b>`;
+    case 'dissolve': return `<span class="dim">👥</span> <b>${esc(d.name)}</b> <span class="dim">is dissolved</span>`;
+    case 'propose': return `${who(actor)} <span class="dim">asks</span> ${(d.invited ?? []).map((x) => who(x)).join(', ')} <span class="dim">to form a party:</span> ${esc(d.purpose)}`;
+    case 'decline': return `${who(actor)} <span class="dim">turns down</span> ${who(d.from)}<span class="dim">'s invitation</span>`;
+    default: return `<span class="dim">[group] ${esc(d.action)} ${esc(d.name ?? '')}</span>`;
   }
 }
 
@@ -368,3 +451,14 @@ export const prefs = {
     } catch { /* ignore */ }
   },
 };
+
+/** step 11: a director-only marker on a conversation line: a lie (hover: the truth), a confiding, a confession. */
+export function lineMarkHtml(l) {
+  const m = l?.mark;
+  if (!m) return '';
+  if (m.kind === 'lie') return ` <span class="line-mark lie" title="${esc(`A lie (${m.lieKind}). Truth: ${m.truth}${m.why ? `
+Why: ${m.why}` : ''}`)}">🤥</span>`;
+  if (m.kind === 'confide') return ` <span class="line-mark confide" title="${esc(`Confiding a secret plan (scheme #${m.scheme ?? '?'}, asks: ${m.ask})`)}">🤫</span>`;
+  if (m.kind === 'confess') return ` <span class="line-mark confess" title="${esc(`Owning up to lie #${m.lie ?? '?'}`)}">🙏</span>`;
+  return '';
+}

@@ -1,0 +1,93 @@
+{
+  "_doc": "Step 9: clutter per room type: pure decor (never objects, never in prompts, never interactive), placed by code on free floor tiles. wall = prefers the back row; flat = lies under everything; count = how many. match = room id prefixes per type.",
+  "match": {
+    "bakery": [
+      "bakery"
+    ],
+    "smithy": [
+      "smithy"
+    ],
+    "tavern": [
+      "tavern"
+    ],
+    "home": [
+      "house_"
+    ]
+  },
+  "rooms": {
+    "bakery": [
+      {
+        "type": "loaf_shelf",
+        "count": 1,
+        "wall": true
+      },
+      {
+        "type": "flour_dust",
+        "count": 3,
+        "flat": true
+      },
+      {
+        "type": "small_basket",
+        "count": 2
+      },
+      {
+        "type": "sack_pile",
+        "count": 1
+      }
+    ],
+    "smithy": [
+      {
+        "type": "tool_rack",
+        "count": 1,
+        "wall": true
+      },
+      {
+        "type": "scrap_metal",
+        "count": 3
+      },
+      {
+        "type": "water_bucket",
+        "count": 1
+      },
+      {
+        "type": "wood_pile",
+        "count": 1
+      }
+    ],
+    "tavern": [
+      {
+        "type": "mug",
+        "count": 3
+      },
+      {
+        "type": "keg",
+        "count": 1,
+        "wall": true
+      },
+      {
+        "type": "stool",
+        "count": 2
+      }
+    ],
+    "home": [
+      {
+        "type": "rug",
+        "count": 1,
+        "flat": true
+      },
+      {
+        "type": "pot",
+        "count": 2
+      },
+      {
+        "type": "small_chest",
+        "count": 1,
+        "wall": true
+      },
+      {
+        "type": "wood_pile",
+        "count": 1
+      }
+    ]
+  }
+}

@@ -3,10 +3,11 @@
 // director markers, red ticks for interrupts/rethinks. Wheel = zoom, drag = pan, "follow live".
 import { store, subscribe, subscribeMany, select } from '../store.js';
 import { api, esc, gameTime, clockOnly, citizenName, truncate, navigate, showEvent, debounce, prefs } from '../util.js';
+import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const LABEL_W = 96;
-const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '✝' };
+const POINT_ICONS = { eat: '🍲', learn_place: '💡', revive: '✚', collapse: '⛔', forced_sleep: '💤', death: '💀', injury: '🩹', treatment: '⚕', accident: '⚠', critical_window: '🩸', learned_death: '🕯', habit: '↺', gathering: '📣', burial: '⚱', news: '✉', physical: '✊', crime: '⚖', fire_start: '🔥', room_fire: '🔥', altercation_start: '⚔', barricade: '🚪', scheme: '🕸', scheme_step_due: '🕸', lie_caught: '🤥', lie_confessed: '🙏', contradiction: '❓' };
 const LANE_H = 34;
 const TOP = 26;
 const MIN_SPAN = 15;
@@ -20,11 +21,14 @@ let data = null;
 let timer = null;
 let loading = false;
 
+let showVitality = false;
+
 export function mount(el) {
   root = el;
   el.innerHTML = `
     <div class="tl-toolbar">
       <label class="check"><input type="checkbox" id="tl-follow" checked> Follow live</label>
+      <label class="check" title="hourly vitality while someone is hurt or ill"><input type="checkbox" id="tl-vitality"> Vitality</label>
       <button id="tl-in" title="Zoom in">＋</button><button id="tl-out" title="Zoom out">－</button>
       <button id="tl-6h">6 h</button>
       <span class="dim" id="tl-range"></span>
@@ -40,6 +44,7 @@ export function mount(el) {
     if (follow) end = null;
     load();
   });
+  el.querySelector('#tl-vitality').addEventListener('change', (e) => { showVitality = e.target.checked; render(); });
   el.querySelector('#tl-in').addEventListener('click', () => zoom(1 / 1.5));
   el.querySelector('#tl-out').addEventListener('click', () => zoom(1.5));
   el.querySelector('#tl-6h').addEventListener('click', () => {
@@ -189,6 +194,26 @@ function render(provisional = false) {
       <text class="lane-label" x="8" y="${yy + LANE_H / 2 + 2}" fill="${colorOf(c.id)}">${esc(truncate(c.name, 12))}</text></g>`);
   }
 
+  // Step 6: lanes tinted by the dominant emotion of each hourly sample; bumps of 3+ as small diamonds.
+  const emo = data.emotions ?? { samples: {}, bumps: [] };
+  for (const c of citizens) {
+    const list = emo.samples[c.id] ?? [];
+    for (let i = 0; i < list.length; i++) {
+      const [t, type, intensity] = list[i];
+      const end = Math.min(list[i + 1]?.[0] ?? t + 60, t + 90);
+      if (!type || intensity < 2 || end < from || t > to) continue;
+      const x1 = clampX(t);
+      const x2 = clampX(end);
+      out.push(`<rect class="emo-tint" x="${x1}" y="${y(c.id)}" width="${Math.max(1, x2 - x1)}" height="${LANE_H - 4}" fill="${EMO_COLOR[type] ?? '#888'}" fill-opacity="${Math.min(0.42, 0.06 + intensity * 0.035)}"${dimmed(c.id)}><title>${esc(`${c.name}: ${type} ${intensity}`)}</title></rect>`);
+    }
+  }
+  for (const b of emo.bumps) {
+    if (!lane.has(b.citizenId) || b.t < from || b.t > to) continue;
+    const px = x(b.t);
+    const py = y(b.citizenId) + 5;
+    out.push(`<path class="emo-bump" d="M${px},${py - 4} l4,4 l-4,4 l-4,-4 z" fill="${EMO_COLOR[b.type] ?? '#888'}"${dimmed(b.citizenId)}><title>${esc(`${b.type} ${b.delta > 0 ? '+' : ''}${b.delta}${b.target ? ` at ${store.citizens.get(b.target)?.name ?? b.target}` : ''} (${b.source})\n${b.cause ?? ''}`)}</title></path>`);
+  }
+
   // conversation bands (behind activity blocks)
   for (const cv of data.conversations) {
     const ids = cv.participants.filter((id) => lane.has(id));
@@ -258,13 +283,28 @@ function render(provisional = false) {
         <title>${esc(title)}</title><rect x="${px - 3}" y="${yy}" width="6" height="9" fill="transparent"/>
         <line x1="${px}" y1="${yy + 1}" x2="${px}" y2="${yy + 8}" stroke="${colorOf(p.citizenId)}" stroke-width="2"/></g>`);
     } else if (POINT_ICONS[p.type]) {
-      out.push(`<g class="tick" data-ev="${p.eventId}"${dimmed(p.citizenId)}><title>${esc(`${p.type.replace('_', ' ')}${p.text ? `: ${p.text}` : ''}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="11">${POINT_ICONS[p.type]}</text></g>`);
+      const icon = p.type === 'physical' ? ['', '✊', '🩸', '☠'][p.severity ?? 1] ?? '✊' : POINT_ICONS[p.type]; // step 10: violence by severity
+      out.push(`<g class="tick" data-ev="${p.eventId}"${dimmed(p.citizenId)}><title>${esc(`${p.type.replace('_', ' ')}${p.text ? `: ${p.text}` : ''}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="${p.severity >= 3 ? 13 : 11}">${icon}</text></g>`);
     } else if (p.type === 'whisper') {
       out.push(`<g class="tick" data-ev="${p.eventId}"><title>${esc(`Whisper: ${p.text}`)}</title><text x="${px - 6}" y="${yy + LANE_H - 6}" font-size="11">🤫</text></g>`);
     } else {
       out.push(`<g class="tick red" data-ev="${p.eventId}"><title>${esc(`${p.type}${p.text ? `: ${p.text}` : ''}`)}</title>
         <rect x="${px - 3}" y="${yy + LANE_H - 13}" width="6" height="9" fill="transparent"/>
         <line x1="${px}" y1="${yy + LANE_H - 12}" x2="${px}" y2="${yy + LANE_H - 5}"/></g>`);
+    }
+  }
+
+  // step 7B: the vitality line per citizen (optional overlay): 100 at the top of the lane, 0 at the bottom
+  if (showVitality) {
+    const per = new Map();
+    for (const s of data.vitality ?? []) {
+      if (s.t < from - 120 || s.t > to + 120 || !lane.has(s.citizenId)) continue;
+      (per.get(s.citizenId) ?? per.set(s.citizenId, []).get(s.citizenId)).push(s);
+    }
+    for (const [id, list] of per) {
+      const yy = y(id);
+      const pts = list.map((s) => `${x(s.t).toFixed(1)},${(yy + LANE_H - 3 - (Math.max(0, Math.min(100, s.v)) / 100) * (LANE_H - 6)).toFixed(1)}`);
+      if (pts.length > 1) out.push(`<polyline class="vit-line" points="${pts.join(' ')}" fill="none" stroke="#d9483b" stroke-width="1.4"${dimmed(id)}><title>${esc(citizenName(id))}: vitality</title></polyline>`);
     }
   }
 

@@ -1,0 +1,40 @@
+{
+  "_doc": "Step 7B state-driven accidents (scaled by ACCIDENT_RATE). risk = base x carelessness x practice x room factor. carelessness comes from fatigue, intense emotion, pain, concussion or shock; practice is PROVISIONAL (persona.practiced: hot | tool | danger) until the RPG step has real skills: it lives in one function (body/accidents.js practiceFactor). Every accident goes through the damage API, so it also wears the covering garment.",
+  "hotStates": { "hearth": ["lit", "smouldering"], "forge": ["lit", "roaring"], "oven": ["hot"] },
+  "toolTags": ["tool", "blade"],
+  "carelessness": {
+    "fatigue": { "tired": 1.5, "exhausted": 3, "collapsing": 5 },
+    "emotion": { "types": ["anger", "fear", "sadness", "jealousy"], "min": 6, "factor": 2 },
+    "pain": { "min": 4, "factor": 1.5 },
+    "impaired": 3,
+    "max": 12
+  },
+  "practice": { "practiced": 0.15, "unpracticed": 1.5 },
+  "sources": {
+    "hot": {
+      "practice": "hot", "perHour": 0.01,
+      "damage": { "damageType": "burn", "parts": ["hand_left", "hand_right", "forearm_left", "forearm_right"], "amount": [6, 16] },
+      "text": "{name} yelps and jerks {poss} hand back from the {thing}."
+    },
+    "tool": {
+      "practice": "tool", "perHour": 0.005,
+      "damage": { "damageType": "cut", "parts": ["hand_left", "hand_right", "fingers_left", "fingers_right"], "amount": [4, 9] },
+      "text": "{name} swears as the {thing} slips and bites into {poss} hand."
+    },
+    "fall": {
+      "practice": "danger", "perMove": 0.02, "minDanger": 4, "dangerScale": 5,
+      "outcomes": [
+        { "p": 0.7, "type": "bruise", "parts": ["thigh_left", "thigh_right", "shin_left", "shin_right", "upper_arm_left", "upper_arm_right", "torso"], "severity": [2, 4] },
+        { "p": 0.2, "type": "dislocation", "parts": ["upper_arm_left", "upper_arm_right", "foot_left", "foot_right"], "severity": [3, 5] },
+        { "p": 0.1, "type": "fracture", "parts": ["forearm_left", "forearm_right", "shin_left", "shin_right"], "severity": [4, 6] }
+      ],
+      "text": "{name} loses {poss} footing and goes down hard."
+    },
+    "stumble": {
+      "practice": "danger", "perMove": 0.01,
+      "outcomes": [{ "p": 1, "type": "bruise", "parts": ["thigh_left", "thigh_right", "shin_left", "shin_right", "upper_arm_left", "upper_arm_right"], "severity": [1, 3] }],
+      "text": "{name} stumbles and cries out."
+    },
+    "exposure": { "perHour": 0.03, "exhaustedFactor": 2, "ragsFactor": 1.5, "roughSleepFactor": 2, "feverChance": 0.02 }
+  }
+}

@@ -31,6 +31,10 @@
       {
         "to": "house_lena",
         "travelMinutes": 2
+      },
+      {
+        "to": "chapel_yard",
+        "travelMinutes": 2
       }
     ],
     "tags": [
@@ -48,7 +52,8 @@
     "x": 50,
     "y": 50,
     "detail": "normal",
-    "kind": "village square"
+    "kind": "village square",
+    "danger": 1
   },
   {
     "id": "tavern",
@@ -76,7 +81,20 @@
       "food": {
         "minutes": 30,
         "hungerRelief": 60,
-        "description": "stew and bread from the kitchen"
+        "description": "stew and bread from the kitchen",
+        "operator": "anselm",
+        "stock": {
+          "current": 16,
+          "max": 30,
+          "perWorkHour": 5,
+          "work": [
+            "hearth",
+            "keg",
+            "cauldron",
+            "pot"
+          ],
+          "words": "cook|stew|brew|kitchen|soup|ladl|tend(ing)? the (bar|taproom)|serv(e|ing) (ale|food|the)"
+        }
       },
       "bed": {
         "quality": "good",
@@ -86,7 +104,9 @@
     "x": 22,
     "y": 30,
     "detail": "rich",
-    "kind": "tavern"
+    "kind": "tavern",
+    "danger": 0,
+    "construction": "timber"
   },
   {
     "id": "bakery",
@@ -117,13 +137,29 @@
       "food": {
         "minutes": 20,
         "hungerRelief": 45,
-        "description": "bread and buns from the racks"
+        "description": "bread and buns from the racks",
+        "operator": "greta",
+        "stock": {
+          "current": 12,
+          "max": 30,
+          "perWorkHour": 4,
+          "work": [
+            "oven",
+            "counter",
+            "flour_sack",
+            "dough_trough",
+            "kneading_table"
+          ],
+          "words": "bak(e|ing)|knead|dough|fir(e|ing) the oven|oven"
+        }
       }
     },
     "x": 78,
     "y": 30,
     "detail": "normal",
-    "kind": "bakery"
+    "kind": "bakery",
+    "danger": 0,
+    "construction": "timber"
   },
   {
     "id": "smithy",
@@ -137,6 +173,10 @@
       {
         "to": "house_tomas",
         "travelMinutes": 1
+      },
+      {
+        "to": "old_mine_entrance",
+        "travelMinutes": 12
       }
     ],
     "tags": [
@@ -154,7 +194,9 @@
     "x": 80,
     "y": 75,
     "detail": "normal",
-    "kind": "smithy"
+    "kind": "smithy",
+    "danger": 1,
+    "construction": "stone"
   },
   {
     "id": "well",
@@ -180,7 +222,8 @@
     "x": 50,
     "y": 18,
     "detail": "sparse",
-    "kind": "well"
+    "kind": "well",
+    "danger": 1
   },
   {
     "id": "house_greta",
@@ -217,7 +260,10 @@
     "x": 95,
     "y": 50,
     "detail": "normal",
-    "kind": "house"
+    "kind": "house",
+    "danger": 0,
+    "owner": "greta",
+    "construction": "timber"
   },
   {
     "id": "house_tomas",
@@ -253,7 +299,10 @@
     "x": 62,
     "y": 92,
     "detail": "sparse",
-    "kind": "cottage"
+    "kind": "cottage",
+    "danger": 0,
+    "owner": "tomas",
+    "construction": "timber"
   },
   {
     "id": "house_lena",
@@ -287,6 +336,69 @@
     "x": 12,
     "y": 70,
     "detail": "rich",
-    "kind": "herbalist's cottage"
+    "kind": "herbalist's cottage",
+    "danger": 0,
+    "owner": "lena",
+    "construction": "timber"
+  },
+  {
+    "id": "old_mine_entrance",
+    "name": "the old mine entrance",
+    "description": "A timbered mouth in the hillside behind the smithy, half choked with bramble. Cold air breathes out of it. Rusted cart rails vanish into the dark, and the props groan when the wind turns.",
+    "appearance": "A dark, timbered opening in the hillside, half hidden by bramble.",
+    "exits": [
+      {
+        "to": "smithy",
+        "travelMinutes": 12
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "wild"
+    ],
+    "affordances": [
+      "peer into the dark",
+      "listen",
+      "pick through the old spoil heap"
+    ],
+    "services": {},
+    "detail": "sparse",
+    "kind": "abandoned mine",
+    "danger": 5,
+    "x": 97,
+    "y": 96
+  },
+  {
+    "id": "chapel_yard",
+    "name": "the chapel yard",
+    "description": "A quiet fenced yard behind the old chapel at the north-west edge of the village, under a great old yew. Grass grows long between the graves; the chapel steps are worn hollow.",
+    "exits": [
+      {
+        "to": "square",
+        "travelMinutes": 2
+      }
+    ],
+    "tags": [
+      "outdoor",
+      "public",
+      "sacred"
+    ],
+    "affordances": [
+      "visit the graves",
+      "sit under the yew",
+      "dig a grave",
+      "pray"
+    ],
+    "appearance": "A fenced yard with a stone chapel front and a great dark yew tree.",
+    "services": {
+      "burial": {
+        "description": "ground where the dead are buried"
+      }
+    },
+    "x": 12,
+    "y": 6,
+    "detail": "sparse",
+    "kind": "yard",
+    "danger": 0
   }
 ]

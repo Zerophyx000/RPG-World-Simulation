@@ -25,6 +25,7 @@ import path from 'node:path';
 import { CONTENT_DIR } from './scenarios.js';
 import { citizensIn } from './rooms.js';
 import { relativeTime } from './time.js';
+import { corpseText as corpseTextFor } from '../death/customs.js';
 
 export const RELATIONS = ['floor', 'on', 'in', 'behind', 'under', 'beside'];
 export const VISIBILITIES = ['obvious', 'noticeable', 'hidden'];
@@ -149,7 +150,7 @@ export class Objects {
     const state = d.state ?? type.states[0];
     if (!type.states.includes(state)) return fail(`state "${state}" is not one of ${type.states.join(', ')}`);
     const visibility = VISIBILITIES.includes(d.visibility) ? d.visibility : 'obvious';
-    let placement = holderId ? {} : normPlacement(d.placement);
+    let placement = holderId ? (d.placement?.relation === 'worn' ? { relation: 'worn', of: null } : {}) : normPlacement(d.placement);
     if (placement.of) {
       const anchor = this.byId.get(placement.of);
       const why = this.#anchorProblem({ id, roomId }, placement, anchor);
@@ -183,10 +184,10 @@ export class Objects {
   }
 
   /** Director / code: create an instance (origin 'director' or 'code'). */
-  create(def, { actorId = 'director', origin = 'director' } = {}) {
+  create(def, { actorId = 'director', origin = 'director', action = 'create' } = {}) {
     if (origin === 'citizen') throw httpError(400, 'citizens never create objects');
     const o = this.#fromDef(def, { strict: true, origin });
-    this.#insert(o, { actorId, action: 'create' });
+    this.#insert(o, { actorId, action });
     if (o.ownerId) this.learn(this.world.citizens.get(o.ownerId), o, { touched: false });
     this.#syncCarrying();
     this.#announce(o, { action: 'create', actorId, witnesses: [] });
@@ -224,7 +225,8 @@ export class Objects {
    * whose it is (real ids like "greta_key" would leak ownership).
    */
   alias(o) {
-    return `${o.typeId}#${Math.floor(hash01(`alias|${o.id}`) * 1679616).toString(36).padStart(4, '0')}`;
+    // step 9.5: a body's handle must not say "corpse" to someone who only sees a person lying still
+    return `${o.typeId === 'corpse' ? 'figure' : o.typeId}#${Math.floor(hash01(`alias|${o.id}`) * 1679616).toString(36).padStart(4, '0')}`;
   }
 
   /** An alias (or a real id) back to the object. */
@@ -246,18 +248,35 @@ export class Objects {
     return out;
   }
 
+  /** What they hold in their hands (worn garments and aids don't use hands). */
   carriedBy(citizenId) {
     const out = [];
-    for (const o of this.byId.values()) if (o.holderId === citizenId) out.push(o);
+    for (const o of this.byId.values()) if (o.holderId === citizenId && o.placement?.relation !== 'worn') out.push(o);
+    return out;
+  }
+
+  /** step 7B: what they wear (garments, splints, slings, a peg leg…). */
+  wornBy(citizenId) {
+    const out = [];
+    for (const o of this.byId.values()) if (o.holderId === citizenId && o.placement?.relation === 'worn') out.push(o);
     return out;
   }
 
   slotsUsed(citizenId) {
-    return this.carriedBy(citizenId).reduce((n, o) => n + (this.type(o)?.size ?? 1), 0);
+    // step 7B: carrying a person takes both hands
+    const person = this.world.citizens.get(citizenId)?.carryingPerson ? 2 : 0;
+    return person + this.carriedBy(citizenId).reduce((n, o) => n + (this.type(o)?.size ?? 1), 0);
+  }
+
+  /** step 7B: how many hands they can use (0-2), from the body's manipulation capacities. */
+  handsOf(citizenId) {
+    const cap = this.world.citizens.get(citizenId)?.body?.capacities;
+    if (!cap) return SLOTS;
+    return (cap.manipulationLeft >= 0.2 ? 1 : 0) + (cap.manipulationRight >= 0.2 ? 1 : 0);
   }
 
   freeSlots(citizenId) {
-    return Math.max(0, SLOTS - this.slotsUsed(citizenId));
+    return Math.max(0, this.handsOf(citizenId) - this.slotsUsed(citizenId));
   }
 
   /** Objects placed relative to this one (on / in / behind / under / beside it). */
@@ -311,12 +330,13 @@ export class Objects {
       if (!this.world.citizens.has(patch.holderId)) throw httpError(400, `unknown citizen "${patch.holderId}"`);
       next.holderId = patch.holderId;
       next.roomId = null;
-      next.placement = {};
+      next.placement = patch.placement?.relation === 'worn' ? { relation: 'worn', of: null } : {}; // step 7B: worn, not carried
     } else if (patch.roomId !== undefined && patch.roomId !== null) {
       if (!this.world.rooms.has(patch.roomId)) throw httpError(400, `unknown room "${patch.roomId}"`);
       next.roomId = patch.roomId;
       next.holderId = null;
       next.placement = normPlacement(patch.placement ?? { relation: 'floor' });
+      if (next.placement.relation === 'worn') next.placement = { relation: 'floor', of: null };
     } else if (patch.placement !== undefined) {
       if (!next.roomId) throw httpError(400, 'a carried object has no placement');
       next.placement = normPlacement(patch.placement);
@@ -345,8 +365,8 @@ export class Objects {
     if (next.roomId !== o.roomId && next.roomId) next.data.arrivedAt = this.world.now;
     next.updatedAt = this.world.now;
     assertLocation(next);
-    if (next.holderId && next.holderId !== o.holderId) {
-      const cap = SLOTS - this.slotsUsed(next.holderId);
+    if (next.holderId && next.placement?.relation !== 'worn' && (next.holderId !== o.holderId || o.placement?.relation === 'worn')) {
+      const cap = this.freeSlots(next.holderId);
       if ((type?.size ?? 1) > cap) throw httpError(400, `${this.world.citizens.get(next.holderId)?.name ?? next.holderId} has no free hands for that`);
       if (!type?.portable && actorId !== 'director') throw httpError(400, `${type?.name ?? 'that'} can't be carried`);
     }
@@ -443,7 +463,7 @@ export class Objects {
 
   #syncCarrying() {
     const by = new Map();
-    for (const o of this.byId.values()) if (o.holderId) by.set(o.holderId, [...(by.get(o.holderId) ?? []), o.id]);
+    for (const o of this.byId.values()) if (o.holderId && o.placement?.relation !== 'worn') by.set(o.holderId, [...(by.get(o.holderId) ?? []), o.id]);
     for (const c of this.world.citizens.values()) {
       const list = by.get(c.id) ?? [];
       if (JSON.stringify(c.carrying ?? []) !== JSON.stringify(list)) {
@@ -508,11 +528,29 @@ export class Objects {
     return `the ${o?.data?.short ?? this.type(o)?.name ?? 'thing'}`;
   }
 
-  placementPhrase(o) {
+  /**
+   * step A4: the anchor of a placement as this viewer reads it. Two flour sacks side by side are not
+   * "beside the flour sack" but "beside the other flour sack".
+   */
+  shortFor(viewer, o, roomId = null) {
+    const peers = this.#sameTypePeers(viewer, o, roomId);
+    if (!peers.length) return this.short(o);
+    return `the other ${o.data?.short ?? this.type(o)?.name ?? 'thing'}`;
+  }
+
+  /** "by the oven"; for a viewer aware of a same-type anchor, "by the other flour sack" (step A4). */
+  placementPhrase(o, viewer = null) {
     const p = o.placement ?? {};
     if (!p.of || !RELATION_WORD[p.relation]) return '';
     const anchor = this.byId.get(p.of);
-    return anchor ? `${RELATION_WORD[p.relation]} ${this.short(anchor)}` : '';
+    if (!anchor) return '';
+    if (viewer && anchor.typeId === o.typeId) return `${RELATION_WORD[p.relation]} ${this.shortFor(viewer, anchor)}`;
+    // step 9.5: something laid over the dead must not say "body" to someone who only sees a person lying still
+    if (anchor.typeId === 'corpse') {
+      const knows = viewer && anchor.data?.citizenId && this.world.deaths?.knows(viewer, anchor.data.citizenId);
+      return p.relation === 'on' ? (knows ? 'laid over the body' : 'laid over the one lying still') : `${RELATION_WORD[p.relation]} ${knows ? 'the body' : 'the one lying still'}`;
+    }
+    return `${RELATION_WORD[p.relation]} ${this.short(anchor)}`;
   }
 
   /** Ownership as this viewer knows it: "yours", "Greta's" or nothing. */
@@ -521,13 +559,16 @@ export class Objects {
     if (o.ownerId === viewer.id) return 'yours';
     const owner = this.world.citizens.get(o.ownerId);
     const r = this.world.memory.rel(viewer.id, o.ownerId);
-    return owner && r?.nameKnown && r.nameConfidence >= 0.5 && r.familiarity >= 1 ? `${owner.name}'s` : '';
+    if (!(owner && r?.nameKnown && r.nameConfidence >= 0.5 && r.familiarity >= 1)) return '';
+    // step 9.5: "Greta's (she's dead)" — only for those who know
+    if (!owner.alive && this.world.deaths?.knows(viewer, owner.id)) return `${owner.name}'s (${owner.persona?.sex === 'female' ? 'she' : owner.persona?.sex === 'male' ? 'he' : 'they'}'s dead)`.replace("they's", "they're");
+    return `${owner.name}'s`;
   }
 
   /** What this viewer calls the object in a sentence: "a full flour sack (Greta's)". */
   textFor(viewer, o, { withPlace = false } = {}) {
     const own = viewer ? this.ownerTag(viewer, o) : '';
-    const place = withPlace ? this.placementPhrase(o) : '';
+    const place = withPlace ? this.placementPhrase(o, viewer) : '';
     return `${this.surfaceText(o)}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}`;
   }
 
@@ -550,11 +591,16 @@ export class Objects {
     if (!room) return { items: [], listed: [], overflow: 0, kind: '' };
     const visit = c.roomVisits?.[roomId] ?? 0;
     const items = [];
+    const st = c.body?.status ?? [];
+    const blind = st.includes('blind');
     for (const o of this.inRoom(roomId)) {
       const tier = this.surfaceTier(o);
+      // step 7B: a blind citizen only has what they remember or have touched in this room
+      if (blind && !(c.knownObjects?.[o.id] && c.knownObjects[o.id].roomId === roomId)) continue;
       if (!this.#perceives(c, o, tier, visit)) continue;
       const k = c.knownObjects?.[o.id];
-      const must = o.ownerId === c.id || (k?.touchedAt != null && this.world.now - k.touchedAt <= RECENT_TOUCH_MINUTES);
+      // step 9.5: a body is never lost in the clutter
+      const must = o.ownerId === c.id || o.typeId === 'corpse' || (k?.touchedAt != null && this.world.now - k.touchedAt <= RECENT_TOUCH_MINUTES);
       items.push({ o, tier, must, knownHidden: tier === 'hidden' });
     }
     const order = { obvious: 0, noticeable: 1, hidden: 2 };
@@ -569,8 +615,10 @@ export class Objects {
     if (tier === 'obvious') return true;
     if (tier === 'noticeable') {
       if (c.knownObjects?.[o.id]) return true;
+      const st = c.body?.status ?? [];
+      if (st.includes('concussed')) return false; // step 7B: a rattled head never notices the subtle
       if (visit >= FAMILIAR_VISITS) return true;
-      return hash01(`${c.id}|${o.id}|${visit}`) < NOTICE_CHANCE;
+      return hash01(`${c.id}|${o.id}|${visit}`) < NOTICE_CHANCE * (st.includes('half-blind') ? 0.7 : 1);
     }
     return this.knowsWhere(c, o);
   }
@@ -591,6 +639,27 @@ export class Objects {
     return { here: listed, carried: this.carriedBy(c.id) };
   }
 
+  /** step 7B / 9.5: a body as this viewer knows it — "Greta, lying very still" until they know she is dead. */
+  corpseText(viewer, o) {
+    return corpseTextFor(this.world, viewer, o);
+  }
+
+  /**
+   * step 9.5: code removes an object (a body when it is buried). Like create, never a citizen's doing; the history
+   * keeps the last state.
+   */
+  remove(id, { actorId = 'code', reason = 'removed' } = {}) {
+    const o = this.byId.get(id);
+    if (!o) return false;
+    for (const x of this.around(id)) this.change(x.id, { placement: { relation: 'floor', of: null } }, { actorId: 'code', action: 'move', notify: false });
+    this.stmt.history.run(o.id, this.world.now, actorId, 'remove', JSON.stringify(snap(o)), JSON.stringify({ removed: reason }), '[]');
+    this.db.prepare('DELETE FROM objects WHERE id = ?').run(id);
+    this.byId.delete(id);
+    this.#syncCarrying();
+    this.world.bus.emit('object', { id, removed: true, roomId: o.roomId, reason });
+    return true;
+  }
+
   /** A thing named in plain words ("the flour sacks") among what c can act on here; their own first. */
   match(c, text) {
     const t = ` ${String(text ?? '').toLowerCase().replace(/[^a-z' ]+/g, ' ')} `;
@@ -608,7 +677,8 @@ export class Objects {
     const { listed, overflow, kind } = this.perceiveRoom(c);
     const groups = new Map();
     for (const it of listed) {
-      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o)}|${it.o.typeId}`;
+      // step 9.5: every body is someone — never grouped ("two of: someone lying very still")
+      const key = `${it.knownHidden ? 'h' : 'v'}|${this.surfaceText(it.o)}|${this.ownerTag(c, it.o)}|${this.placementPhrase(it.o, c)}|${it.o.typeId}${it.o.typeId === 'corpse' ? `|${it.o.id}` : ''}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(it);
     }
@@ -616,10 +686,14 @@ export class Objects {
     for (const list of groups.values()) {
       const it = list[0];
       const own = this.ownerTag(c, it.o);
-      const place = this.placementPhrase(it.o);
-      const what = list.length > 1 ? this.plural(it.o, list.length) : this.surfaceText(it.o);
+      const place = this.placementPhrase(it.o, c);
+      // Identical things share a group (so the line is already unambiguous); otherwise keep the description.
+      const what = list.length > 1 ? this.plural(it.o, list.length) : it.o.typeId === 'corpse' ? this.corpseText(c, it.o) : this.surfaceText(it.o);
       const ids = aliases ? ` [${list.map((x) => this.alias(x.o)).join(', ')}]` : '';
-      lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${ids}`);
+      // step 8: where in the room it is, when that is not where they stand
+      const sp = this.world.maps?.objectSpot(it.o);
+      const where = sp && c.spot && sp !== c.spot && !place ? ` — ${this.world.maps.label(it.o.roomId, sp)}` : '';
+      lines.push(`- ${it.knownHidden ? '(you know) ' : ''}${what}${own ? ` (${own})` : ''}${place ? `, ${place}` : ''}${where}${ids}`);
     }
     if (overflow > 0) lines.push(`- …and the usual clutter of ${article(kind || 'place')}`);
     return lines;
@@ -633,14 +707,66 @@ export class Objects {
     return `${word} of: ${s}`;
   }
 
+  // ---------- step A4: telling look-alikes apart ----------
+  /**
+   * Everything of the same type this viewer can see in the room now (step A4). Two flour sacks must never
+   * both read as plain "the flour sack".
+   */
+  #sameTypePeers(c, o, roomId = null) {
+    const here = roomId ?? o.roomId ?? (c?.location ?? null);
+    if (!here) return [];
+    return this.inRoom(here).filter((x) => x.id !== o.id && x.typeId === o.typeId && (!c || this.surfaceTier(x) !== 'hidden'));
+  }
+
+  /** "the full flour sack" / "the half-empty one": the type's own surface words for this state. */
+  stateName(o) {
+    const type = this.type(o);
+    if (!type || type.states.length < 2) return null;
+    const body = (s) => String(type.surface?.[s] ?? type.surface?.default ?? `a ${type.name}`)
+      .replace(/\{state\}/g, s).replace(/^(a|an) /i, '').split(',')[0].trim();
+    const own = body(o.state);
+    return own && own !== type.name ? own : null;          // a state the surface doesn't show says nothing
+  }
+
+  /**
+   * step A4: how this viewer names one object among several of the same kind in the room. A content name
+   * override wins and is used verbatim; otherwise a state word, then the placement, then the owner, then
+   * an ordinal by id. peers = the same-type objects perceived in the same room.
+   */
+  distinctName(viewer, o, peers = null, roomId = null) {
+    if (o.name) return o.name;                                       // content override: as-is, no qualifiers
+    if (o.data?.short) return this.short(o);
+    let same = peers ?? this.#sameTypePeers(viewer, o, roomId);
+    let base = this.short(o);
+    if (!same.length) return base;
+    // A state word sets it apart only from peers in another state; among peers in the same state
+    // ("three full sacks, one half-full") it narrows the group and the next qualifier decides.
+    const state = this.stateName(o);
+    if (state) {
+      const alike = same.filter((x) => this.stateName(x) === state);
+      if (!alike.length) return `the ${state}`;
+      if (alike.length < same.length) { same = alike; base = `the ${state}`; }
+    }
+    const place = this.placementPhrase(o, viewer);
+    if (place && !same.some((x) => this.placementPhrase(x, viewer) === place)) return `${base} ${place}`;
+    const own = viewer ? this.ownerTag(viewer, o) : '';
+    if (own && own !== 'yours' && !same.some((x) => (viewer ? this.ownerTag(viewer, x) : '') === own)) return `${own} ${base.replace(/^the /, '')}`;
+    const order = [o, ...same].map((x) => x.id).sort();
+    const n = order.indexOf(o.id) + 1;
+    return n === 1 ? base : `the ${ORDINALS[n] ?? `#${n}`} ${base.replace(/^the /, '')}`;
+  }
+
   // ---------- knowledge ----------
   /** c saw where o is now (or that it is carried by someone). */
   learn(c, o, { touched = false, roomId = null, save = true } = {}) {
     if (!c) return;
     c.knownObjects ??= {};
     const prev = c.knownObjects[o.id];
+    // step A3: the anchor too, so "last you saw, you left it on the bakery counter" can be said later.
+    const anchor = o.placement?.of ? this.byId.get(o.placement.of) : null;
     c.knownObjects[o.id] = {
       lastSeenAt: this.world.now, roomId: o.roomId, holderId: o.holderId, placementSig: placementSig(o), state: o.state,
+      relation: anchor ? o.placement.relation : null, anchorId: anchor?.id ?? null,
       visible: !this.effectivelyHidden(o),
       ...(touched ? { touchedAt: this.world.now } : prev?.touchedAt != null ? { touchedAt: prev.touchedAt } : {}),
     };
@@ -680,6 +806,9 @@ export class Objects {
     const old = c.roomSnapshots?.[roomId] ?? null;
     const { items } = this.perceiveRoom(c, roomId);
     const now = new Map(items.map((it) => [it.o.id, it]));
+    const seen = [...now.values()].map((it) => it.o);
+    const peersOf = (o) => seen.filter((x) => x.id !== o.id && x.typeId === o.typeId); // step A4: what they can compare it with
+    const nameOf = (o) => this.distinctName(c, o, peersOf(o), roomId);                 // never two plain "the flour sack"
     const changes = [];
     const importanceOf = (o) => (o.ownerId === c.id ? 7 : c.knownObjects?.[o.id]?.touchedAt != null ? 5 : 3);
 
@@ -695,8 +824,8 @@ export class Objects {
           continue;
         }
         const [oldState, oldPlace] = splitSig(sig);
-        if (oldState !== o.state) changes.push({ o, kind: 'state', text: `${cap(this.short(o))} has changed: now ${this.surfaceText(o)}.`, importance: importanceOf(o) });
-        else if (oldPlace !== placementSig(o)) changes.push({ o, kind: 'moved', text: `${cap(this.short(o))} has been moved: it is now ${this.placementPhrase(o) || 'on the floor'}.`, importance: importanceOf(o) });
+        if (oldState !== o.state) changes.push({ o, kind: 'state', text: `${cap(nameOf(o))} has changed: now ${this.surfaceText(o)}.`, importance: importanceOf(o) });
+        else if (oldPlace !== placementSig(o)) changes.push({ o, kind: 'moved', text: `${cap(nameOf(o))} has been moved: it is now ${this.placementPhrase(o, c) || 'on the floor'}.`, importance: importanceOf(o) });
       }
       // Missing things, grouped by type: "fewer flour sacks by the oven" when some of the same kind remain.
       const byType = new Map();
@@ -718,6 +847,13 @@ export class Objects {
       for (const it of items) {
         if (old.objects[it.o.id] || it.tier !== 'obvious') continue;
         if ((it.o.data?.arrivedAt ?? -Infinity) <= old.at) continue;
+        if (it.o.typeId === 'corpse') {
+          // step 9.5: someone they don't know is dead is announced by world.deaths ("… is lying very still"), once
+          const deadId = it.o.data?.citizenId;
+          if (!deadId || !this.world.deaths?.knows(c, deadId)) continue;
+          changes.push({ o: it.o, kind: 'new', text: `${cap(this.corpseText(c, it.o))} — it wasn't here before.`, importance: 8 });
+          continue;
+        }
         changes.push({ o: it.o, kind: 'new', text: `There is ${this.textFor(c, it.o, { withPlace: true })} that wasn't here before.`, importance: 3 });
       }
     }
@@ -729,16 +865,32 @@ export class Objects {
       if (o.ownerId !== c.id || o.data?.home !== roomId || now.has(o.id) || o.holderId === c.id || reported.has(o.id)) continue;
       const last = c.missingNoted[o.id];
       if (last != null && this.world.now - last < MISSING_RENOTICE_MINUTES) continue;
-      changes.push({ o, kind: 'missing', text: `Your ${o.data?.short ?? this.type(o)?.name ?? 'thing'} is not where it belongs.`, importance: 7 });
+      // step A3: when they saw it put somewhere else, it isn't an alarm but a reminder of where it is.
+      const k = c.knownObjects?.[o.id];
+      const kRoom = k?.roomId ?? null;
+      const elsewhere = Boolean(k) && (kRoom !== roomId || (k.holderId && k.holderId !== c.id));
+      const what = o.data?.short ?? this.type(o)?.name ?? 'thing';
+      if (elsewhere) {
+        const roomName = this.world.rooms.get(kRoom)?.name ?? null;
+        const spot = this.placementFromKnown(k);
+        const seen = k.holderId === c.id ? 'Last you saw, you had it with you.'
+          : k.holderId ? `Last you saw, {{c:${k.holderId}}} had it.`
+            : `Last you saw, you left it ${spot ? `${spot}${roomName ? ` in ${roomName}` : ''}` : `in ${roomName ?? 'another room'}`}.`;
+        changes.push({ o, kind: 'misplaced', text: `Your ${what} isn't here. ${seen}`, importance: 3, knownElsewhere: true });
+      } else {
+        changes.push({ o, kind: 'missing', text: `Your ${what} is not where it belongs.`, importance: 7 });
+      }
     }
-    for (const ch of changes) if (ch.kind === 'missing') for (const id of ch.ids ?? [ch.o.id]) c.missingNoted[id] = this.world.now;
+    for (const ch of changes) if (ch.kind === 'missing' || ch.kind === 'misplaced') for (const id of ch.ids ?? [ch.o.id]) c.missingNoted[id] = this.world.now;
     for (const id of Object.keys(c.missingNoted)) if (now.has(id)) delete c.missingNoted[id];
 
     this.snapshotRoom(c, roomId);
     if (!changes.length) return null;
+    const ids = [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))];
+    const kinds = changes.map((ch) => ch.kind);
     this.world.logEvent('notice', {
       actorId: c.id, location: roomId, importance: Math.max(...changes.map((ch) => ch.importance)),
-      text: changes.map((ch) => ch.text).join(' '), objectIds: [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))],
+      text: changes.map((ch) => ch.text).join(' '), objectIds: ids, kinds,
     });
     const since = old ? ` from when you were last here (${relativeTime(this.world.now - old.at)})` : '';
     return {
@@ -746,8 +898,20 @@ export class Objects {
       text: `Something's different${since}: ${changes.map((ch) => ch.text).join(' ')}`,
       importance: Math.max(...changes.map((ch) => ch.importance)),
       roomId,
-      data: { personal: true, objectIds: [...new Set(changes.flatMap((ch) => ch.ids ?? [ch.o.id]))], changes: changes.map((ch) => ch.kind) },
+      // step A3: only real "missing" changes may anger or raise suspicion; a thing they left elsewhere is no mystery.
+      data: {
+        personal: true, objectIds: ids,
+        changes: kinds.filter((k) => k !== 'misplaced'),
+        ...(kinds.includes('misplaced') && !kinds.includes('missing') ? { knownElsewhere: true } : {}),
+      },
     };
+  }
+
+  /** step A3: "on the bakery counter" from what the citizen last saw (knownObjects entry). */
+  placementFromKnown(k) {
+    const word = { on: 'on', in: 'in', behind: 'behind', under: 'under', beside: 'by' }[k?.relation] ?? null;
+    const anchor = k?.anchorId ? this.byId.get(k.anchorId) : null;
+    return anchor && word ? `${word} ${this.short(anchor)}` : '';
   }
 
   // ---------- views for the API / UI ----------
@@ -759,6 +923,7 @@ export class Objects {
       state: o.state, visibility: o.visibility, effectiveVisibility: this.surfaceTier(o), searchDifficulty: o.searchDifficulty,
       ownerId: o.ownerId, surfaceText: o.surfaceText, surface: this.surfaceText(o), trueText: o.trueText, origin: o.origin,
       data: o.data, updatedAt: o.updatedAt, portable: Boolean(type?.portable), size: type?.size ?? 1, container: Boolean(type?.container),
+      tags: [...(type?.tags ?? []), ...(o.data?.tags ?? [])],
     };
   }
 
@@ -773,6 +938,8 @@ export class Objects {
 }
 
 // ---------- types ----------
+const PHYSICAL_FIELDS = ['durability', 'breakable', 'heavy', 'pushable', 'throwable', 'flammable', 'lockable', 'light', 'fireSource', 'seat', 'bed', 'smother', 'key', 'accelerant', 'spills', 'weapon', 'stateTags', 'quality'];
+
 export function loadTypes() {
   const file = path.join(CONTENT_DIR, 'object-types.json');
   const map = new Map();
@@ -800,6 +967,10 @@ export function loadTypes() {
       portable: Boolean(raw.portable), size: raw.size === 2 ? 2 : 1, states, transitions,
       affordances: (raw.affordances ?? []).map(String), surface: raw.surface ?? {}, rules,
       concealable: Boolean(raw.concealable), container: Boolean(raw.container),
+      tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [], // step 5.5: weapon | tool | valuable | holy … (perception only)
+      covers: Array.isArray(raw.covers) ? raw.covers.map(String) : [], // step 7B: the body parts a garment covers
+      // step 10: what the thing physically is (server/physical/props.js) and, for weapons, its profile
+      ...Object.fromEntries(PHYSICAL_FIELDS.filter((k) => raw[k] !== undefined).map((k) => [k, raw[k]])),
     });
   }
   return map;
@@ -825,6 +996,7 @@ function placementFromSig(objects, sig) {
 
 export function normPlacement(p) {
   if (!p || typeof p !== 'object') return { relation: 'floor', of: null };
+  if (p.relation === 'worn') return { relation: 'worn', of: null };
   const relation = RELATIONS.includes(p.relation) ? p.relation : 'floor';
   return relation === 'floor' || !p.of ? { relation: 'floor', of: null } : { relation, of: String(p.of) };
 }
@@ -858,6 +1030,7 @@ export function hash01(s) {
 }
 
 const NUMBER_WORDS = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
+const ORDINALS = { 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth', 6: 'sixth', 7: 'seventh', 8: 'eighth' };
 
 function article(s) {
   const t = String(s).trim();

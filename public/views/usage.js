@@ -29,6 +29,9 @@ export function mount(el) {
       <section><h3>Per purpose</h3><table class="tbl" id="u-table"></table></section>
       <section>
         <h3>Profiles</h3><table class="tbl" id="u-profiles"></table>
+        <h3 id="u-cutoffs-head" class="hidden">Cut-offs by tier</h3><table class="tbl" id="u-cutoffs"></table>
+        <div id="u-cutoff-note" class="dim"></div>
+        <h3 id="u-tiers-head" class="hidden">Decisions by tier and reason</h3><div id="u-tiers-note" class="dim"></div><table class="tbl" id="u-tiers"></table>
         <h3>Reflections (gating paths)</h3><div id="u-refl"></div>
       </section>
     </div>`;
@@ -115,6 +118,40 @@ function render() {
   root.querySelector('#u-profiles').innerHTML = `<tr><th>profile</th><th>status</th><th>model</th><th>in flight</th><th>output</th><th>thinking off</th></tr>`
     + data.llmProfiles.map((p) => `<tr><td>${esc(p.name)}</td><td class="${p.available ? 'ok' : 'bad'}">${p.available ? 'up' : `down${p.lastError ? `: ${esc(p.lastError)}` : ''}`}</td>
       <td class="dim">${esc(p.model)}</td><td>${p.active}/${p.maxConcurrent}${p.waiting ? ` +${p.waiting}` : ''}</td><td>${fmt(data.profiles[p.name]?.output ?? 0)}</td><td>${p.thinkingOff ? 'yes' : 'no'}</td></tr>`).join('');
+  // ---- cut-offs by tier (step A6; hidden on older servers without the fields) ----
+  const cutoffs = data.cutoffs;
+  const co = root.querySelector('#u-cutoffs');
+  if (!cutoffs || typeof cutoffs !== 'object') {
+    co.innerHTML = '';
+    root.querySelector('#u-cutoff-note').textContent = '';
+    root.querySelector('#u-cutoffs-head').classList.add('hidden');
+  } else {
+    root.querySelector('#u-cutoffs-head').classList.remove('hidden');
+    const rows = Object.entries(cutoffs).map(([tier, v]) => {
+      const calls = v?.calls ?? 0;
+      const cut = v?.cutoff ?? 0;
+      const rate = v?.rate ?? (calls ? cut / calls : 0);
+      const ratePct = `${(rate * 100).toFixed(1)}%`;
+      return `<tr><td>${esc(tier)}</td><td>${calls}</td><td>${cut}</td>
+        <td class="${rate > 0.05 ? 'warn-red' : 'dim'}">${ratePct}</td></tr>`;
+    }).join('');
+    co.innerHTML = `<tr><th>tier</th><th>calls</th><th>cut off</th><th>rate</th></tr>${rows || '<tr><td colspan="4" class="dim">no calls in this window</td></tr>'}`;
+    const below = data.addressedBelowFull ?? 0;
+    const retries = data.retryCutoff ?? 0;
+    root.querySelector('#u-cutoff-note').innerHTML =
+      `<p class="${below > 0 ? 'warn-red' : 'muted'}">Addressed speech handled below full: ${below}</p>
+       <p class="${retries > 0 ? 'warn-red' : 'muted'}">Cut-off retries: ${retries}</p>`;
+  }
+  // ---- step 10 (0.1): decisions by tier and the reason for it (hidden on older servers) ----
+  const dec = data.decide;
+  const tt = root.querySelector('#u-tiers');
+  root.querySelector('#u-tiers-head').classList.toggle('hidden', !dec);
+  if (!dec) { tt.innerHTML = ''; root.querySelector('#u-tiers-note').textContent = ''; }
+  else {
+    root.querySelector('#u-tiers-note').innerHTML = `<p>${dec.calls} decisions · <b>${(dec.fullShare * 100).toFixed(0)}% full</b> · capped to light: ${data.tierCapped ?? 0} · habits run by code: ${data.habitRuns ?? 0} (blocked ${data.habitBlocked ?? 0}×)</p>`;
+    tt.innerHTML = `<tr><th>tier</th><th>reason</th><th>calls</th><th>output</th><th>avg out</th></tr>`
+      + (dec.rows.map((x) => `<tr><td>${esc(x.tier)}</td><td>${esc(x.reason)}</td><td>${x.calls}</td><td>${fmt(x.output)}</td><td>${x.avgOutput}</td></tr>`).join('') || '<tr><td colspan="5" class="dim">no decisions in this window</td></tr>');
+  }
   const r = data.reflections ?? {};
   const total = (r.template ?? 0) + (r.light ?? 0) + (r.full ?? 0);
   root.querySelector('#u-refl').innerHTML = total

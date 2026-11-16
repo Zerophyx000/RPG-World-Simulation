@@ -5,11 +5,14 @@ import { store, subscribeMany } from '../store.js';
 import { api, esc, citizenName, roomName, gameTime, who, effectHtml } from '../util.js';
 import { colorOf } from '../colors.js';
 import { objectTypes, objectsIn } from './objects-ui.js';
+import { emotionTypes, appraisalRowsHtml } from './emotions-ui.js';
+import { bodyFigureSvg } from './body-ui.js';
 
 let root = null;
 let presets = [];
 let effects = []; // effect rows being built
 let scenarios = { active: null, list: [] };
+let testDays = []; // content/test-days/*.json (step A8)
 
 const TRAITS = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
 const PERSONA_FIELDS = ['appearance', 'personality', 'backstory', 'speechStyle', 'occupation'];
@@ -113,9 +116,85 @@ export function mount(el) {
         <div class="result" id="wh-result"></div>
       </form>
 
+      <div class="card" id="life-card">
+        <h3>Death &amp; dread (step 9.5)</h3>
+        <p class="muted">Who knows of a death is real state: citizens learn by seeing it, finding the body or being told. These are test levers.</p>
+        <div class="row"><label>Village dread <input id="dr-value" type="number" min="0" max="10" step="0.5" style="width:70px"></label><button type="button" id="dr-set">Set</button>
+          <label class="check"><input type="checkbox" id="dr-leak"> leak check</label></div>
+        <div class="row"><select id="dn-citizen" title="who learns / who knows"></select><select id="dn-dead" title="the dead"></select>
+          <select id="dn-listener" title="optional: prompt them to break it to…"><option value="">(learns it now)</option></select><button type="button" id="dn-go">Go</button></div>
+        <div class="result" id="dn-result"></div>
+      </div>
+
+      <div class="card" id="phys-card">
+        <h3>Fights, fire &amp; the law (step 10)</h3>
+        <p class="muted">Levers only: nobody is made to act. A provoked citizen is angry with a cause; whether they hit anyone is theirs to decide.</p>
+        <div class="row"><select id="ph-a" title="who"></select><select id="ph-b" title="toward whom"></select>
+          <input id="ph-cause" placeholder="cause (first person, e.g. he cheated me at dice)" style="flex:1"><input id="ph-amount" type="number" min="1" max="8" value="4" style="width:50px" title="anger">
+          <button type="button" id="ph-provoke">Provoke</button></div>
+        <div class="row"><select id="ph-intent"><option>hurt</option><option>scare</option><option>subdue</option><option>kill</option></select>
+          <button type="button" id="ph-start" title="A squares up to B (an altercation starts; no blow is struck)">Start fight</button><button type="button" id="ph-end" title="end A's fight">End fight</button></div>
+        <div class="row"><select id="ph-weapon"><option value="knife">knife</option><option value="sword">sword</option><option value="axe">axe</option><option value="club">club</option><option value="iron_bar">iron bar</option><option value="bottle">bottle</option><option value="torch">torch</option><option value="rope">rope</option></select>
+          <input id="ph-quality" type="number" min="0" max="1" step="0.1" value="0.5" style="width:60px" title="quality">
+          <button type="button" id="ph-give" title="into A's hands">Give to A</button>
+          <select id="ph-object" title="something flammable" style="max-width:220px"></select><button type="button" id="ph-ignite">Set alight</button></div>
+        <div class="result" id="ph-result"></div>
+        <details><summary>Coherence log (reversals, retries, intents)</summary><div id="ph-coherence" class="mono small"></div></details>
+        <details><summary>Crimes (for the law step)</summary><div id="ph-crimes" class="mono small"></div></details>
+      </div>
+
       <div class="card">
         <h3>Active room changes</h3>
         <div id="fx-list"></div>
+      </div>
+
+      <div class="card" id="emotion-card">
+        <h3>Emotions and mood</h3>
+        <p class="muted">Raise or lower a feeling, or set the slow mood. Code never acts for them: this only changes what they are shown.</p>
+        <div class="row"><select id="emo-citizen"></select><select id="emo-type"></select><span class="dim">at</span><select id="emo-target"></select></div>
+        <div class="emo-sliders">
+          <label>change <input id="emo-delta" type="range" min="-6" max="8" step="0.5" value="4"><span id="emo-delta-v">+4</span></label>
+        </div>
+        <div class="row"><input id="emo-cause" placeholder="cause, first person: He laughed at me in front of everyone." style="flex:1"><button type="button" id="emo-apply">Apply</button></div>
+        <div class="emo-sliders">
+          <label>valence <input id="mood-valence" type="range" min="-5" max="5" step="0.5" value="0"><span id="mood-valence-v">0</span></label>
+          <label>tension <input id="mood-tension" type="range" min="0" max="10" step="0.5" value="3"><span id="mood-tension-v">3</span></label>
+        </div>
+        <div class="row"><label class="check"><input type="checkbox" id="emo-contagion" checked> contagion (feelings spread in a room)</label><button type="button" id="mood-apply">Set mood</button></div>
+        <div class="result" id="emo-result"></div>
+        <details id="appr-details"><summary>Appraisal log (which rule caused what)</summary><div class="appr-log" id="appr-log"></div></details>
+      </div>
+
+      <div class="card" id="social-card">
+        <h3>People, groups and strangers</h3>
+        <div class="soc-row" id="soc-inactive"></div>
+
+        <label class="lbl">Relationship change <span class="dim">(always with a reason they could name)</span></label>
+        <div class="row"><select id="soc-a"></select><span class="dim">→</span><select id="soc-b"></select>
+          <label>trust <input id="soc-dt" type="number" min="-5" max="5" step="1" value="-2" class="short"></label>
+          <label>liking <input id="soc-da" type="number" min="-5" max="5" step="1" value="0" class="short"></label></div>
+        <div class="row"><input id="soc-reason" placeholder="He told me the east passage was safe, and it wasn't." style="flex:1"><button type="button" id="soc-rel">Apply</button></div>
+
+        <label class="lbl">Simulate a warning sign <span class="dim">(the first person notices it about the second)</span></label>
+        <div class="row"><select id="soc-sign"><option>followed</option><option>property</option><option>intruder</option><option>hiding</option></select><button type="button" id="soc-signal">Fire</button></div>
+
+        <label class="lbl">How the first person looks / what they hide</label>
+        <div class="row"><select id="soc-field"><option value="appearanceTags">appearance tags</option><option value="secretGoals">secret goals</option><option value="covets">covets</option></select>
+          <input id="soc-values" placeholder="hooded, foreign" style="flex:1"><button type="button" id="soc-set">Set</button></div>
+        <div class="row"><label>Trust in strangers <input id="soc-st" type="number" min="0.05" max="0.95" step="0.05" value="0.5" class="short"></label><button type="button" id="soc-st-set">Set</button>
+          <span class="dim" id="soc-cues"></span></div>
+
+        <label class="lbl">Room danger <span class="dim">(0–10; adds to wariness of strangers)</span></label>
+        <div class="row"><select id="soc-room"></select><input id="soc-danger" type="number" min="0" max="10" value="0" class="short"><button type="button" id="soc-danger-set">Set</button></div>
+
+        <label class="lbl">Groups</label>
+        <div class="row"><input id="grp-name" placeholder="name, e.g. the night watch" style="flex:1">
+          <select id="grp-kind">${['family', 'household', 'village', 'guild', 'faction', 'party', 'gang'].map((k) => `<option>${k}</option>`).join('')}</select>
+          <label class="check"><input type="checkbox" id="grp-secret"> secret</label><button type="button" id="grp-create">Create</button></div>
+        <div class="row"><select id="grp-id"></select><select id="grp-member"></select><input id="grp-role" placeholder="role" class="short">
+          <label class="check"><input type="checkbox" id="grp-msecret"> secret</label>
+          <button type="button" id="grp-add">Add</button><button type="button" id="grp-remove">Remove</button></div>
+        <div class="result" id="soc-result"></div>
       </div>
 
       <form id="f-object" class="card">
@@ -146,6 +225,35 @@ export function mount(el) {
         <div class="row"><span></span><button type="submit">Create</button></div>
         <div class="result" id="cr-result"></div>
       </form>
+
+      <div class="card" id="testday-card">
+        <h3>Test days</h3>
+        <p class="muted">Scripted days from <code>content/test-days/</code>: director actions fire on game time while the clock runs. A seed makes every chance and pick choice reproducible.</p>
+        <div class="row"><select id="td-name"></select><button type="button" id="td-run">Run test day</button><button type="button" id="td-stop">Stop</button></div>
+        <p class="muted" id="td-desc"></p>
+        <div class="row"><label>Seed <input id="td-seed" type="number" min="0" max="4294967295" step="1" placeholder="random" class="short"></label></div>
+        <div id="td-status" class="dim"></div>
+        <div class="result" id="td-result"></div>
+        <p class="muted">For a full replay, reseed the scenario first (Reseed, dev only) and use the same seed.</p>
+      </div>
+
+      <div class="card" id="body-card">
+        <h3>Body: injuries, healing, death</h3>
+        <p class="muted">Pick someone, click a part on the figure, choose a hit (goes through the damage API: garments first) or a specific condition, and apply. Heal and revive keep permanent conditions.</p>
+        <div class="row"><select id="bd-citizen"></select><label class="check"><input type="checkbox" id="bd-internal"> internal organs</label></div>
+        <div class="bd-grid"><div id="bd-fig" class="bd-fig"></div>
+          <div class="bd-form">
+            <div class="row"><select id="bd-kind"></select><label>amount / severity <input id="bd-sev" type="number" min="1" max="40" value="8" class="short"></label></div>
+            <div class="row"><label>part <input id="bd-part" placeholder="click the figure, or random" style="width:11em"></label><input id="bd-cause" placeholder="cause" style="flex:1"></div>
+            <div class="row"><button type="button" id="bd-injure">Injure</button><button type="button" id="bd-heal">Heal</button><button type="button" id="bd-kill" class="danger">Kill</button><button type="button" id="bd-revive">Revive</button></div>
+            <div class="row"><label>Regeneration ×<input id="bd-regen" type="number" min="0" max="10" step="0.1" value="1" class="short"></label><button type="button" id="bd-regen-set">Set</button></div>
+            <h4>Rates</h4>
+            <div class="row"><label>Accidents ×<input id="bd-acc" type="range" min="0" max="20" step="0.5" value="1"><b id="bd-acc-v">1</b></label></div>
+            <div class="row"><label>Illness ×<input id="bd-ill" type="range" min="0" max="10" step="0.1" value="0.5"><b id="bd-ill-v">0.5</b></label></div>
+            <div class="row"><label>Healing time ×<input id="bd-heal-scale" type="range" min="0.02" max="2" step="0.02" value="1"><b id="bd-heal-v">1</b></label></div>
+          </div></div>
+        <div class="result" id="bd-result"></div>
+      </div>
 
       <div class="card danger">
         <h3>Reseed (dev only)</h3>
@@ -180,8 +288,14 @@ export function mount(el) {
   });
   el.querySelector('#f-event').addEventListener('submit', sendEvent);
   el.querySelector('#f-whisper').addEventListener('submit', sendWhisper);
+  bindLifeCard(el);
+  bindPhysical(el);
   el.querySelector('#f-create').addEventListener('submit', createCitizen);
   el.querySelector('#f-object').addEventListener('submit', createObject);
+  bindSocial(el);
+  bindEmotions(el);
+  bindTestDays(el);
+  bindBody(el);
   for (const id of ['#ob-type', '#ob-where']) el.querySelector(id).addEventListener('change', fillObjectForm);
   objectTypes().then((t) => {
     types = t;
@@ -212,24 +326,233 @@ export function mount(el) {
 
   const off = subscribeMany(['rooms', 'citizens', 'objects'], () => {
     fillSelects();
+    fillSocial();
+    fillEmotions();
     fillObjectForm();
     renderRoomChanges();
     renderReach();
     renderNeeds();
   });
   fillSelects();
+  fillSocial();
+  fillEmotions();
+  fillTestDaySelect();
   renderEffects();
-  renderRoomChanges();
   renderReach();
   renderNeeds();
+  renderRoomChanges();
   return () => {
     off();
+    clearTimeout(tdTimer);
+    tdTimer = null;
     root = null;
   };
 }
 
 const val = (id) => root.querySelector(id).value;
 const setVal = (id, v) => { root.querySelector(id).value = v ?? ''; };
+
+// ---------- emotions and mood (step 6) ----------
+function bindEmotions(el) {
+  const say = (ok, t) => result('#emo-result', ok, t);
+  for (const id of ['emo-delta', 'mood-valence', 'mood-tension']) {
+    el.querySelector(`#${id}`).addEventListener('input', (e) => { el.querySelector(`#${id}-v`).textContent = `${id === 'emo-delta' && e.target.value > 0 ? '+' : ''}${e.target.value}`; });
+  }
+  emotionTypes().then((t) => {
+    el.querySelector('#emo-type').innerHTML = Object.keys(t.types ?? {}).map((k) => `<option>${k}</option>`).join('');
+    el.querySelector('#emo-contagion').checked = t.contagion !== false;
+  });
+  el.querySelector('#emo-apply').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/emotion', { citizenId: val('#emo-citizen'), type: val('#emo-type'), target: val('#emo-target') || null, delta: Number(val('#emo-delta')), cause: val('#emo-cause') || null });
+      say(true, `${citizenName(val('#emo-citizen'))}: ${r.entries.map((e) => `${e.type} ${e.intensity}${e.targetName ? ` at ${e.targetName}` : ''}`).join(', ') || 'calm'}`);
+      loadAppraisals();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#mood-apply').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/mood', { citizenId: val('#emo-citizen'), valence: Number(val('#mood-valence')), tension: Number(val('#mood-tension')) });
+      say(true, `${citizenName(val('#emo-citizen'))}: mood ${r.mood.valence.toFixed(1)} / tension ${r.mood.tension.toFixed(1)}`);
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#emo-contagion').addEventListener('change', async (e) => {
+    const r = await api.post('/api/director/contagion', { enabled: e.target.checked }).catch(() => null);
+    say(Boolean(r), r ? `Contagion ${r.contagion ? 'on' : 'off'}.` : 'Could not change it.');
+  });
+  el.querySelector('#appr-details').addEventListener('toggle', (e) => e.target.open && loadAppraisals());
+}
+
+async function loadAppraisals() {
+  if (!root?.querySelector('#appr-details')?.open) return;
+  const rows = await api.get('/api/emotions/appraisals?limit=80').catch(() => []);
+  root.querySelector('#appr-log').innerHTML = appraisalRowsHtml(rows);
+}
+
+function fillEmotions() {
+  if (!root) return;
+  const people = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  const a = root.querySelector('#emo-citizen');
+  const b = root.querySelector('#emo-target');
+  if (a.dataset.opts !== people) {
+    const [va, vb] = [a.value, b.value];
+    a.innerHTML = people;
+    b.innerHTML = `<option value="">— nobody —</option>${people}`;
+    a.dataset.opts = people;
+    if (va) a.value = va;
+    if (vb) b.value = vb;
+  }
+}
+
+// ---------- test days (step A8) ----------
+let tdTimer = null;
+function bindTestDays(el) {
+  const say = (ok, t) => result('#td-result', ok, t);
+  el.querySelector('#td-name').addEventListener('change', () => {
+    const d = testDays.find((x) => x.name === el.querySelector('#td-name').value);
+    el.querySelector('#td-desc').textContent = d?.description ?? '';
+  });
+  el.querySelector('#td-run').addEventListener('click', async () => {
+    try {
+      const seed = el.querySelector('#td-seed').value;
+      const r = await api.post('/api/director/test-days/run', { name: el.querySelector('#td-name').value, seed: seed === '' ? undefined : Number(seed) });
+      say(true, `Running "${r.name}" (seed ${r.seed}), ${r.actions} actions.`);
+      refreshTestDay();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+  el.querySelector('#td-stop').addEventListener('click', async () => {
+    try {
+      const r = await api.post('/api/director/test-days/stop', {});
+      say(true, `Stopped "${r.name}" after ${r.done}/${r.total} actions.`);
+      refreshTestDay();
+    } catch (err) {
+      say(false, err.message);
+    }
+  });
+}
+
+async function fillTestDaySelect() {
+  if (!root) return;
+  testDays = await api.get('/api/director/test-days').catch(() => []);
+  if (!root) return;
+  const sel = root.querySelector('#td-name');
+  const cur = sel.value;
+  sel.innerHTML = testDays.map((d) => `<option value="${esc(d.name)}">${esc(d.name)} (${d.actions} actions)</option>`).join('');
+  if (cur && testDays.some((d) => d.name === cur)) sel.value = cur;
+  const d = testDays.find((x) => x.name === sel.value);
+  root.querySelector('#td-desc').textContent = d?.description ?? '';
+  refreshTestDay();
+}
+
+// Status line while a run is going: name, seed, done/total, next scheduled time.
+async function refreshTestDay() {
+  if (!root) return;
+  const s = await api.get('/api/director/test-days/status').catch(() => null);
+  if (!root) return;
+  if (!s) return;
+  const st = root.querySelector('#td-status');
+  st.textContent = s.running
+    ? `Running: ${s.name} · seed ${s.seed} · ${s.done}/${s.total} done${s.next != null ? ` · next at ${clockOnly(s.next)} (D${Math.floor(s.next / 1440) + 1})` : ''}`
+    : (s.done ? `Last run: ${s.name} · ${s.done}/${s.total} done` : 'Not running.');
+  root.querySelector('#td-stop').disabled = !s.running;
+  clearTimeout(tdTimer);
+  if (s.running) tdTimer = setTimeout(refreshTestDay, 2000);
+}
+
+// ---------- people, groups, strangers (step 5.5) ----------
+let groupList = [];
+function bindSocial(el) {
+  const run = (fn) => async () => {
+    try {
+      result('#soc-result', true, await fn());
+    } catch (err) {
+      result('#soc-result', false, err.message);
+    }
+  };
+  const on = (id, fn) => el.querySelector(id).addEventListener('click', run(fn));
+  on('#soc-rel', async () => {
+    const r = await api.post('/api/director/relationship', { citizenId: val('#soc-a'), otherId: val('#soc-b'), dTrust: Number(val('#soc-dt')) || 0, dAffinity: Number(val('#soc-da')) || 0, reason: val('#soc-reason') });
+    return `${citizenName(val('#soc-a'))} → ${citizenName(val('#soc-b'))}: trust ${r.trust.toFixed(1)}, liking ${r.affinity.toFixed(1)}`;
+  });
+  on('#soc-signal', async () => {
+    const r = await api.post('/api/director/signal', { citizenId: val('#soc-a'), otherId: val('#soc-b'), sign: val('#soc-sign') });
+    return r.fired ? `${citizenName(val('#soc-a'))} noticed: ${val('#soc-sign')}` : 'Not fired.';
+  });
+  on('#soc-set', async () => JSON.stringify(await api.post('/api/director/persona-list', { citizenId: val('#soc-a'), field: val('#soc-field'), values: val('#soc-values') })));
+  on('#soc-st-set', async () => JSON.stringify(await api.post('/api/director/stranger-trust', { citizenId: val('#soc-a'), value: Number(val('#soc-st')) })));
+  on('#soc-danger-set', async () => {
+    const r = await api.post('/api/director/room-danger', { roomId: val('#soc-room'), danger: Number(val('#soc-danger')) });
+    return `${r.name}: danger ${r.danger}`;
+  });
+  on('#grp-create', async () => {
+    const g = await api.post('/api/groups', { name: val('#grp-name'), kind: val('#grp-kind'), public: !el.querySelector('#grp-secret').checked });
+    await loadGroups();
+    return `Created ${g.name} (${g.id})`;
+  });
+  on('#grp-add', async () => {
+    const g = await api.patch(`/api/groups/${encodeURIComponent(val('#grp-id'))}`, { add: [{ id: val('#grp-member'), role: val('#grp-role') || 'member', secret: el.querySelector('#grp-msecret').checked }] });
+    return `${g.name}: ${g.members.filter((m) => m.leftAt == null).map((m) => m.name).join(', ')}`;
+  });
+  on('#grp-remove', async () => {
+    const g = await api.patch(`/api/groups/${encodeURIComponent(val('#grp-id'))}`, { remove: [val('#grp-member')] });
+    return `${g.name}: ${g.members.filter((m) => m.leftAt == null).map((m) => m.name).join(', ') || 'nobody'}`;
+  });
+  el.querySelector('#soc-inactive').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-activate]');
+    if (!b) return;
+    try {
+      const c = await api.post('/api/director/activate', { id: b.dataset.activate });
+      result('#soc-result', true, `${c.name} has arrived.`);
+      loadInactive();
+    } catch (err) {
+      result('#soc-result', false, err.message);
+    }
+  });
+  el.querySelector('#soc-room').addEventListener('change', () => setVal('#soc-danger', store.rooms.get(val('#soc-room'))?.danger ?? 0));
+  api.get('/api/cues').then((c) => { el.querySelector('#soc-cues').textContent = `tags: ${Object.keys(c.appearance ?? {}).join(', ')}`; }).catch(() => {});
+  loadInactive();
+  loadGroups();
+}
+
+async function loadInactive() {
+  if (!root) return;
+  const list = await api.get('/api/director/inactive').catch(() => []);
+  root.querySelector('#soc-inactive').innerHTML = list.length ? list.map((k) => `<div class="row"><span><b>${esc(k.name)}</b> <span class="dim">${esc(k.occupation ?? '')} · ${esc((k.appearanceTags ?? []).join(', '))}</span>
+      <div class="secret-goals">🔒 ${(k.secretGoals ?? []).map(esc).join(' · ')}</div></span>
+      ${k.inWorld ? '<span class="dim">in the world</span>' : `<button type="button" data-activate="${esc(k.id)}">Bring into the world</button>`}</div>`).join('')
+    : '<span class="dim">No dormant test characters in this scenario.</span>';
+}
+
+async function loadGroups() {
+  if (!root) return;
+  groupList = await api.get('/api/groups').catch(() => []);
+  const sel = root.querySelector('#grp-id');
+  const cur = sel.value;
+  sel.innerHTML = groupList.filter((g) => !g.dissolvedAt).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}${g.public ? '' : ' 🔒'}</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+function fillSocial() {
+  if (!root) return;
+  const people = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  for (const id of ['#soc-a', '#soc-b', '#grp-member']) {
+    const sel = root.querySelector(id);
+    const cur = sel.value;
+    if (sel.dataset.opts !== people) { sel.innerHTML = people; sel.dataset.opts = people; }
+    if (cur) sel.value = cur;
+    else if (id === '#soc-b' && sel.options.length > 1) sel.selectedIndex = 1;
+  }
+  const rooms = [...store.rooms.values()].map((r) => `<option value="${esc(r.id)}">${esc(r.name)} (${r.danger ?? 0})</option>`).join('');
+  const rs = root.querySelector('#soc-room');
+  const cur = rs.value;
+  if (rs.dataset.opts !== rooms) { rs.innerHTML = rooms; rs.dataset.opts = rooms; }
+  if (cur) rs.value = cur;
+}
 
 // ---------- objects (step 5) ----------
 let types = [];
@@ -276,10 +599,82 @@ function fillSelects() {
     + [...store.rooms.values()].map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
     + '<option value="*">* everyone, everywhere</option>';
   room.value = prevRoom || 'square';
+  const bd = root.querySelector('#bd-citizen');
+  if (bd) {
+    const prev = bd.value;
+    bd.innerHTML = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)}${c.alive === false ? ' (dead)' : ''}</option>`).join('');
+    if (prev) bd.value = prev;
+  }
   const cit = root.querySelector('#wh-citizen');
   const prevCit = cit.value;
   cit.innerHTML = [...store.citizens.values()].map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(roomName(c.location))})</option>`).join('');
   if (prevCit) cit.value = prevCit;
+  // step 9.5: death news test selects
+  const living = [...store.citizens.values()].filter((c) => c.alive !== false);
+  const dead = [...store.citizens.values()].filter((c) => c.alive === false);
+  for (const [sel, list, head] of [['#dn-citizen', living, ''], ['#dn-dead', dead, ''], ['#dn-listener', living, '<option value="">(learns it now)</option>']]) {
+    const el = root.querySelector(sel);
+    if (!el) continue;
+    const prev = el.value;
+    el.innerHTML = head + list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if (prev) el.value = prev;
+  }
+  // step 10: fight levers
+  for (const [sel, list] of [['#ph-a', living], ['#ph-b', living]]) {
+    const e = root.querySelector(sel);
+    if (!e) continue;
+    const prev = e.value;
+    e.innerHTML = list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if (prev) e.value = prev;
+  }
+  const po = root.querySelector('#ph-object');
+  if (po && document.activeElement !== po) {
+    const prev = po.value;
+    const burnable = [...(store.objects?.values() ?? [])].filter((o) => o.roomId && !o.data?.burning && !o.data?.burnt && o.typeId !== 'corpse' && /table|bench|bed|chest|barrel|flour|basket|cart|rack|counter|door|shutters|stool|broom|ledger|letter|rope|blanket|cloth|crate|haystack/.test(o.typeId));
+    po.innerHTML = burnable.map((o) => `<option value="${esc(o.id)}">${esc(o.label ?? o.typeName)} (${esc(roomName(o.roomId))})</option>`).join('');
+    if (prev) po.value = prev;
+  }
+  const dv = root.querySelector('#dr-value');
+  if (dv && document.activeElement !== dv) dv.value = Object.values(store.dread ?? {})[0]?.value ?? 0;
+}
+
+// step 10: fights, fire and the law
+function bindPhysical(el) {
+  const go = (fn, msg) => async () => { try { const r = await fn(); result('#ph-result', true, msg(r)); loadPhysLogs(el); } catch (err) { result('#ph-result', false, err.message); } };
+  el.querySelector('#ph-provoke')?.addEventListener('click', go(() => api.post('/api/director/provoke', { a: val('#ph-a'), b: val('#ph-b'), cause: val('#ph-cause') || null, amount: Number(val('#ph-amount')) }), (r) => `${citizenName(val('#ph-a'))} is angry with ${citizenName(val('#ph-b'))} (${r.anger?.toFixed?.(1) ?? '?'}).`));
+  el.querySelector('#ph-start')?.addEventListener('click', go(() => api.post('/api/director/altercation', { action: 'start', a: val('#ph-a'), b: val('#ph-b'), intent: val('#ph-intent') }), (r) => `Fight ${r.altercation} started.`));
+  el.querySelector('#ph-end')?.addEventListener('click', go(() => api.post('/api/director/altercation', { action: 'end', citizenId: val('#ph-a') }), () => 'Fight ended.'));
+  el.querySelector('#ph-give')?.addEventListener('click', go(() => api.post('/api/director/weapon', { type: val('#ph-weapon'), to: val('#ph-a'), quality: Number(val('#ph-quality')) }), (r) => `${citizenName(val('#ph-a'))} now holds ${r.object?.surface ?? 'it'}.`));
+  el.querySelector('#ph-ignite')?.addEventListener('click', go(() => api.post('/api/director/ignite', { objectId: val('#ph-object') }), () => 'It is burning.'));
+  loadPhysLogs(el);
+}
+
+async function loadPhysLogs(el) {
+  const name = (n) => esc(n ?? '');
+  const [coh, crimes] = await Promise.all([api.get('/api/coherence?limit=60').catch(() => []), api.get('/api/crimes?limit=60').catch(() => [])]);
+  const c = el.querySelector('#ph-coherence');
+  if (c) c.innerHTML = coh.length ? coh.map((x) => `<div>${esc(gameTime(x.gameTime))} <b>${name(x.actor)}</b> ${esc(x.type === 'intent' ? `intent → ${x.victim ?? ''}: ${x.intent ?? 'none'}${x.from ? ` (was ${x.from})` : ''}` : `${x.kind ?? x.type} ${x.action ?? ''}${x.victim ? ` → ${x.victim}` : ''}`)}${x.reason ? ` — "${esc(x.reason)}"` : ''}</div>`).join('') : '<span class="muted">Nothing yet.</span>';
+  const k = el.querySelector('#ph-crimes');
+  if (k) k.innerHTML = crimes.length ? crimes.map((x) => `<div>${esc(gameTime(x.gameTime))} <b>${esc(x.kind)}</b> (${x.severity}) ${name(x.actor)}${x.victim ? ` → ${name(x.victim)}` : ''} <span class="dim">${esc(roomName(x.location))}${x.witnesses?.length ? ` · seen by ${esc(x.witnesses.join(', '))}` : ' · unseen'}</span></div>`).join('') : '<span class="muted">None.</span>';
+}
+
+// step 9.5: dread, the leak check, death news
+function bindLifeCard(el) {
+  el.querySelector('#dr-set')?.addEventListener('click', async () => {
+    try { store.dread = await api.post('/api/director/dread', { value: Number(val('#dr-value')) }); result('#dn-result', true, 'Dread set.'); } catch (err) { result('#dn-result', false, err.message); }
+  });
+  api.get('/api/director/leak-check').then((r) => { const cb = el.querySelector('#dr-leak'); if (cb) cb.checked = r.enabled; }).catch(() => {});
+  el.querySelector('#dr-leak')?.addEventListener('change', async (e) => {
+    try { await api.post('/api/director/leak-check', { enabled: e.target.checked }); result('#dn-result', true, `Leak check ${e.target.checked ? 'on' : 'off'}.`); } catch (err) { result('#dn-result', false, err.message); }
+  });
+  el.querySelector('#dn-go')?.addEventListener('click', async () => {
+    const body = { citizenId: val('#dn-citizen'), deadId: val('#dn-dead'), listenerId: val('#dn-listener') || undefined };
+    if (!body.deadId) return result('#dn-result', false, 'Nobody is dead.');
+    try {
+      await api.post('/api/director/death-news', body);
+      result('#dn-result', true, body.listenerId ? `${citizenName(body.citizenId)} is prompted to tell ${citizenName(body.listenerId)}.` : `${citizenName(body.citizenId)} now knows ${citizenName(body.deadId)} is dead.`);
+    } catch (err) { result('#dn-result', false, err.message); }
+  });
 }
 
 // ---------- effects builder ----------
@@ -604,4 +999,66 @@ async function reseed() {
   } catch (err) {
     result('#rs-result', false, err.message);
   }
+}
+
+// ---------- body (step 7B) ----------
+const DAMAGE_KINDS = ['cut', 'pierce', 'blunt', 'burn', 'crush', 'blast'];
+const CONDITION_KINDS = ['bruise', 'cut', 'puncture', 'burn', 'fracture', 'dislocation', 'crush', 'concussion', 'organ_damage', 'internal_bleeding', 'severed', 'eye_damage', 'ear_damage', 'infection', 'fever', 'chill'];
+let bdPart = '';
+
+function bindBody(el) {
+  const say = (ok, t) => result('#bd-result', ok, t);
+  el.querySelector('#bd-kind').innerHTML = `<optgroup label="A hit (damage API)">${DAMAGE_KINDS.map((k) => `<option value="dmg:${k}">${k}</option>`).join('')}</optgroup>
+    <optgroup label="A specific condition">${CONDITION_KINDS.map((k) => `<option value="cond:${k}">${k.replace(/_/g, ' ')}</option>`).join('')}</optgroup>`;
+  const citizen = () => val('#bd-citizen');
+  const draw = async () => {
+    if (!root || !citizen()) return;
+    try {
+      const v = await api.get(`/api/citizens/${encodeURIComponent(citizen())}/body`);
+      el.querySelector('#bd-fig').innerHTML = bodyFigureSvg(v, { pickable: true, selected: bdPart, internal: el.querySelector('#bd-internal').checked })
+        + `<div class="dim">vitality ${Math.round(v.vitality)} · blood ${Math.round(v.blood)}% · ${esc((v.status ?? []).join(', ') || 'no status effects')}</div>`;
+    } catch (err) {
+      say(false, err.message);
+    }
+  };
+  el.querySelector('#bd-citizen').addEventListener('change', () => { bdPart = ''; setVal('#bd-part', ''); draw(); });
+  el.querySelector('#bd-internal').addEventListener('change', draw);
+  el.querySelector('#bd-fig').addEventListener('click', (e) => {
+    const g = e.target.closest('[data-part]');
+    if (!g) return;
+    bdPart = g.dataset.part;
+    setVal('#bd-part', bdPart);
+    draw();
+  });
+  const act = async (path, body, okText) => {
+    try {
+      const r = await api.post(path, { citizenId: citizen(), ...body });
+      say(true, okText(r));
+      draw();
+    } catch (err) {
+      say(false, err.message);
+    }
+  };
+  el.querySelector('#bd-injure').addEventListener('click', () => {
+    const [kind, type] = val('#bd-kind').split(':');
+    const part = val('#bd-part') || (kind === 'dmg' ? 'random' : '');
+    const n = Number(val('#bd-sev'));
+    act('/api/director/injure', kind === 'dmg' ? { type, part, amount: n, cause: val('#bd-cause') || 'the director' } : { type, part, severity: n, cause: val('#bd-cause') || 'the director' },
+      (r) => `${citizenName(citizen())}: ${r.conditions.map((c) => `${c.type.replace(/_/g, ' ')} (${c.partLabel ?? 'systemic'}, severity ${c.severity})`).join(', ') || 'nothing happened'}${r.garments?.length ? ` · ${r.garments.length} garment(s) damaged` : ''}`);
+  });
+  el.querySelector('#bd-heal').addEventListener('click', () => act('/api/director/heal', { amount: 10 }, (r) => `healed ${r.healed.length} condition(s)`));
+  el.querySelector('#bd-kill').addEventListener('click', () => { if (confirm(`Kill ${citizenName(citizen())}?`)) act('/api/director/kill', { cause: 'the director' }, () => 'dead'); });
+  el.querySelector('#bd-revive').addEventListener('click', () => act('/api/director/revive', {}, (r) => `revived: vitality ${Math.round(r.vitality)}, blood ${Math.round(r.blood)}%`));
+  el.querySelector('#bd-regen-set').addEventListener('click', () => act('/api/director/regen', { multiplier: Number(val('#bd-regen')) }, (r) => `regeneration ×${r.regen}`));
+  const rates = [['#bd-acc', '#bd-acc-v', 'accidentRate'], ['#bd-ill', '#bd-ill-v', 'illnessRate'], ['#bd-heal-scale', '#bd-heal-v', 'healTimeScale']];
+  for (const [id, vid, key] of rates) {
+    el.querySelector(id).addEventListener('input', (e) => { el.querySelector(vid).textContent = e.target.value; });
+    el.querySelector(id).addEventListener('change', async (e) => {
+      try { await api.post('/api/director/body-rates', { [key]: Number(e.target.value) }); say(true, `${key} = ${e.target.value}`); } catch (err) { say(false, err.message); }
+    });
+  }
+  api.get('/api/body/rates').then((r) => {
+    for (const [id, vid, key] of rates) if (r[key] != null) { el.querySelector(id).value = r[key]; el.querySelector(vid).textContent = r[key]; }
+  }).catch(() => {});
+  setTimeout(draw, 300);
 }

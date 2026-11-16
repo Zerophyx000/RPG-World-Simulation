@@ -1,0 +1,112 @@
+{
+  "name": "accomplice-day",
+  "description": "Step 11 test day (start it at 06:00, run into the next day): a wavering accomplice. Jonas wants to get even with Tomas and is asked to plan; Kael (cunning, little to lose) and Lena (honest, Tomas's friend) are both near him so either could be confided in. The director only sets the wants and brings people together; whether Jonas plans, whom he confides in, whether they join, refuse or think about it, how their commitment moves after talks with Tomas (wavering), and whether anyone betrays the plan is left to them. Watch: plan_scheme / scheme_none, say + confide ask=join, proposal answers, the accomplice view of YOUR PLAN, commitment changes at reflection, exposure and betrayal (relationship events), and leak_check calls on talk near the target.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "square",
+      "comment": "the stranger is in the village"
+    },
+    {
+      "at": 0,
+      "type": "traits",
+      "citizenId": "jonas",
+      "honesty": 4,
+      "cunning": 5,
+      "reason": "test day"
+    },
+    {
+      "at": 0,
+      "type": "traits",
+      "citizenId": "kael",
+      "honesty": 3,
+      "cunning": 8,
+      "reason": "test day"
+    },
+    {
+      "at": 0,
+      "type": "traits",
+      "citizenId": "lena",
+      "honesty": 8,
+      "cunning": 3,
+      "reason": "test day"
+    },
+    {
+      "at": 0,
+      "type": "memory",
+      "citizenId": "jonas",
+      "action": "add",
+      "importance": 8,
+      "about": [
+        "tomas"
+      ],
+      "text": "Tomas struck me across the ear yesterday in front of the whole square for spoiling a horseshoe, and laughed about it after."
+    },
+    {
+      "at": 1,
+      "type": "ambition",
+      "citizenId": "jonas",
+      "kind": "revenge",
+      "text": "I want Tomas shamed in front of the village the way he shamed me.",
+      "intensity": 8,
+      "secrecy": "secret",
+      "targets": [
+        "tomas"
+      ],
+      "plan": true
+    },
+    {
+      "at": 60,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "kael",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "Jonas and Kael at the Cup"
+    },
+    {
+      "at": 180,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "house_lena",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "house_lena",
+          "notify": false
+        }
+      ],
+      "comment": "Jonas visits Lena for a salve"
+    },
+    {
+      "at": 300,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "Tomas comes in, where Kael is"
+    }
+  ]
+}

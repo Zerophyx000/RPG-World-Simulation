@@ -1,10 +1,16 @@
 // Token budget governor: keeps output tokens per rolling REAL hour under a budget by degrading,
 // never by pausing the world.
 //
-//   green  (< 70%)   normal
-//   yellow (70–100%) light → none; full capped at 1,200 tokens; no stale rethinks; deferrable work only on
-//                    'local' (deferred if it's down); min gap between a citizen's thinks 1 → 3 game min
-//   red    (> 100%)  yellow + full → light unless addressed speech / importance >= 9; gap 6; reading floor ×1.5
+//   green            normal
+//   yellow           light → none (unless protected); no stale rethinks; deferrable work only on 'local'
+//                    (deferred if it's down); min gap between a citizen's thinks 1 → 3 game min
+//   red              yellow + full → light unless protected; gap 6; reading floor ×1.5
+//
+// step 9.5: hysteresis so the state stops flapping — enter yellow at 75%, leave it below 65%; enter red at 100%,
+// leave it below 85%; a state once entered holds for GOVERNOR_MIN_STATE_MINUTES real minutes (10), except a
+// drop straight to green below 50%. Full decisions keep their token cap (a 1,200 cap cut off 40% of them).
+// Protected decisions (death, grief, fear, critical bodies, addressed speech, importance >= 9: see tiers.js)
+// are never downgraded.
 import { config } from '../config.js';
 
 const WINDOW_MS = 60 * 60 * 1000;
@@ -17,6 +23,8 @@ export class Governor {
     this.governed = new Set(config.governor.profiles);
     this.samples = new Map(); // profile -> [{ t, tokens }]
     this.state = 'green';
+    this.enteredAt = 0; // real ms
+    this.minStateMs = (Number(process.env.GOVERNOR_MIN_STATE_MINUTES ?? 10) || 0) * 60_000;
     this.#loadRecent();
     this.onLlm = (e) => {
       if (!e.outputTokens || !e.profile) return;
@@ -67,12 +75,24 @@ export class Governor {
     return worst;
   }
 
+  /** The state the ratio asks for, given the current one (hysteresis). */
+  static target(cur, r) {
+    if (r < 0.5) return 'green';
+    if (cur === 'red') return r >= 0.85 ? 'red' : r >= 0.65 ? 'yellow' : 'green';
+    if (cur === 'yellow') return r >= 1 ? 'red' : r >= 0.65 ? 'yellow' : 'green';
+    return r >= 1 ? 'red' : r >= 0.75 ? 'yellow' : 'green';
+  }
+
   evaluate(initial = false) {
     const r = this.ratio();
-    const next = r > 1 ? 'red' : r >= 0.7 ? 'yellow' : 'green';
+    const next = initial ? (r >= 1 ? 'red' : r >= 0.75 ? 'yellow' : 'green') : Governor.target(this.state, r);
     if (next === this.state && !initial) return;
+    // hold a state for a while once entered (no flapping); falling below 50% goes straight to green
+    const held = Date.now() - this.enteredAt < this.minStateMs;
+    if (!initial && held && !(next === 'green' && r < 0.5)) return;
     const prev = this.state;
     this.state = next;
+    this.enteredAt = Date.now();
     if (!initial || next !== 'green') {
       this.world.logEvent('system', { action: 'governor', from: prev, to: next, ratio: Math.round(r * 100) / 100, budget: this.budget });
     }
@@ -100,16 +120,15 @@ export class Governor {
     return STATES.indexOf(this.state);
   }
 
-  /** Adjust a chosen tier under budget pressure. */
-  adjust({ tier, maxTokens = null, addressed = false, maxImportance = 0 }) {
+  /**
+   * Adjust a chosen tier under budget pressure. protect: a decision about death, grief, fear, a critical body
+   * or addressed speech (tiers.js) — never downgraded. Each rule applies to the ORIGINAL tier (no cascading).
+   */
+  adjust({ tier, maxTokens = null, addressed = false, maxImportance = 0, protect = false }) {
     const lvl = this.level();
-    if (lvl === 0) return { tier, maxTokens };
-    // Each rule applies to the ORIGINAL tier (no cascading full → light → none).
+    if (lvl === 0 || protect || addressed) return { tier, maxTokens };
     if (tier === 'light') return { tier: 'none', maxTokens };
-    if (tier === 'full') {
-      if (lvl >= 2 && !addressed && maxImportance < 9) return { tier: 'light', maxTokens };
-      return { tier: 'full', maxTokens: Math.min(maxTokens ?? 1200, 1200) }; // a cut-off call gets the cheap retry
-    }
+    if (tier === 'full' && lvl >= 2 && maxImportance < 9) return { tier: 'light', maxTokens };
     return { tier, maxTokens };
   }
 

@@ -3,8 +3,16 @@
 // Unknown places are described by how they look (appearance), known ones by name.
 import { citizensIn, openExits, activeServices } from '../world/rooms.js';
 import { placeLabel } from '../world/places.js';
-import { planActive, STEP_KINDS, PLAN_MAX_STEPS } from './plan.js';
 import { RELATIONS } from '../world/objects.js';
+import { intentionsParam } from './intentions.js';
+import { customTools, gatheringTool, bodiesFor } from '../death/customs.js';
+import { frameTools } from '../emotions/present.js';
+import { feelingParam } from '../emotions/report.js';
+import { CRAWL_FACTOR } from '../body/content.js';
+import { treatOptions, pendingList, carriable, WASH_OFFERED } from '../body/treat.js';
+import { cuesFor } from '../body/perceive.js';
+import { heldMeals, serverPresent } from '../world/meals.js'; // step 11.5 (B3)
+import { needsFeeding } from '../world/actions.js';
 
 const INNER_THOUGHT = {
   type: 'string',
@@ -19,6 +27,8 @@ const HIDDEN_MAX = {
   say: { text: LIMITS.sayMax },
   leave_conversation: { farewell: LIMITS.sayMax },
   tell_about_place: { comment: 120 },
+  decline_invitation: { reason: LIMITS.sayMax },
+  leave_group: { farewell: LIMITS.sayMax },
 };
 
 export function buildTools(world, c) {
@@ -37,16 +47,25 @@ export function buildTools(world, c) {
 
   // move_to: one step to an adjacent place
   const exits = openExits(room, now).filter((e) => world.rooms.has(e.to));
-  if (exits.length) {
+  // Step 7B (a physical exception, with the reason in HOW YOU FEEL): the body decides how they get around.
+  const bodyMoving = c.body?.capacities?.moving ?? 1;
+  const crawling = bodyMoving < 0.35;
+  if (exits.length && !crawling) {
     const list = exits.map((e) => `"${e.to}" = ${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes} min walk)`).join('; ');
     tools.push(fn('move_to', `Walk to a place right next to here: ${list}.`, {
+      destination: { type: 'string', enum: exits.map((e) => e.to), description: 'Where you go (one of the ids above).' },
+      inner_thought: INNER_THOUGHT,
+    }, ['destination']));
+  } else if (exits.length && bodyMoving >= 0.05) {
+    const list = exits.map((e) => `"${e.to}" = ${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes * CRAWL_FACTOR} min of crawling)`).join('; ');
+    tools.push(fn('crawl_to', `You can't walk. Drag yourself to a place right next to here, slowly and painfully, at a cost to your strength: ${list}.`, {
       destination: { type: 'string', enum: exits.map((e) => e.to), description: 'Where you go (one of the ids above).' },
       inner_thought: INNER_THOUGHT,
     }, ['destination']));
   }
 
   // travel_to: anywhere you know, the route is found for you
-  const known = Object.keys(c.knownPlaces ?? {}).filter((id) => id !== room.id && world.rooms.has(id));
+  const known = crawling ? [] : Object.keys(c.knownPlaces ?? {}).filter((id) => id !== room.id && world.rooms.has(id));
   if (known.length) {
     const list = known.map((id) => `"${id}" = ${world.rooms.get(id).name}`).join('; ');
     tools.push(fn('travel_to', `Go to a place you know, even if it is further away; you find the way there yourself. Places you know: ${list}.`, {
@@ -65,15 +84,25 @@ export function buildTools(world, c) {
   if (awake.length) {
     sayProps.to = { type: 'string', enum: awakeLabels, description: 'Who you are speaking to. Leave it out to speak to nobody in particular.' };
   }
+  sayProps.volume = { type: 'string', enum: ['whisper', 'normal', 'shout'], description: 'Optional. A whisper is heard only right next to you; a shout carries into the next rooms. Default normal.' };
   sayProps.inner_thought = INNER_THOUGHT;
-  tools.push(fn('say',
-    awake.length ? 'Say one or two sentences out loud. Everyone here can hear you.'
-      : 'Say one or two sentences out loud. Nobody here is awake to hear you, so you would be talking to yourself.',
-    sayProps, ['text']));
+  const mute = (c.body?.status ?? []).includes('mute');
+  if (mute) {
+    // Step 7B: no voice. Gestures only (a physical exception; the reason is in HOW YOU FEEL).
+    const gProps = { text: { type: 'string', description: 'What you gesture or mime, in a few words, e.g. "points frantically at the door".' } };
+    if (awake.length) gProps.to = { type: 'string', enum: awakeLabels, description: 'Who you gesture to. Leave it out to gesture to everyone.' };
+    gProps.inner_thought = INNER_THOUGHT;
+    tools.push(fn('gesture', "You can't speak. Show something with your hands and face instead.", gProps, ['text']));
+  } else {
+    tools.push(fn('say',
+      awake.length ? 'Say one or two sentences out loud. Everyone here can hear you.'
+        : 'Say one or two sentences out loud. Nobody here is awake to hear you, so you would be talking to yourself.',
+      sayProps, ['text']));
+  }
 
   // tell_about_place: the way to explain where something is (the listener will then know it)
   const tellable = Object.keys(c.knownPlaces ?? {}).filter((id) => world.rooms.has(id));
-  if (awake.length && tellable.length) {
+  if (awake.length && tellable.length && !mute) {
     const list = tellable.map((id) => `"${id}" = ${world.rooms.get(id).name}`).join('; ');
     tools.push(fn('tell_about_place',
       `Tell someone here about a place you know: what it is, what can be had there and how to get there. This is how you explain where to find something, so that they can go there afterwards. Places you know: ${list}.`, {
@@ -85,7 +114,7 @@ export function buildTools(world, c) {
   }
 
   // introduce_yourself: say your name (shy people rarely do otherwise)
-  if (awake.length) {
+  if (awake.length && !mute) {
     tools.push(fn('introduce_yourself', 'Tell people here your name.', {
       to: { type: 'string', enum: awakeLabels, description: 'Optional. Who you introduce yourself to.' },
       addition: { type: 'string', description: 'Optional. A few words more, e.g. where you are from or what you do.' },
@@ -110,16 +139,23 @@ export function buildTools(world, c) {
     minutes: { type: 'integer', minimum: LIMITS.minMinutes, maximum: maxMinutes, description: 'Roughly how many minutes it takes.' },
   };
   if (reachIds.length) doProps.target = { type: 'string', enum: reachIds, description: 'Optional. The thing you are working on, by its [handle].' };
+  const spotIds = world.maps.spots(room.id).map((s) => s.id);
+  const spotHelp = world.maps.spots(room.id).map((s) => `"${s.id}" = ${s.label}`).join('; ');
+  if (spotIds.length > 1) doProps.spot = { type: 'string', enum: spotIds, description: `Optional. Where in the room you do it: ${spotHelp}. Leave it out to stay where you are (or go to what you work on).` };
   doProps.inner_thought = INNER_THOUGHT;
   tools.push(fn('do',
     `Spend a while doing something here: working, tidying, resting, anything that fits. Others here can see what you are doing.${exhausted ? ' You are too exhausted for anything long.' : ''}`,
     doProps, ['action', 'minutes']));
 
+  const hands = O.handsOf(c.id);
+  const blind = (c.body?.status ?? []).includes('blind');
   if (reachIds.length) {
-    tools.push(fn('examine', "Take a closer look at something here or something you're carrying (a minute or two).", {
-      object: { type: 'string', enum: reachIds, description: 'What you look at, by its [handle].' },
+    tools.push(fn('examine', blind ? "You can't see; feel the thing with your hands instead, slowly (a few minutes)." : "Take a closer look at something here or something you're carrying (a minute or two).", {
+      object: { type: 'string', enum: reachIds, description: blind ? 'What you feel, by its [handle].' : 'What you look at, by its [handle].' },
       inner_thought: INNER_THOUGHT,
     }, ['object']));
+  }
+  if (reachIds.length && hands > 0) {
     tools.push(fn('use', "Do something with a thing here or in your hands: light it, open it, lock it, tear it, pour it... Say what you try; whether it works depends on the thing.", {
       object: { type: 'string', enum: reachIds, description: 'What you use, by its [handle].' },
       intent: { type: 'string', maxLength: LIMITS.actionMax, description: "What you try to do with it, in a few words, e.g. 'light it' or 'lock the door'." },
@@ -134,7 +170,7 @@ export function buildTools(world, c) {
   const free = O.freeSlots(c.id);
   const takeable = here.filter((o) => O.type(o)?.portable && O.type(o).size <= free && !O.around(o.id, 'in').length).map((o) => O.alias(o));
   if (takeable.length) {
-    tools.push(fn('take', `Pick something up and carry it. You have two hands: ${free === 2 ? 'both are free' : 'one is free'}; big things need both.`, {
+    tools.push(fn('take', `Pick something up and carry it. ${hands === 2 ? `You have two hands: ${free === 2 ? 'both are free' : 'one is free'}; big things need both.` : 'You have only one usable hand.'}`, {
       object: { type: 'string', enum: takeable, description: 'What you pick up, by its [handle].' },
       inner_thought: INNER_THOUGHT,
     }, ['object']));
@@ -165,9 +201,18 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, ['reason', 'minutes']));
 
-  // eat: only where there is food
+  // eat: only where there is food — or (step 11.5) a meal portion you carry, anywhere
+  const meals = heldMeals(world, c);
   if (services.food) {
-    tools.push(fn('eat', `Sit down and eat here: ${services.food.description} (about ${services.food.minutes} minutes).`, {
+    tools.push(fn('eat', `Sit down and eat here: ${services.food.description} (about ${services.food.minutes} minutes)${world.stock?.note(room.id, 'food') ?? ''}.`, {
+      inner_thought: INNER_THOUGHT,
+    }, []));
+  } else if (meals.length) {
+    tools.push(fn('eat', `Eat the meal portion you carry (${meals[0].data?.description ?? 'food'}).`, { inner_thought: INNER_THOUGHT }, []));
+  }
+  // step 11.5 (B3): a portion to take away, for later or for someone who can't come
+  if (services.food && serverPresent(world, room, services.food, c) && meals.length < 2 && (world.stock?.level(room.id, 'food') ?? 1) > 0) {
+    tools.push(fn('take_meal', `Get a portion of ${services.food.description} wrapped to take away: for later, or to bring to someone who can't come. It keeps a few hours.`, {
       inner_thought: INNER_THOUGHT,
     }, []));
   }
@@ -181,37 +226,125 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, []));
 
-  // feed: someone here has collapsed and there is food
-  const collapsed = present.filter((o) => o.activity.type === 'collapsed');
-  if (collapsed.length && services.food) {
-    tools.push(fn('feed', `Kneel down and feed someone who has collapsed here, with ${services.food.description}.`, {
-      who: { type: 'string', enum: [...world.memory.labelsFor(c, collapsed).keys()], description: 'Who you feed.' },
+  // feed: someone here who needs it (collapsed, weak from hunger, or hungry), with the food here or a portion you carry
+  const hungry = present.filter((o) => needsFeeding(world, o));
+  if (hungry.length && (services.food || meals.length)) {
+    tools.push(fn('feed', `Feed someone here who needs it, with ${meals.length ? `the portion you carry (${meals[0].data?.description ?? 'food'})` : services.food.description}.`, {
+      who: { type: 'string', enum: [...world.memory.labelsFor(c, hungry).keys()], description: 'Who you feed.' },
+      ...(meals.length && services.food ? { with: { type: 'string', enum: ['portion', 'here'], description: 'The portion you carry, or the food here.' } } : {}),
       inner_thought: INNER_THOUGHT,
     }, ['who']));
   }
 
-  // plan tools: only while a plan is running
-  if (planActive(c)) {
-    tools.push(fn('continue_plan', 'Carry on with your plan for the day where you left off.', { inner_thought: INNER_THOUGHT }, []));
-    tools.push(fn('revise_plan', `Replace the rest of your plan with new steps (up to ${PLAN_MAX_STEPS}). Same step kinds as when you planned: ${STEP_KINDS.join(', ')}.`, {
-      steps: {
-        type: 'array', maxItems: PLAN_MAX_STEPS,
-        items: {
-          type: 'object',
-          properties: {
-            kind: { type: 'string', enum: STEP_KINDS },
-            place: { type: 'string', enum: Object.keys(c.knownPlaces ?? {}) },
-            person: { type: 'string', description: 'For visit: the person, as you know them.' },
-            description: { type: 'string' }, minutes: { type: 'integer', minimum: 1, maximum: 240 }, time: { type: 'string', description: 'HH:MM' }, note: { type: 'string' },
-            thing: { type: 'string', description: 'For do, optional: the thing you will work on there.' },
-          },
-          required: ['kind'],
-        },
-      },
+  // Step 7B: tending wounds, looking people over, consent, carrying, washing.
+  const treat = treatOptions(world, c, present);
+  if (treat) {
+    const list = treat.methods.map((id) => { const m = world.body.content.treatments.methods[id]; return `"${id}" = ${m.hint ?? m.label}`; }).join('; ');
+    tools.push(fn('treat', `Tend to one wound, yours or someone else's here. Pick the wound and what you do for it (${list}). Improvised care is limited; real supplies and the right method do more.`, {
+      wound: { type: 'string', enum: treat.wounds.map((w) => w.key), description: 'Whose wound, and which one (the most dangerous first if you can).' },
+      method: { type: 'string', enum: treat.methods, description: 'What you do about it.' },
       inner_thought: INNER_THOUGHT,
-    }, ['steps']));
-    tools.push(fn('abandon_plan', 'Give up on your plan for today.', { inner_thought: INNER_THOUGHT }, []));
+    }, ['wound', 'method']));
   }
+  const hurtHere = present.filter((o) => o.alive && (o.activity.type === 'collapsed' || cuesFor(world, o)));
+  if (hurtHere.length && !['sleeping', 'collapsed'].includes(c.activity.type)) {
+    tools.push(fn('examine_person', 'Look someone over carefully for injuries (a few minutes). You may find what is hurt, but things inside are hard to tell.', {
+      person: { type: 'string', enum: [...world.memory.labelsFor(c, hurtHere).keys()], description: 'Who you look over.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['person']));
+  }
+  const pending = pendingList(world, c);
+  if (pending.length) {
+    const from = pending.map((p) => world.citizens.get(p.from)).filter(Boolean);
+    const labels = [...world.memory.labelsFor(c, from).keys()];
+    if (labels.length) {
+      tools.push(fn('refuse_treatment', 'Refuse what someone here is about to do to you (tending, looking you over, carrying you). They stop.', {
+        from: { type: 'string', enum: labels, description: 'Whose help you refuse.' }, inner_thought: INNER_THOUGHT,
+      }, ['from']));
+      const carriers = pending.filter((p) => p.kind === 'carry').map((p) => world.citizens.get(p.from)).filter(Boolean);
+      if (carriers.length) {
+        tools.push(fn('accept_help', 'Let someone carry you.', {
+          from: { type: 'string', enum: [...world.memory.labelsFor(c, carriers).keys()], description: 'Who carries you.' }, inner_thought: INNER_THOUGHT,
+        }, ['from']));
+      }
+    }
+  }
+  if (c.carryingPerson) {
+    tools.push(fn('put_down_person', 'Lay down the person you are carrying, here.', { inner_thought: INNER_THOUGHT }, []));
+  } else if (!['sleeping', 'collapsed'].includes(c.activity.type) && O.handsOf(c.id) >= 2 && O.slotsUsed(c.id) === 0) {
+    const carriable_ = present.filter((o) => carriable(world, c, o));
+    // step 9.5: the dead can be carried too (a body, by its [handle])
+    const bodies = bodiesFor(world, c).filter((o) => !o.holderId).map((o) => O.alias(o));
+    if (carriable_.length || bodies.length) {
+      tools.push(fn('carry_person', "Lift someone who can't walk — or the body of the dead — and carry them. It takes both hands, twice as long, and wears you out twice as fast. If they are awake they have to agree.", {
+        person: { type: 'string', enum: [...world.memory.labelsFor(c, carriable_).keys(), ...bodies], description: 'Who you carry (a body by its [handle]).' }, inner_thought: INNER_THOUGHT,
+      }, ['person']));
+    }
+  }
+  if (WASH_OFFERED(world, c)) tools.push(fn('wash_clothes', 'Wash the blood out of your clothes here (a few minutes).', { inner_thought: INNER_THOUGHT }, []));
+
+  // Parties (step 5.5): the only groups citizens can form themselves.
+  const invitable = world.groups.invitable(c, awake);
+  if (invitable.length) {
+    const labels = [...world.memory.labelsFor(c, awake).entries()].filter(([, o]) => invitable.includes(o)).map(([l]) => l);
+    tools.push(fn('propose_party', 'Ask people here to join you as a party for some purpose: to go somewhere together, to get something done. They can accept or decline.', {
+      people: { type: 'array', items: { type: 'string', enum: labels }, description: 'Who you ask.' },
+      purpose: { type: 'string', maxLength: LIMITS.actionMax, description: "What the party is for, in a few words, e.g. 'explore the old mine'." },
+      inner_thought: INNER_THOUGHT,
+    }, ['people', 'purpose']));
+  }
+  const invites = world.groups.invitations(c);
+  if (invites.length) {
+    const from = [...world.memory.labelsFor(c, invites.map((i) => world.citizens.get(i.from)).filter(Boolean)).keys()];
+    tools.push(fn('accept_invitation', 'Accept an invitation to join someone as a party.', {
+      from: { type: 'string', enum: from, description: 'Whose invitation.' }, inner_thought: INNER_THOUGHT,
+    }, ['from']));
+    tools.push(fn('decline_invitation', 'Turn down an invitation.', {
+      from: { type: 'string', enum: from, description: 'Whose invitation.' },
+      reason: { type: 'string', description: 'Optional. What you say to them, in your own words (one short sentence).' },
+      inner_thought: INNER_THOUGHT,
+    }, ['from']));
+  }
+  const parties = world.groups.of(c.id).filter((m) => m.group.kind === 'party');
+  if (parties.length) {
+    tools.push(fn('leave_group', `Leave your party: ${parties.map((m) => `"${m.group.id}" = ${m.group.name}`).join('; ')}.`, {
+      group: { type: 'string', enum: parties.map((m) => m.group.id), description: 'Which one.' },
+      farewell: { type: 'string', description: 'Optional. A few words to the others.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['group']));
+  }
+
+  // step 9.5 (A1.1): follow someone (an ongoing activity; it ends when you decide otherwise or lose them)
+  if (awake.length && !crawling) {
+    tools.push(fn('follow', 'Stay with someone here and go wherever they go, until you decide otherwise or lose sight of them.', {
+      person: { type: 'string', enum: awakeLabels, description: 'Who you follow.' },
+      inner_thought: INNER_THOUGHT,
+    }, ['person']));
+  }
+
+  // step 9.5 (B5): breaking news — a death, or someone hurt or missing
+  if (awake.length && !mute) {
+    const knowsOf = [...world.memory.labelsFor(c, [
+      ...(world.deaths?.knownDead(c) ?? []).map((id) => world.citizens.get(id)),
+      ...world.memory.knownPeople(c).filter((o) => o.id !== c.id && !awake.includes(o) && ((o.body?.chips ?? []).length || c.knownNews?.[o.id])),
+    ].filter(Boolean)).keys()];
+    if (knowsOf.length) {
+      tools.push(fn('tell_news', 'Tell someone here news about a person: that they died, are badly hurt, are missing, or were found alive. You say it out loud, in your own words.', {
+        to: { type: 'string', enum: awakeLabels, description: 'Who you tell.' },
+        person: { type: 'string', enum: knowsOf, description: 'Who the news is about.' },
+        news: { type: 'string', enum: ['died', 'badly_hurt', 'missing', 'found_alive'] },
+        how_much: { type: 'string', description: 'Optional. What happened, as much as you want to say (a sentence).' },
+        volume: { type: 'string', enum: ['whisper', 'normal'], description: 'Optional. Whisper it, or say it so the room hears.' },
+        inner_thought: INNER_THOUGHT,
+      }, ['to', 'person', 'news']));
+    }
+  }
+
+  // step 9.5 (B4): the dead — tend, keep vigil, bury; and calling people together
+  tools.push(...customTools(world, c, fn, INNER_THOUGHT));
+  if (world.physical) tools.push(...world.physical.tools(c, fn, INNER_THOUGHT)); // step 10: act_on, get_up, handle, force_door
+  const gathering = gatheringTool(world, c, fn, INNER_THOUGHT);
+  if (gathering && !mute) tools.push(gathering);
 
   if (c.conversationId && world.conversations.get(c.conversationId)) {
     tools.push(fn('leave_conversation', 'End your part in the current conversation.', {
@@ -219,7 +352,62 @@ export function buildTools(world, c) {
       inner_thought: INNER_THOUGHT,
     }, []));
   }
-  return tools;
+
+  // Step 6: hide_feelings, when something strong is showing and someone could see it.
+  const strong = world.emotions.of(c).filter((e) => e.intensity >= 5);
+  if (strong.length && awake.length) {
+    tools.push(fn('hide_feelings', 'Keep what you feel off your face for a while. It does not change the feeling, and people who know you well may still notice.', {
+      emotion: { type: 'string', enum: [...new Set(strong.map((e) => e.type))], description: 'Optional. Which feeling; leave it out to hide them all.' },
+      inner_thought: INNER_THOUGHT,
+    }, []));
+  }
+  // step 10 §5.3: someone they went at in the last hour is here — helping them needs a reason, and saying anything may
+  // change what they mean toward them
+  const deeds = world.physical?.consequences.recentAggression(c, 60) ?? [];
+  if (deeds.length) {
+    const names = deeds.map((d) => world.memory.nameFor(c, d.victimId)).join(', ');
+    for (const t of tools) {
+      if (['treat', 'give', 'carry_person', 'feed'].includes(t.function.name)) {
+        t.function.parameters.properties.reason = { type: 'string', description: `Required if you help someone you went at in the last hour (${names}): why you are doing this now.` };
+      }
+    }
+  }
+  const intentsNow = Object.keys(c.intents ?? {}).filter((id) => world.physical?.consequences.intentToward(c, id));
+  if (intentsNow.length) {
+    const say = tools.find((t) => t.function.name === 'say');
+    if (say) say.function.parameters.properties.intent = { type: 'string', enum: ['scare', 'subdue', 'hurt', 'kill', 'defend', 'care', 'none'], description: 'Optional: what you now mean toward the one you speak to (it changes what you came at them for; "none" lets it go).' };
+  }
+  // step 11: deceive (speech, put / give / handle), confide and confess (say), scheme (any tool), proposal and
+  // trust_claim (the tools a conversation goes on with — they ride on every copy, so not on all twenty)
+  const sf = world.scheming?.toolFields(c);
+  if (sf) {
+    for (const t of tools) {
+      const n = t.function.name;
+      const props = t.function.parameters.properties;
+      if (sf.all.scheme && !['tell_about_place', 'introduce_yourself', 'sleep', 'propose_party', 'propose_gathering', 'leave_conversation', 'refuse_treatment', 'accept_help'].includes(n)) props.scheme = sf.all.scheme;
+      if (['say', 'do', 'wait', 'leave_conversation', 'act_on', 'follow', 'move_to'].includes(n)) {
+        if (sf.all.proposal) props.proposal = sf.all.proposal;
+        if (sf.all.trust_claim) props.trust_claim = sf.all.trust_claim;
+      }
+      if (n === 'say') Object.assign(props, sf.say);
+      if (['tell_news', 'tell_about_place'].includes(n)) props.deceive = sf.say.deceive;
+      if (['put', 'give', 'handle'].includes(n)) Object.assign(props, sf.object);
+    }
+  }
+  // Step 7A: every action may carry the optional `feeling` self-report (an object; the enums are per citizen).
+  const feeling = feelingParam(world, c);
+  const intentions = intentionsParam(world, c); // step 9.5 (A1.3): edit what you mean to do, inside any decision
+  for (const t of tools) {
+    t.function.parameters.properties.feeling = feeling;
+    t.function.parameters.properties.intentions = intentions;
+  }
+  // Step 7A (sleep): still due to wake, but up already — sleep first, so the model sees it before acting.
+  if (c.wokeEarly && world.now < c.wokeEarly.until) {
+    const i = tools.findIndex((t) => t.function.name === 'sleep');
+    if (i > 0) tools.unshift(...tools.splice(i, 1));
+  }
+  // Emotion-congruent tools first, short notes on descriptions. The SET of tools never changes with emotions.
+  return frameTools(world, c, tools);
 }
 
 function fn(name, description, properties, required) {
@@ -278,7 +466,8 @@ export function validateCall(tools, call) {
         }
         v = match;
       }
-      const max = schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key];
+      // step 7A: `feeling` may be an object (or its JSON form) — parseFeeling clips its own why, so don't clip it here.
+      const max = key === 'feeling' ? undefined : schema.maxLength ?? HIDDEN_MAX[tool.function.name]?.[key];
       if (max && v.length > max) {
         v = truncate(v, max);
         truncated.push(key);

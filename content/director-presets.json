@@ -18,7 +18,14 @@
       {
         "type": "damage",
         "target": "here",
-        "amount": 25
+        "amount": 25,
+        "cause": "the blast in the room",
+        "profile": [
+          { "damageType": "blast", "part": "random", "amount": [10, 30], "count": [1, 3] },
+          { "damageType": "burn", "part": "random", "amount": [5, 20], "count": [0, 2] },
+          { "condition": "ear_damage", "temporary": true, "chance": 0.8 },
+          { "condition": "concussion", "chance": 0.3 }
+        ]
       },
       {
         "type": "mark",
@@ -64,7 +71,12 @@
       {
         "type": "damage",
         "target": "here",
-        "amount": 10
+        "amount": 10,
+        "cause": "the fire",
+        "profile": [
+          { "damageType": "burn", "part": "random", "amount": [3, 12], "count": [0, 2] },
+          { "damageType": "blunt", "part": "random", "amount": [2, 6], "count": [0, 1] }
+        ]
       },
       {
         "type": "mark",

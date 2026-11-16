@@ -6,6 +6,7 @@ import { colorOf } from './colors.js';
 import * as roster from './views/roster.js';
 import * as inspector from './views/inspector.js';
 import * as worldView from './views/world.js';
+import * as mapView from './views/map.js';
 import * as conversationsView from './views/conversations.js';
 import * as timelineView from './views/timeline.js';
 import * as relationshipsView from './views/relationships.js';
@@ -14,19 +15,26 @@ import * as eventsView from './views/events.js';
 import * as llmView from './views/llm.js';
 import * as directorView from './views/director.js';
 import * as usageView from './views/usage.js';
+import * as groupsView from './views/groups.js';
+import * as schemesView from './views/schemes.js'; // step 11
 import { onObjectMessage, openObject } from './views/objects-ui.js';
 
 const VIEWS = [
-  { id: 'world', label: 'World', mod: worldView },
+  { id: 'map', label: 'Map', mod: mapView },          // step 8: the living map is the centre
+  { id: 'world', label: 'List', mod: worldView },        // the old room cards, kept as a list
   { id: 'conversations', label: 'Conversations', mod: conversationsView },
   { id: 'timeline', label: 'Timeline', mod: timelineView },
   { id: 'relationships', label: 'Relationships', mod: relationshipsView },
+  { id: 'groups', label: 'Groups', mod: groupsView },
+  { id: 'schemes', label: 'Schemes', mod: schemesView },    // step 11: ambitions, schemes, lies (director only)
   { id: 'story', label: 'Story', mod: storyView },
   { id: 'events', label: 'Events', mod: eventsView },
   { id: 'llm', label: 'LLM', mod: llmView },
   { id: 'director', label: 'Director', mod: directorView },
   { id: 'usage', label: 'Usage', mod: usageView },
 ];
+
+store.viewList = VIEWS; // the map view can dock any of them next to the canvas
 
 // ---------- header ----------
 function renderClock(c) {
@@ -60,6 +68,19 @@ function renderGovernor() {
   el.textContent = g.enabled ? `budget ${Math.round(g.ratio * 100)}%` : 'budget off';
   el.title = `token governor: ${g.state} (${g.budgetPerHour} output tokens per real hour)`;
 }
+
+// step 9: the critical-moment indicator: someone in a critical bleeding window, with the minutes left (click: jump there)
+function renderCritical() {
+  const el = $('#crit');
+  if (!el) return;
+  const crit = [...store.citizens.values()].filter((c) => c.alive !== false && c.body?.critical != null).sort((a, b) => a.body.critical - b.body.critical);
+  el.classList.toggle('hidden', !crit.length);
+  if (!crit.length) return;
+  el.className = 'pill crit';
+  el.textContent = `⏳ ${crit[0].name} ${Math.round(crit[0].body.critical)} min${crit.length > 1 ? ` +${crit.length - 1}` : ''}`;
+  el.dataset.citizen = crit[0].id;
+}
+subscribe('citizens', renderCritical);
 
 // ---------- router ----------
 let current = null; // { id, unmount }
@@ -130,6 +151,15 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- data loading ----------
+// step 9.5: the village's dread, per region (a meter in the top bar once there is any)
+function renderDread() {
+  const el = document.querySelector('#dread');
+  if (!el) return;
+  const regions = Object.entries(store.dread ?? {}).filter(([, d]) => (d?.value ?? 0) > 0.05);
+  el.classList.toggle('hidden', !regions.length);
+  el.innerHTML = regions.map(([id, d]) => `<span>dread${regions.length > 1 ? ` ${id}` : ''}</span><span class="bar"><i style="width:${Math.min(100, d.value * 10)}%"></i></span><span>${d.value.toFixed(1)}</span>`).join(' ');
+}
+
 async function loadWorld() {
   const [w, convs, obs, events] = await Promise.all([
     api.get('/api/world'),
@@ -145,6 +175,11 @@ async function loadWorld() {
   store.observerStatus = obs.status;
   store.events = events;
   renderClock(w.clock);
+  store.dread = w.dread ?? {};
+  store.stock = w.stock ?? {};
+  store.gatherings = w.gatherings ?? [];
+  store.altercations = w.altercations ?? []; // step 10
+  renderDread();
   api.get('/api/governor').then((g) => { store.governor = g; renderGovernor(); }).catch(() => {});
   if (store.selectedId && !store.citizens.has(store.selectedId)) select(null);
   for (const t of ['rooms', 'citizens', 'conversations', 'observer', 'events', 'objects']) emit(t);
@@ -193,6 +228,7 @@ function connect() {
     const cv = JSON.parse(m.data);
     if (cv.ended) {
       store.conversations.delete(cv.id);
+      store.endedConversations.set(cv.id, { reason: cv.reason ?? null, at: Date.now() }); // step 9: the on-map panel says why it ended
       emit('conversations');
       emit('conversationEnded', cv.id);
       return;
@@ -223,7 +259,12 @@ function connect() {
     emit('governor', store.governor);
   });
   es.addEventListener('memory', (m) => emit('memory', JSON.parse(m.data)));
+  es.addEventListener('dread', (m) => { store.dread = JSON.parse(m.data); renderDread(); emit('dread', store.dread); });
   es.addEventListener('object', (m) => onObjectMessage(JSON.parse(m.data)));
+  es.addEventListener('scheming', (m) => emit('scheming', JSON.parse(m.data))); // step 11
+  es.addEventListener('altercation', (m) => { store.altercations = JSON.parse(m.data).list ?? []; emit('altercation', store.altercations); }); // step 10
+  es.addEventListener('group', () => emit('groups'));
+  es.addEventListener('emotion_room', (m) => emit('emotion_room', JSON.parse(m.data)));
   es.addEventListener('relationship', (m) => emit('relationship', JSON.parse(m.data)));
   es.addEventListener('llm', (m) => emit('llm', JSON.parse(m.data)));
 }
@@ -241,7 +282,7 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
-show(VIEWS.some((v) => v.id === initial) ? initial : 'world');
+show(VIEWS.some((v) => v.id === initial) ? initial : 'map');
 connect();
 
 window.addEventListener('hashchange', () => {

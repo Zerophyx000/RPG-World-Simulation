@@ -1,0 +1,69 @@
+{
+  "_doc": "Step 7B body model. Parts are expanded for each side where `sides` is set (id gets _left / _right). maxHealth = hit points of the part; hitWeight = chance share when damage lands on a random surface part (0 = internal, never hit directly); vital = destroyed means death; internal = invisible from outside; bleedFactor scales every wound here; vessels = chance, per wound depth, of the worst vessel class reached (the rest is capillary); under = internal parts that deep wounds here can reach; bone = can fracture; headMult is derived (everything under head counts 1.5x damage).",
+  "regions": {
+    "head": ["head", "skull", "brain", "eye_left", "eye_right", "ear_left", "ear_right", "nose", "jaw", "tongue"],
+    "neck": ["neck"],
+    "torso": ["torso", "chest", "abdomen", "spine", "heart", "lung_left", "lung_right", "stomach", "liver"],
+    "left_arm": ["upper_arm_left", "forearm_left", "hand_left", "fingers_left"],
+    "right_arm": ["upper_arm_right", "forearm_right", "hand_right", "fingers_right"],
+    "left_leg": ["thigh_left", "shin_left", "foot_left"],
+    "right_leg": ["thigh_right", "shin_right", "foot_right"]
+  },
+  "headMultiplier": 1.5,
+  "defaults": {
+    "vessels": {
+      "superficial": {},
+      "moderate": { "venous": 0.3 },
+      "deep": { "venous": 0.35, "minor_arterial": 0.15 },
+      "penetrating": { "venous": 0.4, "minor_arterial": 0.3 }
+    },
+    "bleedFactor": 1
+  },
+  "parts": {
+    "head": { "label": "head", "maxHealth": 30, "hitWeight": 6, "parent": null, "region": "head", "bleedFactor": 1.5, "bone": true, "under": ["skull"],
+      "vessels": { "superficial": { "capillary": 1 }, "moderate": { "venous": 0.4 }, "deep": { "venous": 0.5, "minor_arterial": 0.2 }, "penetrating": { "venous": 0.5, "minor_arterial": 0.3 } } },
+    "skull": { "label": "skull", "maxHealth": 25, "hitWeight": 0, "parent": "head", "region": "head", "internal": true, "bone": true, "under": ["brain"] },
+    "brain": { "label": "brain", "maxHealth": 10, "hitWeight": 0, "parent": "skull", "region": "head", "internal": true, "vital": true },
+    "eye_left": { "label": "left eye", "maxHealth": 5, "hitWeight": 0.4, "parent": "head", "region": "head", "bleedFactor": 0.3 },
+    "eye_right": { "label": "right eye", "maxHealth": 5, "hitWeight": 0.4, "parent": "head", "region": "head", "bleedFactor": 0.3 },
+    "ear_left": { "label": "left ear", "maxHealth": 6, "hitWeight": 0.5, "parent": "head", "region": "head", "bleedFactor": 0.6 },
+    "ear_right": { "label": "right ear", "maxHealth": 6, "hitWeight": 0.5, "parent": "head", "region": "head", "bleedFactor": 0.6 },
+    "nose": { "label": "nose", "maxHealth": 8, "hitWeight": 0.6, "parent": "head", "region": "head", "bone": true, "bleedFactor": 1.2 },
+    "jaw": { "label": "jaw", "maxHealth": 15, "hitWeight": 1.2, "parent": "head", "region": "head", "bone": true },
+    "tongue": { "label": "tongue", "maxHealth": 5, "hitWeight": 0, "parent": "jaw", "region": "head", "internal": true, "bleedFactor": 1.2 },
+    "neck": { "label": "neck", "maxHealth": 20, "hitWeight": 1.5, "parent": "head", "region": "neck", "vital": true, "bleedFactor": 1.4,
+      "vessels": { "superficial": { "capillary": 1 }, "moderate": { "venous": 0.25, "major_arterial": 0.1 }, "deep": { "venous": 0.3, "major_arterial": 0.5 }, "penetrating": { "major_arterial": 0.6, "venous": 0.3 } } },
+    "torso": { "label": "back and flanks", "maxHealth": 40, "hitWeight": 8, "parent": null, "region": "torso", "bone": false, "under": ["spine"],
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.3 }, "deep": { "venous": 0.4 }, "penetrating": { "venous": 0.4, "minor_arterial": 0.2 } } },
+    "chest": { "label": "chest", "maxHealth": 35, "hitWeight": 7, "parent": "torso", "region": "torso", "bone": true, "under": ["heart", "lung_left", "lung_right"],
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.3 }, "deep": { "venous": 0.4 }, "penetrating": { "venous": 0.4 } } },
+    "abdomen": { "label": "belly", "maxHealth": 35, "hitWeight": 7, "parent": "torso", "region": "torso", "under": ["stomach", "liver"],
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.3 }, "deep": { "venous": 0.4 }, "penetrating": { "venous": 0.4 } } },
+    "spine": { "label": "spine", "maxHealth": 20, "hitWeight": 0, "parent": "torso", "region": "torso", "internal": true, "bone": true },
+    "heart": { "label": "heart", "maxHealth": 15, "hitWeight": 0, "parent": "chest", "region": "torso", "internal": true, "vital": true },
+    "lung_left": { "label": "left lung", "maxHealth": 20, "hitWeight": 0, "parent": "chest", "region": "torso", "internal": true },
+    "lung_right": { "label": "right lung", "maxHealth": 20, "hitWeight": 0, "parent": "chest", "region": "torso", "internal": true },
+    "stomach": { "label": "stomach", "maxHealth": 15, "hitWeight": 0, "parent": "abdomen", "region": "torso", "internal": true },
+    "liver": { "label": "liver", "maxHealth": 15, "hitWeight": 0, "parent": "abdomen", "region": "torso", "internal": true },
+
+    "upper_arm_{side}": { "sides": ["left", "right"], "label": "{side} upper arm", "maxHealth": 25, "hitWeight": 3, "parent": null, "region": "{side}_arm", "bone": true,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.25 }, "deep": { "venous": 0.3, "minor_arterial": 0.25 }, "penetrating": { "minor_arterial": 0.4, "venous": 0.3 } } },
+    "forearm_{side}": { "sides": ["left", "right"], "label": "{side} forearm", "maxHealth": 20, "hitWeight": 3, "parent": "upper_arm_{side}", "region": "{side}_arm", "bone": true,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.2 }, "deep": { "venous": 0.25, "minor_arterial": 0.4 }, "penetrating": { "minor_arterial": 0.5, "venous": 0.3 } } },
+    "hand_{side}": { "sides": ["left", "right"], "label": "{side} hand", "maxHealth": 15, "hitWeight": 1.5, "parent": "forearm_{side}", "region": "{side}_arm", "bone": true, "bleedFactor": 0.7,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.25 }, "deep": { "minor_arterial": 0.15, "venous": 0.35 }, "penetrating": { "minor_arterial": 0.2, "venous": 0.4 } } },
+    "fingers_{side}": { "sides": ["left", "right"], "label": "{side} fingers", "maxHealth": 10, "hitWeight": 0.8, "parent": "hand_{side}", "region": "{side}_arm", "bone": true, "bleedFactor": 0.4 },
+    "thigh_{side}": { "sides": ["left", "right"], "label": "{side} thigh", "maxHealth": 30, "hitWeight": 4, "parent": null, "region": "{side}_leg", "bone": true,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.3 }, "deep": { "venous": 0.3, "major_arterial": 0.3 }, "penetrating": { "major_arterial": 0.45, "venous": 0.3 } } },
+    "shin_{side}": { "sides": ["left", "right"], "label": "{side} shin", "maxHealth": 25, "hitWeight": 4, "parent": "thigh_{side}", "region": "{side}_leg", "bone": true,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.2 }, "deep": { "venous": 0.3, "minor_arterial": 0.2 }, "penetrating": { "minor_arterial": 0.35, "venous": 0.3 } } },
+    "foot_{side}": { "sides": ["left", "right"], "label": "{side} foot", "maxHealth": 15, "hitWeight": 1.5, "parent": "shin_{side}", "region": "{side}_leg", "bone": true, "bleedFactor": 0.7,
+      "vessels": { "superficial": {}, "moderate": { "venous": 0.25 }, "deep": { "minor_arterial": 0.15, "venous": 0.3 }, "penetrating": { "minor_arterial": 0.2, "venous": 0.35 } } }
+  },
+  "capacityStatus": {
+    "sight": [[0.15, "blind"], [0.6, "half-blind"]],
+    "hearing": [[0.15, "deaf"], [0.6, "hard of hearing"]],
+    "speech": [[0.2, "mute"], [0.6, "slurred speech"]],
+    "moving": [[0.1, "can't move"], [0.35, "crawling only"], [0.8, "limping"]]
+  }
+}

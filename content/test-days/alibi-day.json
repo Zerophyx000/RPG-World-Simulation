@@ -1,0 +1,18 @@
+{
+  "name": "alibi-day",
+  "description": "Step 11 test day (times are minutes after the run starts; start it at 06:00): an alibi under pressure. Last night Jonas bent Tomas's tongs and loosened his hammer head out of spite, and Lena saw him slipping out of the smithy late. In the morning Tomas finds the damage. Nothing makes anyone lie or accuse: the director only sets the night up as it happened (memories, the damaged tools, Jonas's grudge) and brings the three to the smithy. Watch whether Jonas lies (deceive with a check: who / where / when), whether Tomas believes him (trust_claim), whether Lena's memory contradicts the story (witnessed), whether a tell shows, whether the lie is caught or confessed, and the relationship events that follow.",
+  "actions": [
+    { "at": 0, "type": "traits", "citizenId": "jonas", "honesty": 3, "cunning": 6, "reason": "test day: a resentful apprentice who keeps his face straight" },
+    { "at": 0, "type": "ambition", "citizenId": "jonas", "kind": "revenge", "text": "I want Tomas to feel what it's like to be made small, the way he does to me.", "intensity": 7, "secrecy": "secret", "targets": ["tomas"], "comment": "a grudge, no plan asked for" },
+    { "at": 1, "type": "objects-patch", "id": "smithy_tongs", "patch": { "state": "bent" }, "comment": "the damage from last night" },
+    { "at": 1, "type": "objects-patch", "id": "smithy_hammer", "patch": { "state": "loose-headed" } },
+    { "at": 2, "type": "memory", "citizenId": "jonas", "action": "add", "importance": 8, "about": ["tomas"], "text": "Last night, around eleven, I crept into the smithy and bent Tomas's tongs over the anvil and worked the wedge out of his hammer. Nobody saw me, I think." },
+    { "at": 2, "type": "memory", "citizenId": "lena", "action": "add", "importance": 6, "about": ["jonas"], "text": "Late last night, walking home from a birth, I saw Jonas slip out of the smithy door and hurry off toward Tomas's house." },
+    { "at": 3, "type": "memory", "citizenId": "tomas", "action": "add", "importance": 5, "text": "I left my hammer and tongs in good order at the smithy last evening, as I always do." },
+    { "at": 20, "type": "apply", "effects": [
+      { "type": "move", "target": "tomas", "to": "smithy", "notify": false },
+      { "type": "move", "target": "jonas", "to": "smithy", "notify": false }
+    ], "comment": "the working day starts" },
+    { "at": 45, "type": "apply", "effects": [ { "type": "move", "target": "lena", "to": "smithy", "notify": false } ], "comment": "Lena comes by for a mended pot hook" }
+  ]
+}

@@ -6,6 +6,17 @@ import path from 'node:path';
 import { config } from './config.js';
 import { listEvents, getEvent, listConversations, getConversation, timeline, interactions, pairLines, usage, memoriesOf, consolidationsOf, beliefs } from './readmodels.js';
 import { loadDirectorPresets } from './world/scenarios.js';
+import { artContent } from './world/maps.js';
+import { perceptionOf } from './ui/perception.js';
+import { interest } from './ui/interest.js';
+import { socialView } from './ui/social.js';
+import { replay } from './ui/replay.js';
+import { exportOptions, exportFilename, streamExport } from './ui/export.js';
+import { intentionsView, setIntentions } from './agents/intentions.js';
+import { testDayRoutes, startTestDay } from './world/testdays.js';
+import { directorAmbition, directorTraits } from './scheming/director.js'; // step 11
+import { forceAct, forceSay } from './physical/director.js'; // step 11.5
+import { provoke, giveWeapon, igniteObject, startAltercation, endAltercation, coherenceLog, crimes } from './physical/director.js'; // step A8: the runner's routes, spread in below
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -34,8 +45,14 @@ export function createServer(world, { observer = null } = {}) {
   world.bus.on('observer', (o) => broadcast('observer', o));
   world.bus.on('governor', (g) => broadcast('governor', g));
   world.bus.on('memory', (m) => broadcast('memory', m));
+  world.bus.on('altercation', (a) => broadcast('altercation', a)); // step 10
+  world.bus.on('scheming', (x) => broadcast('scheming', x)); // step 11
   world.bus.on('relationship', (r) => broadcast('relationship', r));
   world.bus.on('object', (o) => broadcast('object', o));
+  world.bus.on('group', (g) => broadcast('group', g));
+  world.bus.on('emotion_room', (r) => broadcast('emotion_room', r));
+  world.bus.on('dread', (d) => broadcast('dread', d)); // step 9.5
+
   const qs = (req) => new URL(req.url, 'http://x').searchParams;
   const num = (v) => (v == null || v === '' ? null : Number(v));
   const found = (v) => {
@@ -69,6 +86,16 @@ export function createServer(world, { observer = null } = {}) {
 
     // ---- World + citizens ----
     ['GET', /^\/api\/world$/, () => world.snapshot()],
+    ['GET', /^\/api\/looks$/, () => world.looks()],                 // step 8: appearances for the map
+    ['GET', /^\/api\/maps$/, () => world.maps.view()],              // step 8: map files (footprints, doors, spots)
+    ['GET', /^\/api\/art$/, () => artContent()],
+    // step 9: the living map (read-only, never reaches citizens)
+    ['GET', /^\/api\/wear$/, () => world.wear.view()],
+    ['GET', /^\/api\/decals$/, () => world.decals.list()],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/perception$/, (_req, _body, [id]) => perceptionOf(world, id)],
+    ['GET', /^\/api\/interest$/, () => interest(world)],
+    ['GET', /^\/api\/map\/social$/, () => socialView(world)],
+    ['GET', /^\/api\/replay$/, (req) => { const q = new URL(req.url, 'http://x').searchParams; return replay(world, { from: q.get('from'), to: q.get('to') }); }],
 
     ['GET', /^\/api\/citizens\/([\w-]+)$/, (_req, _body, [id]) => world.citizenDetail(id)],
 
@@ -90,6 +117,9 @@ export function createServer(world, { observer = null } = {}) {
 
     ['GET', /^\/api\/director\/scenarios$/, () => world.scenarios()],
 
+    // ---- Test days (step A8): scripted director days, see world/testdays.js ----
+    ...testDayRoutes(world),
+
     // ---- Memory & relationships (director tools) ----
     ['POST', /^\/api\/director\/memory$/, (_req, body) => world.directorMemory(body)],
     ['POST', /^\/api\/director\/consolidate$/, (_req, body) => world.consolidateCitizen({ citizenId: body.citizenId })],
@@ -106,6 +136,69 @@ export function createServer(world, { observer = null } = {}) {
     ['POST', /^\/api\/governor$/, (_req, body) => world.governor.setBudget(body.budgetPerHour)],
 
     ['GET', /^\/api\/director\/presets$/, () => loadDirectorPresets()],
+
+    // ---- Emotions (step 6) ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/emotions$/, (_req, _body, [id]) => world.emotions.view(found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/emotions\/history$/, (req, _body, [id]) => world.emotions.history(id, { from: num(qs(req).get('from')), to: num(qs(req).get('to')), limit: qs(req).get('limit') })],
+    // ---- Step 7B: body, injuries, death ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/body$/, (_req, _body, [id]) => world.body.view(found(world.citizens.get(id)).id)],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/conditions$/, (req, _body, [id]) => world.body.conditionsView(found(world.citizens.get(id)).id, { all: qs(req).get('all') === '1' })],
+    ['POST', /^\/api\/director\/injure$/, (_req, body) => {
+      const r = world.body.injure(body.citizenId, body);
+      return { conditions: r.conditions.map((x) => world.body.conditionView(x)), garments: r.garments };
+    }],
+    ['POST', /^\/api\/director\/heal$/, (_req, body) => world.body.heal(body.citizenId, { conditionId: body.conditionId ?? null, partId: body.partId ?? null, all: body.conditionId == null && !body.partId, amount: body.amount ?? 10, source: 'director', allowPermanent: false })],
+    // ---- step 11: ambitions, schemes, lies (director view: everything, including the truth) ----
+    ['GET', /^\/api\/ambitions$/, (req) => world.scheming.ambitions.view(qs(req).get('citizen') || null)],
+    ['GET', /^\/api\/schemes$/, (req) => world.scheming.schemes.view({ ownerId: qs(req).get('citizen') || null, limit: Number(qs(req).get('limit') ?? 100) })],
+    ['GET', /^\/api\/lies$/, (req) => world.scheming.lies.view({ liarId: qs(req).get('liar') || null, listenerId: qs(req).get('listener') || null, status: qs(req).get('status') || null, limit: Number(qs(req).get('limit') ?? 200) })],
+    // ---- step 10: action and reaction ----
+    ['GET', /^\/api\/altercations$/, () => world.altercations.view()],
+    ['GET', /^\/api\/fires$/, () => world.physical.fire.view()],
+    ['GET', /^\/api\/crimes$/, (req) => crimes(world, { limit: qs(req).get('limit') })],
+    ['GET', /^\/api\/coherence$/, (req) => coherenceLog(world, { limit: qs(req).get('limit') })],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/physical$/, (_req, _body, [id]) => world.physical.profileView(found(world.citizens.get(id)))],
+    ['POST', /^\/api\/director\/provoke$/, (_req, body) => provoke(world, body)],
+    ['POST', /^\/api\/director\/ambition$/, (_req, body) => directorAmbition(world, body ?? {})], // step 11
+    ['POST', /^\/api\/director\/traits$/, (_req, body) => directorTraits(world, body ?? {})], // step 11
+    ['POST', /^\/api\/director\/act$/, (_req, body) => forceAct(world, body ?? {})], // step 11.5: a forced act (tests)
+    ['POST', /^\/api\/director\/say$/, (_req, body) => forceSay(world, body ?? {})], // step 11.5: a forced line (tests)
+    ['POST', /^\/api\/director\/weapon$/, (_req, body) => giveWeapon(world, body)],
+    ['POST', /^\/api\/director\/ignite$/, (_req, body) => igniteObject(world, body)],
+    ['POST', /^\/api\/director\/altercation$/, (_req, body) => (body.action === 'end' ? endAltercation(world, body) : startAltercation(world, body))],
+    ['POST', /^\/api\/director\/kill$/, (_req, body) => ({ ok: world.body.kill(body.citizenId, body.cause ?? 'the director') })],
+    ['POST', /^\/api\/director\/regen$/, (_req, body) => world.body.setRegen(body.citizenId, body.multiplier, { source: 'director', until: body.until ?? null })],
+    ['GET', /^\/api\/body\/rates$/, () => ({ ...config.body })],
+    // the A8 runner under the name the plan uses: { file | name, seed }
+    ['POST', /^\/api\/director\/test-day$/, (_req, body) => { const r = startTestDay(world, { name: body.file ?? body.name, seed: body.seed }); if (!r.ok) throw Object.assign(new Error(r.error), { status: 400 }); return r; }],
+    ['POST', /^\/api\/director\/body-rates$/, (_req, body) => {
+      for (const k of ['accidentRate', 'illnessRate', 'healTimeScale', 'criticalGraceMinutes', 'criticalSlowdown']) if (body[k] != null && Number.isFinite(Number(body[k]))) config.body[k] = Number(body[k]);
+      return { ...config.body };
+    }],
+    ['POST', /^\/api\/director\/emotion$/, (_req, body) => world.emotions.directorEmotion(body)],
+    ['POST', /^\/api\/director\/mood$/, (_req, body) => world.emotions.directorMood(body)],
+    ['GET', /^\/api\/emotions\/types$/, () => ({ types: world.emotions.types, contagion: world.emotions.contagionOn, paramEffects: world.emotions.paramEffects })],
+    ['GET', /^\/api\/emotions\/appraisals$/, (req) => world.emotions.appraisalLog(qs(req).get('limit'))],
+    ['GET', /^\/api\/emotions\/aimed$/, () => [...world.citizens.values()].flatMap((c) => world.emotions.of(c).filter((e) => e.target && e.intensity >= 2)
+      .map((e) => ({ from: c.id, to: e.target, about: e.about, type: e.type, intensity: Math.round(e.intensity * 10) / 10, color: world.emotions.types[e.type]?.color, cause: e.cause })))],
+    ['POST', /^\/api\/director\/contagion$/, (_req, body) => world.emotions.setContagion(body.enabled)],
+
+    // ---- Trust with reasons, groups, strangers (step 5.5) ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/relationships\/([\w-]+)\/events$/, (_req, _body, [id, other]) => world.relationshipEvents(id, other)],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/wariness$/, (req, _body, [id]) => world.warinessOf(id, qs(req).get('other'))],
+    ['GET', /^\/api\/relationships\/signals$/, () => world.db.prepare(`SELECT citizen_id AS "from", other_id AS "to", SUM(d_trust) AS dTrust, COUNT(*) AS n
+      FROM relationship_events WHERE source = 'signal' GROUP BY citizen_id, other_id`).all()],
+    ['GET', /^\/api\/groups$/, () => world.groups.list()],
+    ['GET', /^\/api\/groups\/([\w-]+)$/, (_req, _body, [id]) => found(world.groups.list().find((g) => g.id === id))],
+    ['POST', /^\/api\/groups$/, (_req, body) => world.groups.create(body, { origin: 'director' })],
+    ['PATCH', /^\/api\/groups\/([\w-]+)$/, (_req, body, [id]) => world.groups.edit(id, body)],
+    ['GET', /^\/api\/director\/inactive$/, () => world.inactiveCitizens()],
+    ['POST', /^\/api\/director\/activate$/, (_req, body) => world.activateCitizen({ id: body.id, location: body.location })],
+    ['POST', /^\/api\/director\/signal$/, (_req, body) => world.signals.simulate(body)],
+    ['POST', /^\/api\/director\/stranger-trust$/, (_req, body) => world.setStrangerTrust(body)],
+    ['POST', /^\/api\/director\/persona-list$/, (_req, body) => world.setPersonaList(body)],
+    ['POST', /^\/api\/director\/room-danger$/, (_req, body) => world.setRoomDanger(body)],
+    ['GET', /^\/api\/cues$/, () => world.strangers.cues],
 
     // ---- Objects (step 5) ----
     ['GET', /^\/api\/rooms\/([\w-]+)\/objects$/, (req, _body, [id]) => world.roomObjects(id, { view: qs(req).get('view') ?? 'true', citizen: qs(req).get('citizen') })],
@@ -129,6 +222,38 @@ export function createServer(world, { observer = null } = {}) {
       return world.reseed({ scenario: body.scenario });
     }],
 
+    // ---- Step 9.5: reactive living and death that matters ----
+    ['GET', /^\/api\/citizens\/([\w-]+)\/intentions$/, (_req, _body, [id]) => intentionsView(world, found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/habits$/, (_req, _body, [id]) => world.habits.view(found(world.citizens.get(id)))],
+    ['GET', /^\/api\/citizens\/([\w-]+)\/deaths$/, (_req, _body, [id]) => world.deaths.knownView(found(world.citizens.get(id)))],
+    ['POST', /^\/api\/director\/intentions$/, (_req, body) => setIntentions(world, found(world.citizens.get(body.citizenId)), body.intentions)],
+    ['POST', /^\/api\/director\/habits$/, (_req, body) => world.habits.set(found(world.citizens.get(body.citizenId)), body.habits, { origin: 'director', why: 'set by the director' })],
+    ['POST', /^\/api\/director\/habits\/regenerate$/, async (_req, body) => world.habits.generate(found(world.citizens.get(body.citizenId)))],
+    ['GET', /^\/api\/dread$/, () => world.deaths.dreadView()],
+    ['POST', /^\/api\/director\/dread$/, (_req, body) => world.deaths.setDread(body.mapId || world.maps.maps[0]?.id, body.value)],
+    ['GET', /^\/api\/deaths$/, () => ({
+      dead: [...world.citizens.values()].filter((c) => !c.alive).map((c) => ({ id: c.id, name: c.name, diedAt: c.diedAt, place: c.deathPlace ?? null, cause: c.deathCause ?? null, buriedAt: c.buriedAt ?? null, knownAt: c.deathKnownAt ?? null })),
+      learned: world.deaths.learnedTimeline(), dread: world.deaths.dreadView(), gatherings: world.gatherings ?? [], stock: world.stock.view(),
+    })],
+    ['POST', /^\/api\/director\/death-news$/, (_req, body) => {
+      // testing: someone learns of a death (as if told), or a knower is prompted to break it to someone
+      const c = found(world.citizens.get(body.citizenId));
+      const dead = found(world.citizens.get(body.deadId));
+      if (dead.alive) throw httpError(400, `${dead.name} is not dead`);
+      if (body.listenerId) {
+        const o = found(world.citizens.get(body.listenerId));
+        world.perceive([c.id], { kind: 'system', text: `{{c:${o.id}}} doesn't know about {{c:${dead.id}}} yet.`, importance: 7, sourceId: o.id, data: { breakNews: { to: o.id, dead: dead.id } } });
+        world.logEvent('director', { action: 'break_news', citizenId: c.id, listenerId: o.id, deadId: dead.id });
+        return { ok: true };
+      }
+      const e = world.deaths.learn(c, dead.id, { how: 'told:director', certainty: ['certain', 'believed', 'doubted', 'suspected'].includes(body.certainty) ? body.certainty : 'believed' });
+      world.logEvent('director', { action: 'death_news', citizenId: c.id, deadId: dead.id });
+      return { ok: true, entry: e };
+    }],
+    ['POST', /^\/api\/director\/leak-check$/, (_req, body) => { world.debugLeakCheck = Boolean(body.enabled); return { enabled: world.debugLeakCheck }; }],
+    ['GET', /^\/api\/director\/leak-check$/, () => ({ enabled: Boolean(world.debugLeakCheck) })],
+    ['GET', /^\/api\/stock$/, () => world.stock.view()],
+
     // ---- Read models for the UI ----
     ['GET', /^\/api\/events$/, (req) => {
       const q = qs(req);
@@ -145,7 +270,11 @@ export function createServer(world, { observer = null } = {}) {
 
     ['GET', /^\/api\/conversations\/([\w-]+)$/, (_req, _body, [id]) => found(getConversation(world, id))],
 
-    ['GET', /^\/api\/timeline$/, (req) => timeline(world, { from: num(qs(req).get('from')), to: num(qs(req).get('to')) })],
+    ['GET', /^\/api\/timeline$/, (req) => {
+      const from = num(qs(req).get('from'));
+      const to = num(qs(req).get('to'));
+      return { ...timeline(world, { from, to }), emotions: world.emotions.timeline(from, to) };
+    }],
 
     ['GET', /^\/api\/relationships$/, (req) => interactions(world, { from: num(qs(req).get('from')), to: num(qs(req).get('to')) })],
 
@@ -174,10 +303,19 @@ export function createServer(world, { observer = null } = {}) {
     }],
 
     ['GET', /^\/api\/llm\/calls$/, (req) => {
-      const limit = Math.min(Number(new URL(req.url, 'http://x').searchParams.get('limit')) || 20, 200);
-      return world.db.prepare(`SELECT id, real_time, game_time, citizen_id, purpose, status, duration_ms,
-                                      prompt_tokens, completion_tokens
-                               FROM llm_calls ORDER BY id DESC LIMIT ?`).all(limit);
+      const q = new URL(req.url, 'http://x').searchParams;
+      const limit = Math.min(Number(q.get('limit')) || 20, 200);
+      const where = [];
+      const params = [];
+      const qv = q.get('citizenId');
+      if (qv) { where.push('citizen_id = ?'); params.push(qv); }
+      const pv = q.get('purpose');
+      if (pv) { where.push('purpose = ?'); params.push(pv); }
+      params.push(limit);
+      // step A6: finish_reason (cut-off analysis) + has_reasoning for the call list
+      return world.db.prepare(`SELECT id, real_time, game_time, citizen_id, purpose, tier, status, finish_reason, duration_ms,
+                                      prompt_tokens, completion_tokens, (reasoning IS NOT NULL AND reasoning <> '') AS has_reasoning
+                               FROM llm_calls ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`).all(...params);
     }],
 
     ['GET', /^\/api\/llm\/calls\/(\d+)$/, (_req, _body, [id]) => {
@@ -201,6 +339,25 @@ export function createServer(world, { observer = null } = {}) {
       res.write(`event: clock\ndata: ${JSON.stringify(world.clock.snapshot())}\n\n`);
       sseClients.add(res);
       req.on('close', () => sseClients.delete(res));
+      return;
+    }
+
+    // Full export of events + LLM calls (reasoning, answers, optional prompts), streamed as a download.
+    if (req.method === 'GET' && url.pathname === '/api/export') {
+      const opts = exportOptions(Object.fromEntries(url.searchParams));
+      res.writeHead(200, {
+        'Content-Type': opts.format === 'md' ? 'text/markdown; charset=utf-8' : 'application/x-ndjson; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${exportFilename(opts, world.clock.gameMinutes)}"`,
+        'Cache-Control': 'no-store',
+      });
+      try {
+        await streamExport(world.db, res, opts, { gameMinutes: world.clock.gameMinutes });
+      } catch (err) {
+        console.error('[export]', err);
+        res.end(`
+[export failed: ${err.message}]
+`);
+      }
       return;
     }
 

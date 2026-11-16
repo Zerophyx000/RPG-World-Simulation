@@ -122,11 +122,16 @@ export function directorEvent(world, input) {
   if (roomEffect) {
     room.effects = activeEffects(room, world.now);
     room.effects.push({ id: `fx${ev.id}`, text: roomEffect.text, until: world.now + roomEffect.durationGameMinutes, sourceEventId: ev.id });
+    world.hooks.onRoomEffect?.(room, room.effects.at(-1), { eventId: ev.id }); // step 9: lasting marks (decals)
     world.saveRoom(room);
   }
 
   const ctx = { world, room, zones, reached: new Set(reached.map((c) => c.id)), eventId: ev.id };
   const applied = effects.map((e) => applyEffect(ctx, e));
+  // step 9.5 (B3.3): an event that does damage puts the village on edge (+1 dread)
+  const damaging = effects.some((e) => ['damage', 'injure', 'injury', 'kill'].includes(e.type))
+    || /explo|blast|fire|burn|collaps|smash|blood|shatter|crash/i.test(`${roomEffect?.text ?? ''} ${texts.here ?? ''}`);
+  if (damaging && room && world.deaths) world.deaths.raiseDread(world.maps.mapOf(room.id) ?? 'village', 1, `an incident at ${room.name}`);
   const objectChanges = applyObjectChanges(world, room, input.objectChanges, ev.id);
   return {
     eventId: ev.id,
@@ -281,21 +286,30 @@ function applyToCitizen(world, c, e, now, minutes) {
   const n = c.needs;
   switch (e.type) {
     case 'damage': {
+      // step 7B: damage is a real hit on a body part, resolved by the damage API (a profile list, or one blunt hit)
       const amount = Math.max(0, Number(e.amount) || 0);
-      n.hp = Math.max(0, n.hp - amount);
-      world.logEvent('damage', { actorId: c.id, location: c.location, amount, hp: Math.round(n.hp) });
-      break; // hp 0 → collapse/death happens on the next needs tick
+      const cause = e.cause ?? 'a director event';
+      const hits = Array.isArray(e.profile) && e.profile.length ? e.profile : amount > 0 ? [{ damageType: e.damageType ?? 'blunt', part: e.part ?? 'random', amount }] : [];
+      for (const h of hits) world.body.applyProfileEntry(c, h, cause, null);
+      world.logEvent('damage', { actorId: c.id, location: c.location, amount, vitality: Math.round(c.body?.vitality ?? 0), blood: Math.round(c.body?.blood ?? 100) });
+      break;
     }
     case 'heal':
-      n.hp = Math.min(n.hpMax ?? 100, n.hp + Math.max(0, Number(e.amount) || 0));
+      // step 7B: external healing (director): reduces severities; vitality comes back with it
+      world.body.heal(c.id, { all: true, amount: Math.max(0, Number(e.amount) || 0) / 4, source: 'director' });
+      if (c.body) c.body.vitality = Math.min(100, c.body.vitality + Math.max(0, Number(e.amount) || 0));
+      world.body.afterChange(c);
       break;
     case 'needs': {
       for (const k of ['hunger', 'fatigue', 'hp']) {
         if (e[k] == null || e[k] === '') continue;
         const v = Number(e[k]);
         if (!Number.isFinite(v)) continue;
-        const max = k === 'hp' ? n.hpMax ?? 100 : 100;
-        n[k] = Math.min(max, Math.max(0, e.mode === 'add' ? n[k] + v : v));
+        if (k === 'hp') { // step 7B: "hp" is vitality
+          if (c.body) c.body.vitality = Math.min(100, Math.max(0, e.mode === 'add' ? c.body.vitality + v : v));
+          continue;
+        }
+        n[k] = Math.min(100, Math.max(0, e.mode === 'add' ? n[k] + v : v));
       }
       break; // levels update on the next tick and announce themselves normally
     }

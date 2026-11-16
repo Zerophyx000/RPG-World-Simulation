@@ -1,0 +1,12 @@
+[
+  {
+    "id": "brackenford",
+    "name": "the village of Brackenford",
+    "kind": "village",
+    "public": true,
+    "description": "Everyone who lives in Brackenford.",
+    "members": [
+      "mira"
+    ]
+  }
+]

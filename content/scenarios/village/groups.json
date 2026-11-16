@@ -1,0 +1,60 @@
+[
+  {
+    "id": "brackenford",
+    "name": "the village of Brackenford",
+    "kind": "village",
+    "public": true,
+    "description": "Everyone who lives in Brackenford.",
+    "members": [
+      "greta",
+      "tomas",
+      "lena",
+      "anselm",
+      "jonas"
+    ]
+  },
+  {
+    "id": "smith_household",
+    "name": "the smith's household",
+    "kind": "household",
+    "public": true,
+    "description": "Tomas the smith and his apprentice, under one roof.",
+    "members": [
+      {
+        "id": "tomas",
+        "role": "head"
+      },
+      {
+        "id": "jonas",
+        "role": "apprentice"
+      }
+    ]
+  },
+  {
+    "id": "old_company",
+    "name": "the old company",
+    "kind": "faction",
+    "public": true,
+    "description": "Those who marched in the old war and came back.",
+    "members": [
+      "tomas",
+      "anselm"
+    ]
+  },
+  {
+    "id": "kellmarsh_crows",
+    "name": "the Kellmarsh Crows",
+    "kind": "gang",
+    "public": false,
+    "wariness": 4,
+    "description": "Thieves out of Kellmarsh who work the villages one at a time.",
+    "purpose": "find what is worth taking, take it quietly, and be gone",
+    "members": [
+      {
+        "id": "kael",
+        "role": "member",
+        "secret": true
+      }
+    ]
+  }
+]

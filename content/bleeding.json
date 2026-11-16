@@ -1,0 +1,33 @@
+{
+  "_doc": "Step 7B bleeding model (all numbers here). rate (% blood per game hour) = vesselBase x sizeFactor x gape x partFactor x activity x (1 - clot) x treatmentFactor. clotSpeed is clot progress per game minute (0..1; 0.95 closes the wound) before the size/gape slowdown and the clotEfficiency penalties. Several bleeding wounds share the body's clotting: efficiency = max(0.3, 1 - 0.12 x other bleeding wounds), times the blood-loss stage penalty, times 0.7 when cold or in shock.",
+  "vesselBase": { "capillary": 1, "venous": 6, "minor_arterial": 40, "major_arterial": 150 },
+  "clotSpeed": { "capillary": 0.05, "venous": 0.015, "minor_arterial": 0.002, "major_arterial": 0 },
+  "sizeFactor": { "min": 0.3, "max": 3, "cmPer": 5 },
+  "activity": { "resting": 0.8, "idle": 1.0, "walking": 1.3, "working": 1.6, "carried": 1.1 },
+  "internal": { "rate": { "moderate": 4, "major": 25 }, "clotSpeed": 0.004, "smallBelow": 8 },
+  "treatment": {
+    "pressure": { "capillary": 0.3, "venous": 0.3, "minor_arterial": 0.5, "major_arterial": 0.7, "clot": 2 },
+    "wrapped": { "capillary": 0.5, "venous": 0.5, "minor_arterial": 0.8, "major_arterial": 0.8, "clot": 1.5 },
+    "bandaged": { "capillary": 0.2, "venous": 0.2, "minor_arterial": 0.4, "major_arterial": 0.6, "clot": 2.5 },
+    "packed": { "capillary": 0.1, "venous": 0.1, "minor_arterial": 0.25, "major_arterial": 0.25, "clot": 3 }
+  },
+  "stages": [
+    { "min": 85, "name": "none", "consciousness": 0, "moving": 1, "clot": 1, "fatigue": 1 },
+    { "min": 70, "name": "mild blood loss", "consciousness": -0.05, "moving": 1, "clot": 1, "fatigue": 1.2 },
+    { "min": 60, "name": "moderate blood loss", "consciousness": -0.2, "moving": 0.8, "clot": 0.8, "fatigue": 1.3 },
+    { "min": 50, "name": "severe blood loss", "consciousness": -0.45, "moving": 0.6, "clot": 0.6, "fatigue": 1.5 },
+    { "min": 0, "name": "critical blood loss", "consciousness": -0.75, "moving": 0.3, "clot": 0.4, "fatigue": 2, "vitalityDrain": 10 }
+  ],
+  "deathBlood": 35,
+  "regen": { "restingFed": 1.5, "other": 0.5, "anemiaBelow": 85, "anemiaClearAbove": 90 },
+  "rebleed": { "resetTo": 0.5, "perMove": 0.08, "arterialMult": 2, "sizeMult": 0.15 },
+  "critical": { "graceMinutes": 15, "survivableRate": 30, "internalMax": 60, "totalMax": 450, "majorArterialMax": 1 },
+  "texts": [
+    { "max": 1, "name": "oozing" },
+    { "max": 4, "name": "trickling" },
+    { "max": 15, "name": "a steady flow" },
+    { "max": 40, "name": "heavy" },
+    { "max": 100, "name": "pulsing" },
+    { "max": 100000, "name": "spurting" }
+  ]
+}

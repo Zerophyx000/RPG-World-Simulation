@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent World: art gallery</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { overflow: auto; height: auto; display: block; padding: 16px 22px 60px; }
+    h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 26px 0 8px; color: var(--accent); }
+    .sheet canvas { image-rendering: pixelated; background: #4b6e3f; border: 1px solid var(--line); border-radius: 4px; display: block; margin: 4px 0; }
+    .swatch { display: inline-flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--muted); margin: 2px; }
+    .swatch i { display: block; width: 26px; height: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Art gallery</h1>
+  <p class="muted">Every picture on the map is drawn by code (no image files). This page shows all of it: palette, font, tiles, characters, objects, effects. Read-only; reads <code>/api/art</code> and <code>/api/maps</code>. See also <a href="/map-preview.html">map preview</a> and <a href="/">the app</a>.</p>
+  <div id="out">Drawing…</div>
+  <script type="module" src="/art-gallery.js"></script>
+</body>
+</html>

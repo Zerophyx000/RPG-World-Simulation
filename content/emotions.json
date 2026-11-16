@@ -1,0 +1,107 @@
+{
+  "_comment": "Step 6. Emotion types are content. bands: intensity 1-3 slight, 4-6 strong, 7-8 intense, 9-10 overwhelming. 'body' is what the citizen feels (second person, no numbers); 'cue' is what others see ({Name} {subj} {obj} {poss}, optional ' {at}' = ', glaring at Kael'). halfLifeHours is game hours. contagion: rate per 10 game minutes (0 = not contagious).",
+  "bands": [3, 6, 8, 10],
+  "types": {
+    "joy": {
+      "aimed": "optional", "valence": 1, "halfLifeHours": 4, "contagion": 0.25, "color": "#e8c547",
+      "body": ["There's a lightness in you", "You feel warm and light, and you keep wanting to smile", "Your chest is full and you can hardly keep still", "You are giddy, almost dizzy with happiness"],
+      "aim": "because of {target}",
+      "cue": ["{Name} seems in good spirits", "{Name} is smiling, plainly pleased{at}", "{Name} is beaming and can hardly keep still", "{Name} is laughing out loud, overjoyed"],
+      "cueAt": " with {target}"
+    },
+    "sadness": {
+      "aimed": "optional", "valence": -1, "halfLifeHours": 24, "contagion": 0.1, "color": "#5b7fb5",
+      "body": ["A slight heaviness sits on you", "There is a weight on your chest and your thoughts keep sinking", "Your throat is tight and your eyes sting", "Grief presses on you so hard it is difficult to breathe"],
+      "aim": "when you think of {target}",
+      "cue": ["{Name} seems a little subdued", "{Name} looks downcast and slow", "{Name}'s eyes are red and {subj} hardly looks up", "{Name} is weeping openly"],
+      "cueAt": ""
+    },
+    "fear": {
+      "aimed": "optional", "valence": -1, "halfLifeHours": 1, "contagion": 0.35, "color": "#e08a3c",
+      "body": ["A slight unease prickles at the back of your neck", "Your stomach is tight and your hands are cold", "Your heart is hammering and your mouth is dry", "Terror has hold of you; your legs want to run on their own"],
+      "aim": "whenever {target} is near",
+      "cue": ["{Name} seems a little on edge", "{Name} is tense and keeps glancing {glance}", "{Name} is pale and keeps glancing {glance}", "{Name} is white as chalk and shaking"],
+      "cueAt": ""
+    },
+    "anger": {
+      "aimed": "optional", "valence": -1, "halfLifeHours": 3, "contagion": 0.25, "color": "#d9483b",
+      "body": ["A slight irritation itches at you", "Your jaw is tight and there is heat in your face", "Your jaw is clenched, your face is hot and your hands want to make fists", "You are shaking with rage; everything else has gone red and far away"],
+      "aim": "at {target}",
+      "cue": ["{Name} seems a bit short-tempered", "{Name} looks angry, jaw set{at}", "{Name} looks furious{at}", "{Name} is shaking with rage{at}"],
+      "cueAt": ", glaring at {target}"
+    },
+    "disgust": {
+      "aimed": "optional", "valence": -1, "halfLifeHours": 6, "contagion": 0.1, "color": "#8a9a3a",
+      "body": ["You feel a slight distaste", "Your lip wants to curl and you would rather not stand close", "Your stomach turns", "You can barely keep from retching"],
+      "aim": "at {target}",
+      "cue": ["{Name} wrinkles {poss} nose a little", "{Name}'s lip is curled{at}", "{Name} recoils{at}", "{Name} turns away{at}, looking sick"],
+      "cueAt": " at {target}"
+    },
+    "shame": {
+      "aimed": "none", "valence": -1, "halfLifeHours": 24, "contagion": 0, "color": "#b56b8f",
+      "body": ["A slight embarrassment warms your ears", "Your face burns and you want to look at the floor", "You feel eyes on you and wish the ground would open", "You can hardly lift your head; you want to disappear"],
+      "aim": "",
+      "cue": ["{Name} seems a little embarrassed", "{Name} is red-faced and won't meet anyone's eye", "{Name} keeps {poss} head down, shoulders hunched", "{Name} hides {poss} face"],
+      "cueAt": ""
+    },
+    "guilt": {
+      "aimed": "optional", "valence": -1, "halfLifeHours": 72, "contagion": 0, "color": "#8b6fb0",
+      "body": ["Something nags faintly at your conscience", "There is a knot in your stomach that won't loosen", "Your conscience gnaws at you; you keep going over what you did", "Guilt sits on you like a stone; you can think of nothing else"],
+      "aim": "when you think of {target}",
+      "cue": ["{Name} seems a little uneasy", "{Name} seems troubled and avoids people's eyes", "{Name} flinches when spoken to, as if expecting blame", "{Name} looks haunted"],
+      "cueAt": ""
+    },
+    "pride": {
+      "aimed": "optional", "valence": 1, "halfLifeHours": 8, "contagion": 0, "color": "#c9a227",
+      "body": ["You feel quietly pleased with yourself", "You stand a little straighter", "Your chest swells; you feel a head taller", "You are bursting with pride"],
+      "aim": "in {target}",
+      "cue": ["{Name} looks quietly pleased", "{Name} stands a little straighter than usual", "{Name} carries {obj}self like someone who has won", "{Name} is glowing with pride"],
+      "cueAt": ""
+    },
+    "affection": {
+      "aimed": "required", "valence": 1, "halfLifeHours": 6, "contagion": 0.1, "color": "#e58aa5",
+      "body": ["You feel a slight warmth", "A warmth spreads through your chest", "Your heart is full and you want to be near", "Tenderness floods you"],
+      "aim": "towards {target}",
+      "cue": ["{Name}'s face softens a little{at}", "{Name} looks warmly{at}", "{Name} can't keep the fondness off {poss} face{at}", "{Name} gazes{at} with open tenderness"],
+      "cueAt": " at {target}"
+    },
+    "gratitude": {
+      "aimed": "required", "valence": 1, "halfLifeHours": 24, "contagion": 0, "color": "#d4b04a",
+      "body": ["You feel a little thankful", "You feel warmly thankful", "You are moved, and you want to give something back", "You are overwhelmed with gratitude"],
+      "aim": "towards {target}",
+      "cue": ["{Name} seems appreciative", "{Name} looks grateful{at}", "{Name} is visibly moved{at}", "{Name} is close to tears with gratitude{at}"],
+      "cueAt": " towards {target}"
+    },
+    "envy": {
+      "aimed": "required", "valence": -1, "halfLifeHours": 48, "contagion": 0, "color": "#4fae5a",
+      "body": ["Something pricks at you faintly", "There is a sour twist in your stomach", "It eats at you; your eyes keep going back to it", "Wanting burns in you so hard that you can taste it"],
+      "aim": "whenever you see {target}{aboutEnvy}",
+      "cue": ["{Name}'s eyes linger a moment{at}", "{Name} keeps looking{at} with a sour face", "{Name} can't take {poss} eyes off{atPlain}", "{Name} stares{at} with naked wanting"],
+      "cueAt": " at {target}"
+    },
+    "jealousy": {
+      "aimed": "required", "valence": -1, "halfLifeHours": 24, "contagion": 0, "color": "#9a5fd0",
+      "body": ["Something tightens in you, faintly", "There's a tight knot in your stomach", "Your chest is tight and hot and you can't look away", "It claws at you; you can hardly think for it"],
+      "aim": "whenever {target} is near {about}",
+      "cue": ["{Name} glances over now and then{at}", "{Name} keeps watching{at}, lips pressed thin", "{Name} can't stop watching{at}", "{Name} watches{at} with a face like thunder"],
+      "cueAt": " {target}"
+    }
+  },
+  "mood": {
+    "low": ["Everything feels a little grey today.", "Everything feels grey and heavy today."],
+    "high": ["The day feels full of possibilities.", "Everything seems bright today."],
+    "tense": ["You are wound tight; small things set your teeth on edge."],
+    "lowLasting": "You've felt low for days now.",
+    "highLasting": "You've been in high spirits lately."
+  },
+  "tools": {
+    "anger": { "first": ["say"], "notes": { "say": "say what's on your mind", "leave_conversation": "it would feel like backing down" }, "instruction": "Your first impulse feels overwhelmingly right; second thoughts feel far away." },
+    "fear": { "first": ["move_to", "travel_to"], "notes": { "move_to": "away from here", "travel_to": "away from here", "wait": "stay still, stay unnoticed" }, "instruction": "Your heart is pounding. It's hard to think past the danger." },
+    "shame": { "first": [], "notes": { "leave_conversation": "get away from their eyes", "move_to": "get away from their eyes" }, "instruction": "You want nothing more than to be somewhere nobody is looking at you." },
+    "guilt": { "first": [], "notes": { "give": "make it right?", "say": "make it right?" }, "instruction": "What you did will not leave you alone." },
+    "jealousy": { "first": [], "notes": {}, "instruction": "You can't stop watching them." },
+    "envy": { "first": [], "notes": {}, "instruction": "You keep coming back to what they have and you don't." },
+    "sadness": { "first": [], "notes": {}, "instruction": "Everything takes effort; part of you just wants to be left alone." },
+    "joy": { "first": [], "notes": {}, "instruction": "You feel like sharing it with someone." }
+  }
+}

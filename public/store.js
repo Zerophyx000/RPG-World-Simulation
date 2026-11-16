@@ -9,6 +9,8 @@ export const store = {
   rooms: new Map(),        // id -> { id, name, description, exits, tags, x, y, effects }
   citizens: new Map(),     // id -> summary (incl. activity, lastInnerThought)
   conversations: new Map(),// active only: id -> { id, roomId, participants, everParticipants, lines, held }
+  endedConversations: new Map(), // step 9: id -> { reason, at (real ms) } for conversations that just ended
+  storylineFocus: null,    // step 9: a storyline id chosen in the Story view, highlighted on the map
   objects: new Map(),      // step 5: id -> object view (true view; the director's camera)
   events: [],              // recent events, newest first
   observer: null,          // latest observer report

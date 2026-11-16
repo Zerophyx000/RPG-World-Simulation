@@ -20,9 +20,9 @@ export function seedFromScenario(world, inputs) {
     }
     for (const r of Array.isArray(input.relationships) ? input.relationships : []) {
       if (!world.citizens.has(r.to)) continue;
-      mem.upsertRel(c.id, r.to, {
-        affinity: r.affinity ?? 0, trust: r.trust ?? 0, familiarity: r.familiarity ?? 3,
-        nameKnown: r.nameKnown !== false, nameConfidence: r.nameKnown === false ? 0 : 1, summary: r.summary ?? null,
+      world.relationships.change(c.id, r.to, { affinity: r.affinity ?? 0, trust: r.trust ?? 0, familiarity: r.familiarity ?? 3 }, {
+        set: true, source: 'seed', reason: r.reason ?? r.summary ?? ((r.familiarity ?? 3) >= 5 ? "We've known each other for years." : "We've met before."),
+        meta: { nameKnown: r.nameKnown !== false, nameConfidence: r.nameKnown === false ? 0 : 1, summary: r.summary ?? null },
       });
     }
     world.saveCitizen(c);
@@ -40,7 +40,9 @@ export function ensureVillageAcquaintance(world) {
   for (const a of locals) {
     for (const b of locals) {
       if (a === b) continue;
-      world.memory.upsertRel(a.id, b.id, { familiarity: 6, nameKnown: true, nameConfidence: 1 });
+      world.relationships.change(a.id, b.id, { familiarity: 6 }, {
+        set: true, source: 'seed', reason: "We've known each other for years.", meta: { nameKnown: true, nameConfidence: 1 },
+      });
       n++;
     }
   }
@@ -135,10 +137,13 @@ async function bootstrapOne(world, c) {
   let rels = 0;
   for (const rr of Array.isArray(a.relationships) ? a.relationships : []) {
     if (!world.citizens.has(rr?.person) || rr.person === c.id) continue;
-    world.memory.upsertRel(c.id, rr.person, {
+    const summary = rr.summary ? String(rr.summary).trim() : null;
+    world.relationships.change(c.id, rr.person, {
       // GLM sometimes omits trust despite the schema: then derive a rough value from how much they like them
       affinity: Number(rr.affinity) || 0, trust: rr.trust != null && rr.trust !== '' ? Number(rr.trust) || 0 : Math.round((Number(rr.affinity) || 0) * 0.6), familiarity: Number(rr.familiarity) || 0,
-      nameKnown: Boolean(rr.knows_name), nameConfidence: rr.knows_name ? 1 : 0, summary: rr.summary ? String(rr.summary).trim() : null,
+    }, {
+      set: true, source: 'seed', reason: summary || ((Number(rr.familiarity) || 0) >= 5 ? "We've known each other for years." : "We've met before."),
+      meta: { nameKnown: Boolean(rr.knows_name), nameConfidence: rr.knows_name ? 1 : 0, summary },
     });
     rels++;
   }

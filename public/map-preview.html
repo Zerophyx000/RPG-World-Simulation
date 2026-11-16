@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent World: map preview</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { overflow: auto; height: auto; display: block; padding: 14px 20px 50px; }
+    canvas { image-rendering: pixelated; border: 1px solid var(--line); border-radius: 4px; max-width: none; }
+    .ok { color: var(--ok); } .bad { color: var(--bad); } label { margin-right: 14px; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:20px;margin:0 0 4px">Map preview</h1>
+  <p class="muted">Draws <code>content/maps/*.json</code> with the real tiles, with the spots, doors and adjacency on top, and runs the same consistency check the server runs at boot. Reload after editing a map file. <a href="/art.html">art gallery</a> · <a href="/">the app</a></p>
+  <div id="problems"></div>
+  <p><label><input type="checkbox" id="o-spots" checked> spots</label><label><input type="checkbox" id="o-adj" checked> adjacency</label><label><input type="checkbox" id="o-doors" checked> doors</label><label><input type="checkbox" id="o-grid"> grid</label>
+    <label>scale <select id="o-scale"><option>0.5</option><option selected>1</option><option>2</option></select></label></p>
+  <div id="maps"></div>
+  <script type="module" src="/map-preview.js"></script>
+</body>
+</html>

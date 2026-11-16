@@ -1,5 +1,5 @@
 // Inspector: right drawer for one citizen, ordered for reading:
-// header → needs → inner thought → model reasoning → plan → conversation → inbox → memories (core memory +
+// header → needs → inner thought → model reasoning → life (step 9.5: intentions, habits, known deaths) → conversation → inbox → memories (core memory +
 // constellation) → relationships → nights → places → carrying / known objects / last seen → act → persona →
 // prompt preview → LLM calls.
 import { store, subscribe, select } from '../store.js';
@@ -8,14 +8,24 @@ import { colorOf } from '../colors.js';
 import { bubblesHtml } from './conversations.js';
 import { showCall } from './llm.js';
 import { actPanelHtml, bindActPanels } from './act.js';
-import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml, planHtml } from './memories.js';
+import { memState, constellationHtml, coreMemoryHtml, nightsHtml, relationshipsHtml } from './memories.js';
+import { lifeHtml, lifeClick } from './life-ui.js';
 import { showEvent } from '../util.js';
+import { openReasons, warinessHtml, groupChip } from './social-ui.js';
+import { emotionsPanelHtml, emotionTypes } from './emotions-ui.js';
+import { bodyPanelHtml } from './body-ui.js';
+import { physicalHtml, physicalSummary } from './physical-ui.js'; // step 10
+import { schemingHtml, schemingSummary } from './scheming-ui.js'; // step 11
+
+let emoHistory = null; // GET /api/citizens/:id/emotions/history (last game days)
+let emoFor = null;
 
 let root = null;
 let data = null;
 let mems = null;   // GET /api/citizens/:id/memories
 let nights = null; // GET /api/citizens/:id/consolidations
-const open = new Set(['reasoning', 'plan', 'memories', 'rels', 'objects']); // which <details> are open (reasoning starts open)
+let bodyInternal = false; // the body panel's "internal organs" layer
+const open = new Set(['reasoning', 'life', 'memories', 'rels', 'objects', 'body']); // which <details> are open (reasoning starts open)
 
 export function mount(el) {
   root = el;
@@ -31,14 +41,25 @@ export function mount(el) {
   const refresh = debounce(load, 250);
   subscribe('citizen', (id) => id === store.selectedId && refresh());
   subscribe('conversation', (id) => data?.conversationId === id && refresh());
-  subscribe('llm', (call) => call?.citizenId === store.selectedId && refresh());
+  subscribe('llm', (call) => {
+    if (call?.citizenId !== store.selectedId) return;
+    refresh();
+    if (call.purpose === 'decide') loadReasoning(call.citizenId, true); // step A6: the new call may hold the full reasoning
+  });
   subscribe('clock', updateCountdown);
   const refreshMem = debounce(loadMemories, 800);
   subscribe('memory', (m) => m?.citizenId === store.selectedId && refreshMem());
   subscribe('relationship', (r) => r?.citizenId === store.selectedId && refresh());
   subscribe('objects', () => store.selectedId && refresh());
 
+  el.addEventListener('change', (e) => {
+    if (e.target.matches?.('.body-internal')) {
+      bodyInternal = e.target.checked;
+      root.querySelector('.body-fig')?.classList.toggle('show-internal', bodyInternal);
+    }
+  });
   el.addEventListener('click', (e) => {
+    if (data && e.target.closest('.life-panel')) { lifeClick(e, data, load).catch((err) => alert(err.message)); }
     if (e.target.closest('[data-close]')) select(null);
     const call = e.target.closest('[data-call]');
     if (call) {
@@ -47,6 +68,8 @@ export function mount(el) {
     }
     const conv = e.target.closest('[data-open-conv]');
     if (conv) navigate('conversations', { conversationId: conv.dataset.openConv });
+    const why = e.target.closest('[data-reasons]');
+    if (why && data) openReasons(data.id, why.dataset.reasons);
     const ev = e.target.closest('[data-show-event]');
     if (ev) showEvent(ev.dataset.showEvent);
     const dot = e.target.closest('[data-mem]');
@@ -86,11 +109,29 @@ async function load() {
     if (id !== store.selectedId) return;
     data = d;
     if (!mems) loadMemories();
+    loadEmotionHistory(id);
+    loadReasoning(id); // step A6: the full text behind the trimmed lastThought
   } catch (err) {
     root.innerHTML = `<button class="close" data-close>✕</button><p class="bad">${esc(err.message)}</p>`;
     return;
   }
   render();
+}
+
+// The mood line needs the hourly samples; refetched at most every few seconds.
+let emoLoadedAt = 0;
+async function loadEmotionHistory(id) {
+  if (emoFor === id && Date.now() - emoLoadedAt < 8000) return;
+  emoFor = id;
+  emoLoadedAt = Date.now();
+  await emotionTypes();
+  const now = store.clock?.gameMinutes ?? 0;
+  try {
+    const h = await api.get(`/api/citizens/${encodeURIComponent(id)}/emotions/history?from=${Math.floor(now - 5 * 1440)}&limit=1500`);
+    if (id !== store.selectedId) return;
+    emoHistory = h;
+    render();
+  } catch { /* panel shows without the mood line */ }
 }
 
 async function loadMemories() {
@@ -109,7 +150,7 @@ async function loadMemories() {
 }
 
 // UI shows real names: {{c:id}} tokens in stored texts become names.
-const detok = (t) => String(t ?? '').replace(/\{\{c:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
+const detok = (t) => String(t ?? '').replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => store.citizens.get(id)?.name ?? id);
 
 // Need bars with tick marks at the level thresholds.
 function needBars(c) {
@@ -179,16 +220,25 @@ function render() {
       <div class="activity-line">${ICONS[a.type] ?? ''} <b>${esc(a.type)}</b> · <span id="insp-activity">${esc(activityLabel({ ...c, activity: a }))}</span></div>
     </div>
 
+    ${(c.groupsView ?? []).length ? `<div class="gchips">${c.groupsView.map(groupChip).join('')}</div>` : ''}
+    ${(p.secretGoals ?? []).length ? `<div class="secret-goals" title="Only in their own prompt">🔒 ${p.secretGoals.map(esc).join(' · ')}</div>` : ''}
     ${needBars(c)}
     ${(c.marks ?? []).length ? `<div class="marks">${c.marks.map((m) => `<span class="mark">${esc(m.text)}</span>`).join('')}</div>` : ''}
+
+    <h3>Emotions</h3>
+    <div class="emo-panel">${emotionsPanelHtml(c.emotionsView, emoFor === c.id ? emoHistory : null)}</div>
+
+    ${details('body', `Body${c.bodyView?.status?.length ? ` · ${c.bodyView.status.join(', ')}` : ''}${c.bodyView?.conditions?.length ? ` · ${c.bodyView.conditions.length} condition${c.bodyView.conditions.length === 1 ? '' : 's'}` : ''}`, bodyPanelHtml(c.bodyView, { internal: bodyInternal }))}
 
     <h3>Inner thought</h3>
     ${c.lastInnerThought ? `<div class="inner-thought" style="border-color:${color}">“${esc(c.lastInnerThought)}”</div>` : '<div class="inner-thought none">No inner thought yet.</div>'}
     ${c.lastDecisionAt != null ? `<p class="muted">Last decision ${esc(gameTime(c.lastDecisionAt))}</p>` : ''}
 
-    ${details('reasoning', 'Model reasoning', `<pre class="detail">${esc(c.lastThought ?? '(none)')}</pre>`)}
+    ${details('reasoning', 'Model reasoning', reasoningHtml(c) + reasoningFinishHtml(c))}
 
-    ${details('plan', `Plan${c.planView ? ` · ${Math.min(c.planView.cursor, c.planView.steps.length)}/${c.planView.steps.length}` : ''}`, planHtml(c))}
+    ${details('scheming', `Ambitions, schemes, stories${c.scheming ? ` · ${schemingSummary(c.scheming)}` : ''}`, `<div class="life-panel">${schemingHtml(c.scheming)}</div>`)}
+    ${details('physical', `Physical${c.physical ? ` · ${physicalSummary(c.physical)}` : ''}`, `<div class="life-panel">${physicalHtml(c.physical)}</div>`)}
+    ${details('life', `Life · ${(c.intentions ?? []).length} intention${(c.intentions ?? []).length === 1 ? '' : 's'} · ${(c.habits ?? []).length} habits${(c.knownDeaths ?? []).length ? ` · knows ${c.knownDeaths.length} death${c.knownDeaths.length === 1 ? '' : 's'}` : ''}${c.grief ? ' · 🎗' : ''}${c.mortal ? ' · ☠' : ''}`, `<div class="life-panel">${lifeHtml(c)}</div>`)}
 
     <h3>Conversation</h3>
     ${conv ? `<div class="mini-conv">${bubblesHtml(conv, { thoughts: true, compact: true })}</div>
@@ -202,6 +252,8 @@ function render() {
     ${details('memories', `Memories (${c.memoryCount ?? 0} active)`, `${coreMemoryHtml(mems, nights)}${constellationHtml(mems)}`)}
 
     ${details('rels', `Relationships (${(c.relationshipsView ?? []).length})`, relationshipsHtml(c, store.clock?.gameMinutes ?? 0))}
+
+    ${details('strangers', `Strangers · trust in strangers ${Number(c.strangerTrust ?? 0.5).toFixed(2)}`, strangersHtml(c))}
 
     ${details('nights', `Nights (${(nights ?? []).length})`, nightsHtml(nights))}
 
@@ -236,6 +288,80 @@ function render() {
         <span class="${k.status === 'ok' ? '' : 'bad'}">${esc(k.status)} · ${k.duration_ms ?? '–'} ms · ${esc(gameTime(k.game_time))}</span></li>`).join('')}</ul>`
       : '<p class="muted">None yet.</p>'}`;
   root.scrollTop = scroll;
+}
+
+// ---------- full model reasoning (step A6) ----------
+// The server trims c.lastThought to ~2000 chars; the full text lives in llm_calls.reasoning of the citizen's
+// latest decide call. Cached per citizen; the cache is keyed by call id, so we only refetch the detail when
+// the latest decide call changes — signalled by the citizen's lastDecisionAt or a new 'llm' event for them —
+// and never more often than REASONING_EVERY_MS.
+const REASONING_EVERY_MS = 4000;
+const reasoningCache = new Map();   // citizenId -> { callId, reasoning, finishReason, decisionAt, fetchedAt }
+let reasoningLoading = null;        // citizen whose full reasoning is being fetched right now
+
+function isTrimmed(t) {
+  t = String(t ?? '');
+  return t.endsWith('…') && t.length >= 1900;
+}
+
+/** 'shortened — open the inspector' note for any trimmed thought shown outside the inspector. */
+export function trimmedNote(t) {
+  return isTrimmed(t) ? '<span class="muted-note">shortened — open the inspector</span>' : '';
+}
+
+async function loadReasoning(id, force = false) {
+  if (!id || reasoningLoading === id) return;
+  const cache = reasoningCache.get(id);
+  if (!force) {
+    if (Date.now() - (cache?.fetchedAt ?? 0) < REASONING_EVERY_MS) return;          // asked again within a few seconds
+    const c = store.citizens.get(id);
+    if (cache && (c?.lastDecisionAt ?? null) === (cache.decisionAt ?? null)) return; // no newer decide call
+  }
+  reasoningLoading = id;
+  try {
+    const [top] = await api.get(`/api/llm/calls?citizenId=${encodeURIComponent(id)}&purpose=decide&limit=1`);
+    if (id !== store.selectedId) return;
+    if (!top) { // no decide call yet: remember it, so every load() doesn't ask again
+      reasoningCache.set(id, { decisionAt: store.citizens.get(id)?.lastDecisionAt ?? null, fetchedAt: Date.now() });
+      return;
+    }
+    if (reasoningCache.get(id)?.callId === top.id) return;   // already have this call's full text
+    const full = await api.get(`/api/llm/calls/${top.id}`);
+    if (id !== store.selectedId) return;
+    reasoningCache.set(id, {
+      callId: top.id, reasoning: full.reasoning ?? null, finishReason: full.finish_reason ?? null,
+      decisionAt: store.citizens.get(id)?.lastDecisionAt ?? null, fetchedAt: Date.now(),
+    });
+    if (id === store.selectedId) render();
+  } catch { /* older server or network trouble: the inspector keeps the trimmed fallback */ }
+  finally {
+    if (reasoningLoading === id) reasoningLoading = null;
+  }
+}
+
+// Full reasoning once fetched, the trimmed lastThought as fallback while loading or on failure.
+function reasoningHtml(c) {
+  const full = reasoningCache.get(c.id);
+  if (!full?.callId || full.reasoning == null || full.reasoning === '') {
+    return `<pre class="detail">${esc(c.lastThought ?? '(none)')}</pre>${trimmedNote(c.lastThought)}`;
+  }
+  return `<pre class="detail">${esc(full.reasoning)}</pre>`;
+}
+
+function reasoningFinishHtml(c) {
+  const full = reasoningCache.get(c.id);
+  if (!full?.finishReason) return '';
+  return `<p class="muted">finish_reason: <b>${esc(full.finishReason)}</b>${full.finishReason === 'length' ? ' <span class="warn-red">cut off by the token cap</span>' : ''}</p>`;
+}
+
+// ---------- strangers (step 5.5) ----------
+function strangersHtml(c) {
+  const log = (c.strangerLog ?? []).slice().reverse().map((l) => `<div class="dim">${esc(gameTime(l.at))}: ${Number(l.value).toFixed(2)} — ${esc(l.why)}</div>`).join('');
+  const here = (c.strangersView ?? []).map(warinessHtml).join('');
+  const tags = (c.persona?.appearanceTags ?? []).length ? `<div class="dim">How they look to others: ${esc(c.persona.appearanceTags.join(', '))}</div>` : '';
+  return `<div class="dim">Learned attitude towards strangers (0 = expects the worst, 1 = trusting; starts at 0.5).</div>${tags}
+    ${log || '<div class="dim">No experiences with strangers yet.</div>'}
+    ${here ? `<h4>Strangers here right now</h4>${here}` : '<p class="muted">No strangers present.</p>'}`;
 }
 
 // ---------- objects (step 5) ----------

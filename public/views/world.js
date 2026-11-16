@@ -4,8 +4,13 @@
 // placement) or one citizen's SURFACE view (what they'd notice; "(you know)" hidden things dashed).
 import { store, subscribeMany } from '../store.js';
 import { esc, ICONS, activityLabel, truncate, navigate, needBadges, api, prefs, debounce } from '../util.js';
+import { bodyChips } from './body-ui.js';
 import { colorOf, tint } from '../colors.js';
 import { objectsIn, pillsHtml } from './objects-ui.js';
+import { ringStyle, ringTitle, emoIcons, colorOfEmotion } from './emotions-ui.js';
+import { subscribe } from '../store.js';
+
+const glows = new Map(); // roomId -> { color, type, until }
 
 let root = null;
 let objView = prefs.get('objView', 'true'); // 'off' | 'true' | 'surface'
@@ -57,10 +62,17 @@ export function mount(el) {
   });
   if (objView === 'surface') refreshSurface();
   const offClock = subscribeMany(['clock'], renderWalkers);
+  // Step 6: a room glows briefly when a feeling spreading through it crosses a band.
+  const offGlow = subscribe('emotion_room', (g) => {
+    glows.set(g.roomId, { color: g.color ?? colorOfEmotion(g.type), type: g.type, until: Date.now() + 7000 });
+    render();
+    setTimeout(render, 7200);
+  });
   render();
   return () => {
     off();
     offClock();
+    offGlow();
     root = null;
   };
 }
@@ -80,9 +92,9 @@ function chip(c) {
   const a = c.activity ?? { type: 'idle' };
   const dim = store.filterCitizen && store.filterCitizen !== c.id ? 'dimmed' : '';
   const label = a.type === 'idle' || a.type === 'thinking' ? '' : `<span class="act">${esc(truncate(activityLabel(c), 26))}</span>`;
-  return `<span class="chip ${a.type} ${c.id === store.selectedId ? 'selected' : ''} ${dim}" data-citizen="${esc(c.id)}"
-      style="--c:${colorOf(c.id)};--bg:${tint(c.id, 0.16)}" title="${esc(`${c.name}: ${activityLabel(c)}`)}">
-    <span>${ICONS[a.type] ?? '·'}</span><span class="nm">${esc(c.name)}</span>${needBadges(c)}${label}</span>`;
+  return `<span class="chip ${a.type} ${a.type === 'collapsed' && c.alive !== false ? 'lying' : ''} ${c.alive === false ? 'dead' : ''} ${c.id === store.selectedId ? 'selected' : ''} ${dim}" data-citizen="${esc(c.id)}"
+      style="--c:${colorOf(c.id)};--bg:${tint(c.id, 0.16)};${ringStyle(c)}" title="${esc(`${c.name}: ${activityLabel(c)}${ringTitle(c) ? ` · ${ringTitle(c)}` : ''}`)}">
+    <span>${ICONS[a.type] ?? '·'}</span><span class="nm">${esc(c.name)}</span>${emoIcons(c)}${bodyChips(c)}${needBadges(c)}${label}</span>`;
 }
 
 function objectStrip(r) {
@@ -138,8 +150,10 @@ function render() {
       const why = r.serviceOverrides?.[k]?.reason;
       return `<span class="svc ${on ? '' : 'off'}" title="${esc(on ? (r.allServices[k].description ?? k) : `${k} unavailable${why ? `: ${why}` : ''}`)}">${icon}</span>`;
     }).join('');
-    return `<div class="room-card ${r.effects?.length ? 'has-fx' : ''}" style="left:${p.x}%;top:${p.y}%">
-      <div class="room-head"><span class="room-name">${esc(r.name)}</span>${svc}${convs}</div>
+    const glow = glows.get(r.id);
+    const glowing = glow && glow.until > Date.now();
+    return `<div class="room-card ${r.effects?.length ? 'has-fx' : ''} ${glowing ? 'emo-glow' : ''}" style="left:${p.x}%;top:${p.y}%;${glowing ? `--glow:${glow.color}` : ''}">
+      <div class="room-head"><span class="room-name">${esc(r.name)}</span>${svc}${convs}${glowing ? `<span class="glow-label" style="color:${glow.color}">${esc(glow.type)} spreading</span>` : ''}</div>
       ${effects}
       <div class="chips">${here.length ? here.map(chip).join('') : '<span class="empty">empty</span>'}</div>
       ${objectStrip(r)}

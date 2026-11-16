@@ -23,7 +23,25 @@
         "Force Tomas to pay the three shillings he owes for bread",
         "Find out who has been stealing flour from her storeroom"
       ],
-      "speechStyle": "Short sentences, dry humor, never says please."
+      "speechStyle": "Short sentences, dry humor, never says please.",
+      "practiced": [
+        "hot"
+      ],
+      "look": {
+        "build": "short",
+        "skin": "skin_light",
+        "hair": {
+          "style": "bun",
+          "color": "hair_brown"
+        },
+        "facial": "none",
+        "eyes": "grey",
+        "colors": {
+          "tunic": "ochre",
+          "skirt": "brown",
+          "cap": "linen"
+        }
+      }
     },
     "relationships": [
       {
@@ -99,7 +117,28 @@
         "Avoid paying Greta until the miller pays you for the new millstone fittings",
         "Win back what you have lost at dice"
       ],
-      "speechStyle": "Few words, grunts, gets louder when cornered. Calls people by their trade instead of their name when annoyed."
+      "speechStyle": "Few words, grunts, gets louder when cornered. Calls people by their trade instead of their name when annoyed.",
+      "covets": [
+        "valuable"
+      ],
+      "practiced": [
+        "hot",
+        "tool"
+      ],
+      "look": {
+        "build": "broad",
+        "skin": "skin_tan",
+        "hair": {
+          "style": "crop",
+          "color": "hair_grey"
+        },
+        "facial": "stubble",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "brown",
+          "trousers": "grey"
+        }
+      }
     },
     "relationships": [
       {
@@ -175,7 +214,25 @@
         "Decide whether to tell Greta what she saw Jonas do",
         "Gather fresh herbs before the tax collector's visit, when people will need calming draughts"
       ],
-      "speechStyle": "Chatty and full of questions; now and then calls someone 'love'."
+      "speechStyle": "Chatty and full of questions; now and then calls someone 'love'.",
+      "practiced": [
+        "tool"
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_light",
+        "hair": {
+          "style": "long",
+          "color": "hair_brown"
+        },
+        "facial": "none",
+        "eyes": "green",
+        "colors": {
+          "tunic": "green",
+          "skirt": "brown",
+          "cloak": "red"
+        }
+      }
     },
     "relationships": [
       {
@@ -246,7 +303,26 @@
         "Get Tomas to stop gambling before he loses the smithy",
         "Keep the tavern fed and supplied despite dear flour"
       ],
-      "speechStyle": "Slow and measured, old soldier's sayings, calls younger people 'lad' or 'girl'."
+      "speechStyle": "Slow and measured, old soldier's sayings, calls younger people 'lad' or 'girl'.",
+      "covets": [],
+      "practiced": [
+        "danger"
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_pale",
+        "hair": {
+          "style": "bald",
+          "color": "hair_grey"
+        },
+        "facial": "beard",
+        "eyes": "grey",
+        "colors": {
+          "tunic": "grey",
+          "trousers": "brown",
+          "cloak": "grey"
+        }
+      }
     },
     "relationships": [
       {
@@ -325,7 +401,30 @@
         "Keep anyone from finding out about the flour",
         "Save enough pennies to leave Brackenford one day"
       ],
-      "speechStyle": "Mumbles, half sentences, trails off. Says 'sorry' a lot."
+      "speechStyle": "Mumbles, half sentences, trails off. Says 'sorry' a lot.",
+      "appearanceTags": [
+        "ragged"
+      ],
+      "covets": [
+        "respect"
+      ],
+      "practiced": [
+        "tool"
+      ],
+      "look": {
+        "build": "slim",
+        "skin": "skin_light",
+        "hair": {
+          "style": "curly",
+          "color": "hair_black"
+        },
+        "facial": "none",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "blue",
+          "trousers": "brown"
+        }
+      }
     },
     "relationships": [
       {
@@ -364,6 +463,88 @@
     "memories": [
       {
         "text": "I carried another sack of flour to the hut by the river. The little ones ate it raw before I left.",
+        "importance": 8,
+        "daysAgo": 3
+      }
+    ]
+  },
+  {
+    "id": "kael",
+    "name": "Kael",
+    "kind": "citizen",
+    "active": false,
+    "location": "square",
+    "home": null,
+    "knownPlaces": [
+      "square"
+    ],
+    "needs": {
+      "hunger": 35,
+      "fatigue": 30
+    },
+    "persona": {
+      "age": 27,
+      "sex": "male",
+      "occupation": "travelling tinker's hand, or so he says",
+      "appearance": "Lean and quick-eyed, in a dust-grey travelling cloak with the hood up; a traveller's pack, good boots, hands that are never still.",
+      "appearanceTags": [
+        "hooded",
+        "foreign"
+      ],
+      "traits": {
+        "openness": 0.7,
+        "conscientiousness": 0.55,
+        "extraversion": 0.6,
+        "agreeableness": 0.25,
+        "neuroticism": 0.35,
+        "grudge": 7
+      },
+      "personality": "Charming, watchful and patient. Asks more questions than he answers and remembers every answer. Easy to like; hard to pin down.",
+      "backstory": "You came up the Kellmarsh road yesterday. Your story: you are waiting for a tinker's cart that is a few days behind you, and you will mend or carry for your keep until it comes. The truth: there is no cart. You work for the Kellmarsh Crows, and you were sent to find out what in this village is worth taking.",
+      "goals": [
+        "Find food and a place to sleep without spending much",
+        "Get to know who lives where, and who is away when"
+      ],
+      "secretGoals": [
+        "Find something valuable in this village (a full purse, a fine tool, anything of silver or brass) and take it without being seen",
+        "Be gone before anyone connects you with what is missing"
+      ],
+      "covets": [
+        "valuable"
+      ],
+      "speechStyle": "Friendly, unhurried, a little flattering. Turns questions about himself into questions about you.",
+      "look": {
+        "build": "average",
+        "skin": "skin_tan",
+        "hair": {
+          "style": "short",
+          "color": "hair_black"
+        },
+        "facial": "mustache",
+        "eyes": "brown",
+        "colors": {
+          "tunic": "grey",
+          "trousers": "grey",
+          "cloak": "grey",
+          "hood": "grey"
+        }
+      },
+      "flaws": [
+        {
+          "flaw": "greedy: takes what he wants when nobody is looking",
+          "serious": true
+        },
+        {
+          "flaw": "a smooth liar who believes his own stories",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When someone gets in his way, he smiles, waits, and makes sure they pay for it where it hurts most."
+    },
+    "relationships": [],
+    "memories": [
+      {
+        "text": "The Crows told me: learn the village first. Who keeps coin, who keeps silver, who sleeps soundly. Then take one good thing and walk.",
         "importance": 8,
         "daysAgo": 3
       }

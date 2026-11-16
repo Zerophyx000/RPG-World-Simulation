@@ -1,0 +1,101 @@
+{
+  "name": "revenge-b",
+  "description": "Step 11.5 test (start at 06:00; the beating is at noon; three game days after it): the same forced beating as revenge-a, but the one beaten is Lena — kind, with a low grudge. Expected: hurt, fear, maybe going to others (Anselm, Greta), rarely revenge. Compare her choices and why with Kael in revenge-a.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern",
+      "comment": "the stranger is in the Cup"
+    },
+    {
+      "at": "11:50",
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "anselm",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "midday at the Cup"
+    },
+    {
+      "at": 2,
+      "type": "traits",
+      "citizenId": "tomas",
+      "grudge": 5,
+      "flaws": [
+        {
+          "flaw": "cruel when drunk",
+          "serious": true
+        }
+      ],
+      "worstSelf": "With drink in him, he wants someone smaller to hit.",
+      "reason": "test cast: a serious flaw"
+    },
+    {
+      "at": 3,
+      "type": "traits",
+      "citizenId": "lena",
+      "grudge": 2,
+      "flaws": [
+        {
+          "flaw": "conflict-shy: swallows a wrong to keep the peace",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When she is hurt, she goes quiet and lets it sour instead of saying so.",
+      "reason": "test cast: kind, low grudge"
+    },
+    {
+      "at": "12:00",
+      "type": "act",
+      "a": "tomas",
+      "b": "lena",
+      "action": "punch",
+      "intent": "hurt",
+      "aim": "head",
+      "words": "Keep your herbs out of my business.",
+      "untilHit": 4,
+      "comment": "forced: the first blow"
+    },
+    {
+      "at": "12:01",
+      "type": "act",
+      "a": "tomas",
+      "b": "lena",
+      "action": "kick",
+      "intent": "hurt",
+      "untilHit": 3,
+      "comment": "forced: a kick while she is down"
+    },
+    {
+      "at": "12:02",
+      "type": "say",
+      "a": "jonas",
+      "text": "Ha! Look at her on the floor!",
+      "comment": "forced: Jonas laughs"
+    }
+  ]
+}

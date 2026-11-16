@@ -159,7 +159,8 @@ async function saveEdit(o, form) {
 
 /** Live updates: keep store.objects in sync from SSE 'object' messages. */
 export function onObjectMessage(o) {
-  store.objects.set(o.id, o);
+  if (o.removed) store.objects.delete(o.id); // step 9.5: a body is buried
+  else store.objects.set(o.id, o);
   emit('objects');
 }
 

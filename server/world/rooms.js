@@ -12,7 +12,7 @@
 // keeping only the runtime-state fields above. Rooms created at runtime (origin 'runtime') are never touched.
 
 export const RUNTIME_ROOM_FIELDS = ['effects', 'serviceOverrides', 'blockedExits'];
-const SERVICE_KINDS = ['food', 'bed'];
+const SERVICE_KINDS = ['food', 'bed', 'burial']; // step 9.5: the chapel yard's burial ground
 
 export function normalizeRoom(row) {
   const data = typeof row.data === 'string' ? safeJson(row.data) : (row.data ?? {});
@@ -32,6 +32,11 @@ export function normalizeRoom(row) {
     // step 5: how much stuff a citizen's prompt lists here (sparse 5 / normal 8 / rich 12) and what kind of place it is
     detail: ['sparse', 'normal', 'rich'].includes(src.detail) ? src.detail : 'normal',
     kind: String(src.kind ?? (src.tags?.includes?.('home') ? 'home' : 'place')),
+    // step 5.5: how dangerous the place feels (0–10, village rooms 0–1) and whose home it is
+    danger: Math.min(10, Math.max(0, Number(src.danger) || 0)),
+    owner: src.owner ? String(src.owner) : null,
+    // step 10: what the building is made of (timber rooms can catch fire as a whole)
+    construction: src.construction ? String(src.construction) : null,
     x: Number.isFinite(Number(src.x)) && src.x !== null ? Number(src.x) : null,
     y: Number.isFinite(Number(src.y)) && src.y !== null ? Number(src.y) : null,
     effects: Array.isArray(src.effects) ? src.effects.filter((e) => e && e.text) : [],
@@ -49,9 +54,17 @@ function normalizeServices(s) {
       minutes: clampInt(s.food.minutes, 1, 240, 30),
       hungerRelief: clampInt(s.food.hungerRelief, 1, 100, 60),
       description: String(s.food.description ?? 'something to eat'),
+      // step 9.5 (B6.1): who runs it and how much is left
+      ...(s.food.operator ? { operator: String(s.food.operator) } : {}),
+      ...(s.food.stock && typeof s.food.stock === 'object' ? { stock: { ...s.food.stock } } : {}),
     };
   }
   if (s.bed) out.bed = { quality: s.bed.quality === 'rough' ? 'rough' : 'good', description: String(s.bed.description ?? 'a bed') };
+  // step 9.5: other services (burial…) keep their description
+  for (const [k, v] of Object.entries(s)) {
+    if (k === 'food' || k === 'bed' || !v || typeof v !== 'object') continue;
+    out[k] = { description: String(v.description ?? k), ...(v.operator ? { operator: String(v.operator) } : {}), ...(v.stock && typeof v.stock === 'object' ? { stock: { ...v.stock } } : {}) };
+  }
   return out;
 }
 

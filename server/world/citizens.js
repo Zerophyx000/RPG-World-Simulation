@@ -35,6 +35,11 @@ export function defaultPersona() {
     backstory: '',
     goals: [],
     speechStyle: '',
+    appearanceTags: [],   // step 5.5: visible cues from content/cues.json (hooded, armed, foreign…)
+    secretGoals: [],      // step 5.5: private aims; only ever in their OWN prompt
+    covets: [],           // step 6: tags / object types / roles they want (drives envy)
+    practiced: [],        // step 7B: provisional skills for accidents ("hot", "tool", "danger"); the RPG step replaces them
+    clothing: [],         // step 7B: optional garment types to seed (default: tunic, trousers or skirt, boots…)
   };
 }
 
@@ -55,15 +60,22 @@ function defaultData() {
     knownPlaces: null,      // { roomId: { services: [], source, learnedAt } }; null = never set (World fills it in)
     marks: [],              // visible changes to appearance from director effects: [{ id, text, until }]
     sleepBuffer: [],        // importance 4–6 stimuli perceived while asleep, told on waking
+    spot: null,             // step 8: a spot id in the current room (null while walking between rooms)
+    body: null,             // step 7B: { vitality, blood, parts, capacities, status, pain, regen, … } (world.body fills it in)
     // step 4: memory
     coreMemory: '',         // first person, ≤ ~250 words; rewritten at nightly consolidation
     onMyMind: [],           // [{ text, importance, gameTime, memoryId }], cleared at consolidation
     lastConsolidatedAt: null,
     lastDecayAt: null,
-    // step 4: day plans
-    plan: null,             // see agents/plan.js
-    yesterdayPlan: null,
-    needsPlan: true,        // plan at the next calm idle moment
+    // step 9.5: intentions and habits replace day plans (agents/intentions.js, agents/habits.js)
+    intentions: [],         // [{ id, text, about, place, source, createdAt, touchedAt, weight }], at most 8
+    habits: [],             // [{ id, what, window, place, action, strength, … }], generated, evolving
+    habitStreak: 0,         // habits carried out by code in a row (at most 2)
+    // step 9.5: death that matters (death/index.js)
+    knownDeaths: {},        // { deadId: { learnedAt, how, certainty, where, by? } }
+    knownNews: {},          // { personId: { news, from, at, certainty } } (hurt, missing, found alive)
+    fearedPlaces: {},       // { roomId: { since, why } } — dreaded since a death or the smell of one
+    mortal: null,           // { state: 'dangerous'|'critical', since, lastBump } — their own life in danger
     // step 5: objects (see world/objects.js)
     carrying: [],           // object ids held (mirror of objects.holder_id; at most 2 slots)
     knownObjects: {},       // { objectId: { lastSeenAt, roomId, holderId, placementSig, state, visible, touchedAt? } }
@@ -71,8 +83,30 @@ function defaultData() {
     roomVisits: {},         // { roomId: n }: 5+ visits = familiar (notices the noticeable)
     searchCounts: {},       // { roomId: n }: repeated searches get better
     missingNoted: {},       // { objectId: gameTime }: owned things noticed missing (not repeated for 12 h)
-    // STEP 6: emotions
+    // step 5.5: groups, strangers, warning signs
+    invitations: [],        // pending party invitations: [{ from, purpose, at, until }]
+    partyProposal: null,    // their own last proposal
+    roomLog: [],            // last 4 room changes with who arrived right after (the "being followed" sign)
+    strangerTrust: 0.5,     // learned attitude towards strangers, 0..1
+    strangerLog: [],        // [{ at, value, why }]
+    metStrangers: {},       // { otherId: gameTime of the first impression }
+    signalNotes: {},
+    // step 6: emotions (see emotions/index.js)
+    emotions: [],           // [{ id, type, target, about, intensity, cause, since, lastBumped, source }]
+    mood: null,             // { valence, tension, history, outSince, outDir }; null = baseline on first use
+    masks: [],              // hide_feelings: [{ type | null, until }]
+    contagionLog: {},       // { type: [[time, delta]] } for the hourly contagion cap
+    // step A2: sleep bookkeeping
+    wokeEarly: null,        // { at, until } woken with fatigue still >= 80 within an hour of falling asleep
+    lastUrgentAt: null,     // game time of the last stimulus with importance >= 7 that reached them
   };
+}
+
+// step A2: woken too soon and still worn out — back down unless something urgent happens first.
+function normalizeWokeEarly(v) {
+  if (!v || typeof v !== 'object') return null;
+  const at = Number(v.at), until = Number(v.until);
+  return Number.isFinite(at) && Number.isFinite(until) ? { at, until } : null;
 }
 
 export function normalizeCitizen(row) {
@@ -81,6 +115,7 @@ export function normalizeCitizen(row) {
   const persona = { ...defaultPersona(), ...(raw.persona ?? {}) };
   persona.traits = { ...defaultPersona().traits, ...(persona.traits ?? {}) };
   persona.goals = Array.isArray(persona.goals) ? persona.goals.map(String) : [];
+  for (const k of ['appearanceTags', 'secretGoals', 'covets', 'practiced', 'clothing']) persona[k] = Array.isArray(persona[k]) ? persona[k].map(String) : [];
 
   const activity = { ...defaultData().activity, ...(d.activity ?? {}) };
   if (!ACTIVITY_TYPES.includes(activity.type)) activity.type = 'idle';
@@ -103,6 +138,8 @@ export function normalizeCitizen(row) {
     knownPlaces: d.knownPlaces && typeof d.knownPlaces === 'object' && !Array.isArray(d.knownPlaces) ? d.knownPlaces : null,
     marks: Array.isArray(d.marks) ? d.marks : [],
     sleepBuffer: Array.isArray(d.sleepBuffer) ? d.sleepBuffer : [],
+    body: d.body && typeof d.body === 'object' && !Array.isArray(d.body) ? d.body : null,
+    spot: typeof d.spot === 'string' ? d.spot : null, // step 8: the named spot in their room
     onMyMind: Array.isArray(d.onMyMind) ? d.onMyMind : [],
     coreMemory: typeof d.coreMemory === 'string' ? d.coreMemory : '',
     carrying: Array.isArray(d.carrying) ? d.carrying : [],
@@ -111,7 +148,25 @@ export function normalizeCitizen(row) {
     roomVisits: obj(d.roomVisits),
     searchCounts: obj(d.searchCounts),
     missingNoted: obj(d.missingNoted),
+    invitations: Array.isArray(d.invitations) ? d.invitations : [],
+    roomLog: Array.isArray(d.roomLog) ? d.roomLog : [],
+    strangerTrust: Number.isFinite(Number(d.strangerTrust)) ? Number(d.strangerTrust) : 0.5,
+    strangerLog: Array.isArray(d.strangerLog) ? d.strangerLog : [],
+    metStrangers: obj(d.metStrangers),
+    signalNotes: obj(d.signalNotes),
+    emotions: Array.isArray(d.emotions) ? d.emotions : [],
+    masks: Array.isArray(d.masks) ? d.masks : [],
+    contagionLog: obj(d.contagionLog),
     thinkCooldownUntil: Number(d.thinkCooldownUntil) || 0,
+    // step A2: sleep bookkeeping, defaulted so old rows load
+    wokeEarly: normalizeWokeEarly(d.wokeEarly),
+    lastUrgentAt: Number.isFinite(Number(d.lastUrgentAt)) ? Number(d.lastUrgentAt) : null,
+    // step 9.5
+    intentions: Array.isArray(d.intentions) ? d.intentions : [],
+    habits: Array.isArray(d.habits) ? d.habits : [],
+    knownDeaths: obj(d.knownDeaths),
+    knownNews: obj(d.knownNews),
+    fearedPlaces: obj(d.fearedPlaces),
   };
 }
 
@@ -124,6 +179,8 @@ function normalizeNeeds(n) {
   const out = { ...def, ...(n ?? {}) };
   out.levels = { ...def.levels, ...(n?.levels ?? {}) };
   out.lastReminderAt = { ...def.lastReminderAt, ...(n?.lastReminderAt ?? {}) };
+  // step A2: the collapse countdown is game time, or unset.
+  out.collapsingSince = Number.isFinite(Number(out.collapsingSince)) ? Number(out.collapsingSince) : null;
   for (const k of ['hunger', 'fatigue', 'hp', 'hpMax']) out[k] = Number.isFinite(Number(out[k])) ? Number(out[k]) : def[k];
   return out;
 }
@@ -184,8 +241,13 @@ export function citizenFromInput(input, { rooms, existingIds, now }) {
     }
     if (p.age != null && !(Number(p.age) >= 0)) errors.push('persona.age must be a number');
     if (p.goals != null && !Array.isArray(p.goals)) errors.push('persona.goals must be an array of strings');
+    for (const k of ['appearanceTags', 'secretGoals', 'covets']) if (p[k] != null && !Array.isArray(p[k])) errors.push(`persona.${k} must be an array of strings`);
+    // step 11.5: flaws [{ flaw, serious }] (or strings) and a one-line worst self
+    if (p.flaws != null && (!Array.isArray(p.flaws) || p.flaws.some((f) => typeof f !== 'string' && typeof f?.flaw !== 'string'))) errors.push('persona.flaws must be an array of { flaw, serious } (or strings)');
+    if (p.worstSelf != null && typeof p.worstSelf !== 'string') errors.push('persona.worstSelf must be a string');
     if (p.traits != null) {
       for (const [k, v] of Object.entries(p.traits)) {
+        if (['honesty', 'cunning', 'grudge'].includes(k)) { if (!(Number(v) >= 1 && Number(v) <= 10)) errors.push(`persona.traits.${k} must be between 1 and 10`); continue; } // step 11 / 11.5
         if (!TRAITS.includes(k)) errors.push(`persona.traits.${k} is not a Big Five trait`);
         else if (!(Number(v) >= 0 && Number(v) <= 1)) errors.push(`persona.traits.${k} must be between 0 and 1`);
       }
@@ -238,6 +300,16 @@ export function needsSummary(c) {
   };
 }
 
+/** Compact body state for the roster: chips (bleeding / fracture / fever / unconscious), vitality, blood. */
+export function bodySummary(c) {
+  const b = c.body;
+  if (!b) return null;
+  return {
+    vitality: Math.round(b.vitality ?? 100), blood: Math.round(b.blood ?? 100), chips: b.chips ?? [], status: b.status ?? [],
+    critical: b.critical ? b.criticalLeft ?? 0 : null, pain: b.pain ?? 0, bleeding: b.bleedTotal ?? 0,
+  };
+}
+
 export function citizenSummary(c) {
   return {
     id: c.id,
@@ -252,6 +324,8 @@ export function citizenSummary(c) {
     lastInnerThought: c.lastInnerThought,
     lastDecisionAt: c.lastDecisionAt,
     hp: c.needs?.hp ?? 100,
+    body: bodySummary(c),
+    spot: c.spot ?? null,
     needs: needsSummary(c),
     marks: c.marks,
   };

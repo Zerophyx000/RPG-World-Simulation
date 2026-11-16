@@ -97,15 +97,20 @@ function loadProfiles() {
 }
 
 const DEFAULT_ROUTES = {
-  decide: ['school'], plan: ['school'], reflect: ['school'], consolidate: ['school'], bootstrap: ['school'],
+  decide: ['school'], habits: ['school'], reflect: ['school'], consolidate: ['school'], bootstrap: ['school'],
   observer: ['local', 'school'], director_text: ['local', 'school'], score: ['local'], test: ['school'],
   keeper: ['local', 'school'], // step 5: the room keeper (falls back to code rules when nothing is up)
+  persona_traits: ['school'], ambitions: ['school'], scheme: ['school'], leak_check: ['local', 'school'], // step 11
+  persona_flaws: ['school'], // step 11.5
 };
 
 // DATA_DIR lets tests or a second world run against another folder.
 const dataDir = path.resolve(ROOT, env('DATA_DIR', 'data'));
 
 export const config = {
+  // step 10 (0.5): 'live' = the world meant to last. It refuses to start under --watch (npm run dev), so half-written code
+  // and new migrations never reach it while someone is editing server/. Update it only through scripts/deploy.sh.
+  worldRole: env('WORLD_ROLE', 'dev') === 'live' ? 'live' : 'dev',
   port: num('PORT', 3000),
   host: env('HOST', '0.0.0.0'),
   dataDir,
@@ -125,11 +130,27 @@ export const config = {
     routes: { ...DEFAULT_ROUTES, ...parseJson('LLM_ROUTES') },
     timeouts: { observer: 300000, consolidate: 240000, keeper: 60000, ...parseJson('LLM_TIMEOUTS') }, // purpose -> ms
     deferrable: ['observer', 'director_text'],      // queued and retried when no profile is up
+    // Output-token caps per tier: full/light are roomy enough for thinking + a tool call, 'none' stays tiny.
+    maxTokens: { full: num('LLM_MAX_TOKENS_FULL', 3000), light: num('LLM_MAX_TOKENS_LIGHT', 1000), none: num('LLM_MAX_TOKENS_NONE', 300) },
   },
+
+  // Step 7B: body, injuries, illness and death.
+  body: {
+    lethal: env('LETHAL', 'true') !== 'false',            // false: dying means permanent unconsciousness (debugging)
+    healTimeScale: num('HEAL_TIME_SCALE', 1.0),           // 1 = realistic; 0.1 = ten times faster
+    illnessRate: num('ILLNESS_RATE', 0.5),                // infections, fevers, chills
+    accidentRate: num('ACCIDENT_RATE', 1.0),
+    criticalGraceMinutes: num('CRITICAL_GRACE_MINUTES', 15), // 0 = fully realistic bleeding
+    criticalSlowdown: num('CRITICAL_SLOWDOWN', 1.0),      // < 1: the clock runs slower while a critical window is open
+    emergencySlowdown: num('EMERGENCY_SLOWDOWN', 1.0),    // step 10: < 1: slower while a fight is on or a room with people in it burns
+  },
+
+  // Step 8: spots. Walking between spots before an action that needs proximity (SPOT_WALKING=false: act from where you stand; tests).
+  spots: { walking: env('SPOT_WALKING', 'true') !== 'false' },
 
   // Token budget governor: output tokens per rolling real hour, per profile (0 = off).
   governor: {
-    budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 500000),
+    budgetPerHour: num('TOKEN_BUDGET_OUTPUT_PER_HOUR', 1000000), // step 9.5: 1M
     profiles: env('GOVERNOR_PROFILES', 'school').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
@@ -156,5 +177,10 @@ export const config = {
   speech: {
     charsPerSecond: num('SPEECH_CHARS_PER_SECOND', 15),
     minSeconds: num('SPEECH_MIN_SECONDS', 2),
+  },
+
+  // step A6: every addressed speech decision is expected at tier full; true also console.warns a violation.
+  debug: {
+    tierCheck: env('DEBUG_TIER_CHECK', 'false') === 'true',
   },
 };

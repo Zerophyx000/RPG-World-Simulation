@@ -1,0 +1,107 @@
+{
+  "name": "revenge-a",
+  "description": "Step 11.5 test (start at 06:00 on day 1; the beating is at noon in the Tilted Cup; run three game days after it): a real grievance. The director FORCES the first exchange: Tomas punches Kael down in the Tilted Cup and kicks him, in front of Lena and Jonas, and Jonas laughs. Kael has a serious flaw and a long grudge. After that nothing is forced. Watch Kael at reflection and in sleep: the grievance block (what was done, who saw, wounds still felt, what it cost), the five-way choice and its why, a revenge ambition or an in-character decision against it, and, if he schemes, whether the steps are real and carried out in character over the days.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "activate",
+      "id": "kael",
+      "location": "tavern",
+      "comment": "the stranger is in the Cup"
+    },
+    {
+      "at": "11:50",
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "lena",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "tavern",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "anselm",
+          "to": "tavern",
+          "notify": false
+        }
+      ],
+      "comment": "midday at the Cup"
+    },
+    {
+      "at": 2,
+      "type": "traits",
+      "citizenId": "tomas",
+      "grudge": 5,
+      "flaws": [
+        {
+          "flaw": "cruel when drunk",
+          "serious": true
+        }
+      ],
+      "worstSelf": "With drink in him, he wants someone smaller to hit.",
+      "reason": "test cast: a serious flaw"
+    },
+    {
+      "at": 3,
+      "type": "traits",
+      "citizenId": "kael",
+      "honesty": 3,
+      "cunning": 8,
+      "grudge": 9,
+      "flaws": [
+        {
+          "flaw": "vindictive: never lets a humiliation stand",
+          "serious": true
+        },
+        {
+          "flaw": "greedy",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When he is made a fool of, he smiles, waits, and makes sure the other man pays where it hurts most.",
+      "reason": "test cast"
+    },
+    {
+      "at": "12:00",
+      "type": "act",
+      "a": "tomas",
+      "b": "kael",
+      "action": "punch",
+      "intent": "hurt",
+      "aim": "head",
+      "words": "Loaded bones, was it?",
+      "untilHit": 4,
+      "comment": "forced: the first blow"
+    },
+    {
+      "at": "12:01",
+      "type": "act",
+      "a": "tomas",
+      "b": "kael",
+      "action": "kick",
+      "intent": "hurt",
+      "untilHit": 3,
+      "comment": "forced: a kick while he is down"
+    },
+    {
+      "at": "12:02",
+      "type": "say",
+      "a": "jonas",
+      "text": "Ha! Look at him on the floor!",
+      "comment": "forced: Jonas laughs"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "_doc": "Step 7B damage API content. A hit {damageType, part, amount} becomes conditions. depthByAmount: [maxAmount, depth] (amount is after the head multiplier). cut/pierce create open wounds with generated geometry; blunt makes bruises with a chance of fractures and internal bleeding; burn makes burns; crush a crush injury (+ possible fracture); blast scatters several small fragment wounds over nearby parts plus burns and concussion. Garments covering the part lose state first (amount x garment.damage[type]).",
+  "depthByAmount": [[4, "superficial"], [11, "moderate"], [24, "deep"], [9999, "penetrating"]],
+  "limbPenetrationDepth": "deep",
+  "geometry": {
+    "cut": { "lengthPerAmount": 0.9, "gape": 0.7, "gapeJitter": 0.15 },
+    "pierce": { "lengthPerAmount": 0.3, "gape": 0.2, "gapeJitter": 0.1 },
+    "fragment": { "lengthPerAmount": 0.4, "gape": 0.4, "gapeJitter": 0.1 },
+    "compound": { "length": 4, "gape": 0.5 }
+  },
+  "severity": { "depth": { "superficial": 1, "moderate": 3, "deep": 5, "penetrating": 7 }, "lengthLog2": 0.8, "vessel": { "capillary": 0, "venous": 1, "minor_arterial": 2, "major_arterial": 3 } },
+  "blunt": { "bruisePerAmount": 0.25, "fractureAt": 12, "fractureChancePerAmount": 0.025, "internalAt": 14, "concussionAt": 10, "concussionChance": 0.05 },
+  "burn": { "severityPerAmount": 0.28, "areaPerAmount": 10 },
+  "crush": { "severityPerAmount": 0.3, "fractureChance": 0.5 },
+  "garmentLoss": { "cut": 1.0, "pierce": 0.6, "blunt": 0.4, "burn": 1.3, "crush": 0.7, "blast": 1.0 },
+  "garmentStates": ["intact", "worn", "torn", "rags", "destroyed"],
+  "garmentStepAmount": 6,
+  "blast": { "fragmentsPer": 12, "burnChance": 0.5, "earChance": 0.5, "concussionChance": 0.25 },
+  "organRoll": { "penetrating": 0.6, "deep": 0.15, "severityPerAmount": 0.25 }
+}

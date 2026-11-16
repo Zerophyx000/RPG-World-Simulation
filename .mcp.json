@@ -1,0 +1,13 @@
+   {
+     "mcpServers": {
+       "glm-orchestra": {
+         "command": "uv",
+         "args": ["run", "--directory", "C:\\dev\\glm-orchestra", "python", "server.py"],
+         "env": {
+           "GLM_API_KEY": "${GLM_API_KEY}",
+           "GLM_BASE_URL": "${GLM_BASE_URL}",
+           "GLM_MODEL": "${GLM_MODEL}"
+         }
+       }
+     }
+   }

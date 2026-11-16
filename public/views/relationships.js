@@ -7,6 +7,8 @@
 // "What X believes" next to the observer view without touching the drawing code.
 import { store, subscribe, subscribeMany, select } from '../store.js';
 import { api, esc, gameTime, citizenName, who, debounce } from '../util.js';
+import { SOURCE_ICON, openReasons } from './social-ui.js';
+import { EMO_COLOR } from './emotions-ui.js';
 import { colorOf } from '../colors.js';
 
 const VW = 820;
@@ -38,6 +40,9 @@ export function mount(el) {
         <option value="1440">last 24 h</option>
       </select>
       <label class="check"><input type="checkbox" id="rel-spring"> spring layout</label>
+      <label class="check" title="Aimed emotions as arcs: anger red, fear orange, affection pink, gratitude gold, envy green, jealousy purple (the dot on a jealousy arc is who it is about)"><input type="checkbox" id="rel-emotions"> emotions</label>
+      <label class="check" title="Step 11: a dashed dark-red arrow from each schemer to the people their live schemes are aimed at (director view)"><input type="checkbox" id="rel-schemes"> schemes</label>
+      <label class="check" title="Highlight pairs where warning signs (followed, carrying your property, intruder…) cost trust"><input type="checkbox" id="rel-signals"> signal-driven distrust</label>
       <button id="rel-refresh">Refresh observer</button>
       <span class="dim" id="rel-status"></span>
     </div>
@@ -69,11 +74,27 @@ export function mount(el) {
     render();
   });
   el.querySelector('#rel-refresh').addEventListener('click', refreshObserver);
+  el.querySelector('#rel-emotions').addEventListener('change', async (e) => {
+    emoOverlay = e.target.checked;
+    if (emoOverlay) await loadAimed();
+    render();
+  });
+  el.querySelector('#rel-schemes').addEventListener('change', async (e) => {
+    schemeOverlay = e.target.checked;
+    if (schemeOverlay) await loadSchemes();
+    render();
+  });
+  el.querySelector('#rel-signals').addEventListener('change', async (e) => {
+    signalFilter = e.target.checked;
+    if (signalFilter) signalPairs = await api.get('/api/relationships/signals').catch(() => []);
+    render();
+  });
   el.querySelector('#rel-range').addEventListener('input', debounce((e) => selectReport(Number(e.target.value)), 120));
   el.querySelector('#rel-svg').addEventListener('click', onClick);
 
   const offs = [
     subscribe('observer', () => loadHistory(true)),
+    subscribe('scheming', debounce(() => schemeOverlay && loadSchemes().then(render), 1500)),
     subscribeMany(['citizens', 'filter'], () => { fillSources(); render(); }),
     subscribe('relationship', debounce((r) => r?.citizenId === source && loadBeliefs().then(render), 1500)),
     subscribe('event', debounce((e) => e?.type === 'action' && index === history.length - 1 && loadCounts(), 2000)),
@@ -261,11 +282,85 @@ function diffColor(d) {
 const dashFor = (t) => (!t ? '' : `${Math.max(2, 11 - t * 1.8)} ${1 + t}`);
 const widthFor = (n) => Math.min(12, 1.2 + 1.6 * Math.sqrt(n || 0));
 
+let emoOverlay = false;
+let aimed = [];
+async function loadAimed() {
+  aimed = await api.get('/api/emotions/aimed').catch(() => []);
+}
+
+// Thin animated arcs for aimed emotions, bowed further out than the relationship edges.
+function emotionArcs(pos) {
+  const out = [];
+  const seen = new Map();
+  for (const e of aimed) {
+    const p1 = pos.get(e.from);
+    const p2 = pos.get(e.to);
+    if (!p1 || !p2) continue;
+    const k = `${e.from}>${e.to}`;
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const off = len * (0.3 + n * 0.09);
+    const cx = (p1.x + p2.x) / 2 - (dy / len) * off;
+    const cy = (p1.y + p2.y) / 2 + (dx / len) * off;
+    const color = EMO_COLOR[e.type] ?? e.color ?? '#aaa';
+    const title = `${citizenName(e.from)} → ${citizenName(e.to)}: ${e.type} ${e.intensity}${e.about ? ` (about ${store.citizens.get(e.about)?.name ?? e.about})` : ''}${e.cause ? `\n${e.cause.replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => citizenName(id))}` : ''}`;
+    out.push(`<g class="emo-arc"><title>${esc(title)}</title>
+      <path d="M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}" fill="none" stroke="${color}" stroke-width="${1 + e.intensity * 0.22}" stroke-opacity="${0.35 + e.intensity * 0.06}" stroke-dasharray="7 6"/>
+      <text x="${(p1.x + 2 * cx + p2.x) / 4}" y="${(p1.y + 2 * cy + p2.y) / 4 - 5}" text-anchor="middle" class="emo-arc-label" fill="${color}">${esc(e.type)}</text>
+      ${e.type === 'jealousy' && e.about && store.citizens.has(e.about) ? `<circle cx="${(p1.x + 2 * cx + p2.x) / 4}" cy="${(p1.y + 2 * cy + p2.y) / 4 + 6}" r="5" fill="${colorOf(e.about)}" stroke="#111"/>` : ''}</g>`);
+  }
+  return out;
+}
+
+// step 11: who is scheming against whom — a dashed arrow schemer → target, bowed the other way from the emotion arcs.
+let schemeOverlay = false;
+let schemeList = [];
+async function loadSchemes() {
+  schemeList = await api.get('/api/schemes?limit=200').catch(() => []);
+}
+function schemeArcs(pos) {
+  const out = [];
+  for (const s of schemeList) {
+    if (!['planning', 'active', 'paused'].includes(s.status)) continue;
+    for (const t of s.targetIds ?? []) {
+      const p1 = pos.get(s.ownerId);
+      const p2 = pos.get(t);
+      if (!p1 || !p2 || s.ownerId === t) continue;
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      const off = len * 0.22;
+      const cx = (p1.x + p2.x) / 2 + (dy / len) * off;
+      const cy = (p1.y + p2.y) / 2 - (dx / len) * off;
+      // arrowhead a little short of the target node
+      const ex = p2.x - (p2.x - cx) / Math.max(1, Math.hypot(p2.x - cx, p2.y - cy)) * 22;
+      const ey = p2.y - (p2.y - cy) / Math.max(1, Math.hypot(p2.x - cx, p2.y - cy)) * 22;
+      const ang = Math.atan2(ey - cy, ex - cx);
+      const head = [[ex, ey], [ex - 9 * Math.cos(ang - 0.4), ey - 9 * Math.sin(ang - 0.4)], [ex - 9 * Math.cos(ang + 0.4), ey - 9 * Math.sin(ang + 0.4)]].map((p) => p.join(',')).join(' ');
+      const done = (s.steps ?? []).filter((st) => st.status === 'done').length;
+      const title = `${citizenName(s.ownerId)} → ${citizenName(t)}: ${s.goal} (${s.status}, ${done}/${(s.steps ?? []).length} steps)${(s.accomplices ?? []).length ? `
+with ${s.accomplices.map((a) => `${citizenName(a.citizen_id)} (${a.status})`).join(', ')}` : ''}`;
+      out.push(`<g class="scheme-arc"><title>${esc(title)}</title>
+        <path d="M${p1.x},${p1.y} Q${cx},${cy} ${ex},${ey}" fill="none" stroke="#b0303a" stroke-width="2" stroke-opacity="0.85" stroke-dasharray="4 4"/>
+        <polygon points="${head}" fill="#b0303a"/>
+        <text x="${(p1.x + 2 * cx + p2.x) / 4}" y="${(p1.y + 2 * cy + p2.y) / 4 - 5}" text-anchor="middle" class="emo-arc-label" fill="#d06070">🕸</text></g>`);
+    }
+  }
+  return out;
+}
+
+let signalFilter = false;
+let signalPairs = [];
+let pairReasons = null; // { ab: [...], ba: [...] } for the selected edge
+
 function edgeData() {
   const rels = relsFor();
   const n = new Map(counts.map((c) => [`${c.from}>${c.to}`, c.n]));
   const pairs = new Map();
-  for (const key of new Set([...rels.keys(), ...n.keys()])) {
+  for (const key of new Set([...rels.keys(), ...n.keys(), ...(signalFilter ? signalPairs.map((s) => `${s.from}>${s.to}`) : [])])) {
     const [a, b] = key.split('>');
     const pk = [a, b].sort().join('|');
     if (!pairs.has(pk)) pairs.set(pk, { a: [a, b].sort()[0], b: [a, b].sort()[1] });
@@ -287,7 +382,8 @@ function render() {
   }));
   const pos = layout === 'spring' ? springPositions(list, weights) : circlePositions(list);
   const out = [];
-  const dim = (ids) => (store.filterCitizen && !ids.includes(store.filterCitizen) ? ' opacity="0.15"' : '');
+  const sig = new Set(signalPairs.map((s) => [s.from, s.to].sort().join('|')));
+  const dim = (ids) => ((store.filterCitizen && !ids.includes(store.filterCitizen)) || (signalFilter && ids.length === 2 && !sig.has([...ids].sort().join('|'))) ? ' opacity="0.12"' : '');
 
   for (const [pk, { a, b }] of pairs) {
     const pa = pos.get(a);
@@ -307,11 +403,16 @@ function render() {
       if (ba || nba) out.push(edgeSvg(pb, pa, { rel: ba, n: nba, a: b, b: a, curve: 1, arrow: true, selected, extra: dim([a, b]) }));
     }
   }
+  if (emoOverlay) out.push(...emotionArcs(pos));
+  if (schemeOverlay) out.push(...schemeArcs(pos)); // step 11
   for (const c of list) {
     const p = pos.get(c.id);
+    // step 9.5: the dead are grey — in "what X believes" only when X knows
+    const shownDead = source === 'observer' ? c.alive === false : beliefs.some((b) => b.to === c.id && b.dead);
+    const col = shownDead ? '#777' : colorOf(c.id);
     out.push(`<g class="rnode" data-node="${esc(c.id)}"${dim([c.id])}>
-      <circle cx="${p.x}" cy="${p.y}" r="${NODE_R}" fill="${colorOf(c.id)}" fill-opacity="0.22" stroke="${colorOf(c.id)}" stroke-width="2.5"/>
-      <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" class="rnode-initial" fill="${colorOf(c.id)}">${esc(c.name.slice(0, 2))}</text>
+      <circle cx="${p.x}" cy="${p.y}" r="${NODE_R}" fill="${col}" fill-opacity="0.22" stroke="${col}" stroke-width="2.5"${shownDead ? ' stroke-dasharray="4 3"' : ''}/>
+      <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" class="rnode-initial" fill="${col}">${esc(c.name.slice(0, 2))}</text>
       <text x="${p.x}" y="${p.y + NODE_R + 16}" text-anchor="middle" class="rnode-label">${esc(c.name)}</text></g>`);
   }
   svg.innerHTML = out.join('');
@@ -370,8 +471,10 @@ function onClick(e) {
   if (edge) {
     const [a, b] = edge.dataset.edge.split('|');
     selectedEdge = { a, b };
+    pairReasons = null;
     render();
     loadPairLines();
+    loadPairReasons();
   }
 }
 
@@ -385,6 +488,19 @@ async function loadPairLines() {
   }
   renderSide();
 }
+
+async function loadPairReasons() {
+  if (!selectedEdge) return;
+  const { a, b } = selectedEdge;
+  const get = (x, y) => api.get(`/api/citizens/${encodeURIComponent(x)}/relationships/${encodeURIComponent(y)}/events`).then((d) => d.events).catch(() => []);
+  const [ab, ba] = await Promise.all([get(a, b), get(b, a)]);
+  if (selectedEdge?.a !== a || selectedEdge?.b !== b) return;
+  pairReasons = { ab, ba };
+  renderSide();
+}
+
+const topReasons = (list) => (list ?? []).filter((e) => (Math.abs(e.dTrust) + Math.abs(e.dAffinity) > 0 || e.evidence?.weight) && e.source !== 'group')
+  .sort((x, y) => (Math.abs(y.dTrust) + Math.abs(y.dAffinity)) * y.strength - (Math.abs(x.dTrust) + Math.abs(x.dAffinity)) * x.strength).slice(0, 3);
 
 function renderSide() {
   const side = root?.querySelector('#rel-side');
@@ -404,11 +520,19 @@ function renderSide() {
     const r = rels.get(`${x}>${y}`);
     return `<div class="rel-dir">${who(x)} → ${who(y)} <span class="dim">· ${n.get(`${x}>${y}`) ?? 0} lines</span>
       ${r ? `<div><b style="color:${warmthColor(r.warmth)}">${esc(r.label)}</b> <span class="dim">warmth ${r.warmth}, tension ${r.tension}</span></div>
-        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}` : '<div class="dim">no observer note</div>'}</div>`;
+        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}` : '<div class="dim">no observer note</div>'}
+      ${pairReasons ? `<div class="edge-reasons"><span class="dim">${esc(citizenName(x))}'s own reasons:</span>${
+        topReasons(x === a ? pairReasons.ab : pairReasons.ba).map((e) => `<div class="rel-reason" style="opacity:${Math.max(0.45, Math.min(1, 0.3 + e.strength))}">${SOURCE_ICON[e.source] ?? '·'} ${esc(e.reason)}
+          <span class="dim">${e.dTrust ? `trust ${e.dTrust > 0 ? '+' : ''}${e.dTrust}` : ''} ${e.dAffinity ? `liking ${e.dAffinity > 0 ? '+' : ''}${e.dAffinity}` : ''}</span></div>`).join('') || ' <span class="dim">none on record</span>'}
+        <button class="link" data-edge-reasons="${esc(x)}|${esc(y)}">all reasons…</button></div>` : ''}</div>`;
   };
   side.innerHTML = `<button class="close" data-close-edge>✕</button>${dir(a, b)}${dir(b, a)}
     <h3>Last lines between them</h3>
     ${pairLines.length ? pairLines.map((l) => `<div class="tline">${who(l.from)}: “${esc(l.text)}”${l.thought ? `<div class="tthought">${esc(l.thought)}</div>` : ''}</div>`).join('') : '<p class="muted">None yet.</p>'}`;
+  side.querySelectorAll('[data-edge-reasons]').forEach((btn) => btn.addEventListener('click', () => {
+    const [x, y] = btn.dataset.edgeReasons.split('|');
+    openReasons(x, y);
+  }));
   side.querySelector('[data-close-edge]').addEventListener('click', () => {
     selectedEdge = null;
     render();

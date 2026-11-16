@@ -3,29 +3,40 @@
 // Order matters for the server's prefix cache: the most stable content first.
 //   [system] world rules · common knowledge · WHO YOU ARE · WHAT YOU KNOW ABOUT YOURSELF (core memory;
 //            only changes at night, so the system prefix is identical all game day)
-//   [user]   (urgency line) · RIGHT NOW · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · YOUR PLAN · ON YOUR MIND · WHO IS HERE ·
-//            YOU REMEMBER · PLACES YOU KNOW · CONVERSATION · WHAT JUST HAPPENED · instruction
+//   [user]   (own-mortality line, step 9.5) (urgency line) · ON WAKING (the first decision after a real sleep) ·
+//            RIGHT NOW (dread, "out of habit, you …", darkness) · ALTERCATION · WHAT YOU'VE DONE (step 10) · WHAT'S HERE · YOU'RE CARRYING · HOW YOU FEEL · ON YOUR MIND ·
+//            WHO IS HERE (shared grief) · YOU REMEMBER · PLACES YOU KNOW (with travel times and last known state, step 7A)
+//            · CONVERSATION · WHAT JUST HAPPENED · THINGS YOU'D MEANT TO DO (intentions, step 9.5) · instruction
+// Step 9.5: no more YOUR PLAN — day plans are gone; intentions are listed softly and only the citizen acts on them.
 //
 // People are named only if this citizen knows the name; otherwise they are described by how they look.
 // Relationships appear in words, never numbers.
+import { hostLines } from '../body/starvation.js'; // step 11.5
 import { traitsToWords } from './traits.js';
 import { citizensIn, activeEffects, openExits } from '../world/rooms.js';
 import { pronouns } from '../world/citizens.js';
 import { isIngPhrase, ingOrQuote } from '../world/actions.js';
 import { SOFT_CAP_LINES, TRANSCRIPT_LINES } from '../world/conversations.js';
-import { placeLabel, knownWith, servicesText } from '../world/places.js';
+import { placeLabel, knownWith, servicesText, travelMinutes, knownRoomState, lastSeenPhrase } from '../world/places.js';
 import { clockTime, timeOfDay, relativeTime } from '../world/time.js';
 import { retrieve, memoryLine } from '../memory/retrieve.js';
 import { relationSentence } from '../memory/words.js';
-import { planBlock, yesterdayText } from './plan.js';
+import { promptBlock as intentionsBlock } from './intentions.js';
 import { carryingPhrase } from '../world/object-actions.js';
+import { ownBody, cuesFor, wearingLine, senses, dropsDetail } from '../body/perceive.js';
 import { SLOTS } from '../world/objects.js';
+import { relationLine } from '../social/describe.js';
+import { feelLines, moodFraming, whoIsHere, hereNotes, orderStimuli, instructionClause } from '../emotions/present.js';
+import { FEELING_RULE } from '../emotions/report.js';
+import { vigilLines, corpseOf } from '../death/customs.js';
+import { plainRef } from '../memory/index.js';
+import { altercationBlock, deedsBlock, physLines, darkLine, waryNote } from '../physical/prompt.js';
 
 export { clockTime, timeOfDay, relativeTime };
 
 const MEMORY_CHAR_BUDGET = 4000; // ON YOUR MIND + YOU REMEMBER ≈ 1,000 tokens
 
-export const WORLD_RULES = `You are a person living in this world, not an assistant. You only know what you have been told here and what you perceive. Never invent people, places or events that are not mentioned; if you don't know something, you don't know it. You speak and act like your character, with their flaws. You are not obligated to be nice, helpful or talkative. Think through the situation privately first: what you notice, how you feel about it, what you want. Then act by calling exactly one tool.
+export const WORLD_RULES = `You are a person living in this world, not an assistant. You only know what you have been told here and what you perceive. Never invent people, places or events that are not mentioned; if you don't know something, you don't know it. You speak and act like your character, with their flaws. Act as this person would, not as a good example would. You are not obligated to be nice, helpful or talkative. Think through the situation privately first: what you notice, how you feel about it, what you want. Then act by calling exactly one tool.
 
 How your world works:
 - Time passes in minutes. Walking, working, eating, sleeping and waiting all take time, and other people act while you do.
@@ -39,12 +50,13 @@ How your world works:
 - Your speech habits are flavor, not a script. Use pet names, catchphrases and verbal tics rarely, the way real people do; most sentences have none.
 - You can only touch, take or use things listed under what's here or what you're carrying. You can't produce objects that aren't there. You may suspect hidden things — searching is how you find out.
 - You cannot control other people or decide what they do, say or feel.
+${FEELING_RULE}
 - It is fine to do nothing special, keep to yourself, refuse, lie, or walk away, if that is what your character would do.`;
 
 /**
  * @param {object} opts
  * @param {'full'|'light'|'none'} [opts.tier]
- * @param {'decide'|'plan'} [opts.mode]
+ * @param {'decide'} [opts.mode]
  * @param {object} [opts.collect]  filled with { recalled: [memory ids] } (the caller decides whether that counts as recall)
  */
 export function buildMessages(world, c, { tier = 'full', mode = 'decide', collect = null } = {}) {
@@ -68,11 +80,15 @@ function whoYouAre(world, c) {
   const bits = [p.age != null ? `${p.age} years old` : null, p.sex, p.occupation ? `the ${p.occupation}` : null].filter(Boolean);
   const lines = [`You are ${c.name}${bits.length ? `, ${bits.join(', ')}` : ''}.`];
   if (p.appearance) lines.push(`Appearance: ${p.appearance}`);
-  const personality = [p.personality, ...traitsToWords(p.traits)].filter(Boolean).join(' ');
+  const personality = [p.personality, ...traitsToWords(p.traits), ...(world.scheming?.traitWords(c) ?? [])].filter(Boolean).join(' '); // step 11: honesty and cunning, in words
   if (personality) lines.push(`Personality: ${personality}`);
+  lines.push(...(world.scheming?.flawWords(c) ?? [])); // step 11.5: faults and worst self, in words
   if (p.speechStyle) lines.push(`How you tend to talk (use sparingly): ${p.speechStyle}`);
   if (p.backstory) lines.push(`Your story: ${p.backstory}`);
   if (p.goals.length) lines.push(`What you want:\n${p.goals.map((g) => `- ${g}`).join('\n')}`);
+  // Step 5.5: secret goals appear here and NOWHERE else (never in anyone else's prompt, never to the keeper). Step 11: they
+  // became secret ambitions (YOUR AMBITIONS); a persona that still has some (not yet moved) shows them here.
+  if (p.secretGoals?.length) lines.push(`Your private aims (nobody knows these):\n${p.secretGoals.map((g) => `- ${g}`).join('\n')}`);
   const home = world.rooms.get(c.home);
   lines.push(home ? `Your home: ${home.name}.` : 'You have no home here yet.');
   return lines.join('\n');
@@ -86,55 +102,111 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   const feel = world.needs.describe(c);
   const blocks = [];
 
-  // Severe needs go first, so they are not buried under conversation noise.
-  if (feel.urgent) blocks.push(feel.urgent);
+  // Severe needs go first, so they are not buried under conversation noise. Step 7B: blood and wounds first of all.
+  const body = ownBody(world, c);
+  const sn = senses(c);
+  // step 9.5 (B3.2): their own life in danger, in the body's language, first of all — and where help is
+  const mortal = world.deaths?.ownLine(c);
+  if (mortal) {
+    const help = world.deaths.helpLine(c);
+    blocks.push(`${mortal}${help ? ` ${mem.resolveNames(c, help)}` : ''}`);
+  }
+  if (body.urgent) blocks.push(body.urgent);
+  else if (feel.urgent) blocks.push(feel.urgent);
+
+  // step 9.5 (A4): the first decision after a real sleep
+  const waking = mode === 'decide' && [...c.thinkingInbox, ...c.inbox].some((s) => s.data?.wakeUp && s.data?.longSleep);
+  if (waking) blocks.push(`# ON WAKING\n${onWaking(world, c)}`);
 
   // RIGHT NOW
-  const right = [`It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
+  // Step 6: mood colours the moment (one framing sentence; the room description itself is never rewritten).
+  const framing = moodFraming(world, c);
+  const emoNotes = hereNotes(world, c, room);
+  const right = [...(framing ? [framing] : []), `It is ${timeOfDay(now)} on day ${Math.floor(now / 1440) + 1} (${clockTime(now)}).`];
   if (room) {
-    right.push(`You are in ${room.name}. ${room.description}`.trim());
+    right.push(sn.blind ? `You are in ${room.name}. You can't see it; you know it by memory, by sound and by touch.` : `You are in ${room.name}. ${room.description}`.trim());
     const effects = activeEffects(room, now).map((e) => e.text);
     if (effects.length) right.push(`You notice: ${effects.join(' ')}`);
     if (room.affordances.length) right.push(`Things people do here: ${room.affordances.join(', ')}.`);
     const exits = openExits(room, now).filter((e) => world.rooms.has(e.to))
       .map((e) => `${placeLabel(c, world.rooms.get(e.to))} (${e.travelMinutes} min)`);
     if (exits.length) right.push(`From here you can walk to:\n${exits.map((x) => `- ${x}`).join('\n')}`);
+    right.push(...emoNotes.rightNow);
     const blocked = (room.blockedExits ?? []).filter((b) => b.until == null || b.until > now)
       .map((b) => `the way to ${placeLabel(c, world.rooms.get(b.to))} is blocked${b.reason ? ` (${b.reason})` : ''}`);
     if (blocked.length) right.push(`Right now ${blocked.join('; ')}.`);
   } else if (c.activity.type === 'moving') {
     right.push(`You are on your way to ${placeLabel(c, world.rooms.get(c.activity.detail?.to))}.`);
   }
+  // step 10: no light at night
+  const dark = world.physical ? darkLine(world, c) : null;
+  if (dark) right.push(dark);
+  // step 9.5 (B3.3): the village on edge
+  const dread = world.deaths?.dreadFor(c) ?? 0;
+  if (dread >= 3) right.push(dread >= 6 ? 'Since the deaths, the whole village is afraid; people look over their shoulders.' : 'Since the deaths, the whole village is on edge.');
   right.push(ownActivity(world, c));
+  right.push(...vigilLines(world, c).map((l) => mem.resolveNames(c, l))); // step 10 (0.3): tiredness, plainly, and who else could take a turn
+  // step 9.5 (A3): what code did for them out of habit, so they can break it off
+  if (c.habitNote && world.now - c.habitNote.at < 120) right.push(`Just now, ${c.habitNote.text}. You can carry on or do something else.`);
   const marks = (c.marks ?? []).filter((m) => m.until == null || m.until > now).map((m) => m.text);
   if (marks.length) right.push(`About yourself: ${marks.join('; ')}.`);
   if (c.recentActions.length) {
     right.push(`What you did recently:\n${c.recentActions.map((a) => `- (${relativeTime(now - a.gameTime)}) ${mem.resolveNames(c, a.text)}`).join('\n')}`);
   }
   blocks.push(`# RIGHT NOW\n${right.join('\n')}`);
+  // step 10 §3.2 / §5.1: the fight they're in, and what they have done (in their own words, their own intent)
+  const fight = world.physical ? altercationBlock(world, c) : null;
+  if (fight) blocks.push(`# ALTERCATION\n${mem.resolveNames(c, fight)}`);
+  const done = world.physical ? deedsBlock(world, c) : null;
+  if (done) blocks.push(`# WHAT YOU'VE DONE\n${mem.resolveNames(c, done)}`);
+  // step 11: what they want out of life, their secret plan, the stories they have told (short; full tier more)
+  const sch = world.scheming ? world.scheming.promptBlocks(c, tier) : null;
+  if (sch?.ambitions) blocks.push(`# YOUR AMBITIONS\n${sch.ambitions}`);
+  if (sch?.plan) blocks.push(`# YOUR PLAN\n${sch.plan}`);
+  if (sch?.stories) blocks.push(`# YOUR STORIES\n${sch.stories}`);
+  // step 11.5 (B4): someone weak with hunger under your roof, and where food is
+  const roof = hostLines(world, c);
+  if (roof.length) blocks.push(`# UNDER YOUR ROOF\n${mem.resolveNames(c, roof.join('\n'))}`);
 
   // WHAT'S HERE / YOU'RE CARRYING (step 5): the surface view, with the handles the object tools use
   if (room) {
-    const here = world.objects.whatsHere(c, { aliases: true });
-    blocks.push(`# WHAT'S HERE\n${here.length ? here.join('\n') : 'Nothing worth mentioning.'}`);
+    let here = [...world.objects.whatsHere(c, { aliases: true }), ...emoNotes.whatsHere];
+    if (sn.concussed) here = here.filter((_l, i) => i < 2 || !dropsDetail(c, i, Math.floor(now / 30))); // a rattled head misses details
+    if (dark && !sn.blind && here.length > 3) here = [...here.slice(0, 3), '(In the dark you can make out little else.)']; // step 10: lanterns matter at night
+    const blindNote = sn.blind ? "You can't see. What you know of this place comes from memory and touch:\n" : '';
+    blocks.push(`# WHAT'S HERE\n${blindNote}${here.length ? here.join('\n') : sn.blind ? 'Nothing that you can feel around you.' : 'Nothing worth mentioning.'}`);
   }
   blocks.push(`# YOU'RE CARRYING\n${carryingBlock(world, c)}`);
 
   // HOW YOU FEEL (only when something is off)
-  if (feel.any) {
+  const emoLines = feelLines(world, c); // step 6: body sensations, never numbers or labels
+  const physNow = world.physical ? physLines(world, c).map((l) => mem.resolveNames(c, l)) : []; // step 10: held, pinned, choking, on the floor
+  if (feel.any || emoLines.length || body.lines.length || physNow.length) {
     const hints = [];
-    if (feel.idx.hunger >= 2 && !knownWith(c, 'food').length) hints.push("You don't know where to find food around here.");
-    if (feel.idx.fatigue >= 2 && !knownWith(c, 'bed').length) hints.push("You don't know anywhere you could sleep properly.");
-    blocks.push(`# HOW YOU FEEL\n${[feel.text, ...hints].join('\n')}`);
+    // step 7A: when a need bites, the nearest place they know that answers it (shortest route from here).
+    const nearest = (service) => knownWith(c, service)
+      .map((id) => ({ id, mins: travelMinutes(world.rooms, c.location, id, now) }))
+      .filter((e) => e.mins != null)
+      .sort((a, b) => a.mins - b.mins)[0] ?? null;
+    if (feel.idx.hunger >= 2) {
+      const food = nearest('food');
+      hints.push(food ? `Nearest food you know: ${placeLabel(c, world.rooms.get(food.id))} (${food.mins ? `${food.mins} min` : 'right here'}).` : "You don't know where to find food around here.");
+    }
+    if (feel.idx.fatigue >= 2) {
+      const bed = nearest('bed');
+      const state = bed ? knownRoomState(world, c, bed.id).bed : null;
+      const word = state === 'broken' ? 'but the bed is broken' : state === 'usable' ? 'bed usable' : null;
+      hints.push(bed ? `Nearest bed you know: ${placeLabel(c, world.rooms.get(bed.id))} (${bed.mins ? `${bed.mins} min` : 'right here'}${word ? `, ${word}` : ''}).` : "You don't know anywhere you could sleep properly.");
+    }
+    blocks.push(`# HOW YOU FEEL\n${[...physNow, feel.any ? feel.text : null, ...body.lines, ...hints, ...emoLines].filter(Boolean).join('\n')}`);
   }
 
-  // YOUR PLAN
-  if (mode === 'plan') {
-    const y = yesterdayText(world, c);
-    if (y) blocks.push(`# YESTERDAY\n${y}`);
-  } else {
-    const pb = planBlock(world, c);
-    if (pb) blocks.push(`# YOUR PLAN\n${pb}`);
+  // YOUR GROUPS (step 5.5)
+  const groups = world.groups.block(c);
+  if (groups) blocks.push(`# YOUR GROUPS\n${groups}`);
+  const invites = world.groups.invitations(c);
+  if (invites.length) {
+    blocks.push(`# INVITATIONS\n${invites.map((i) => `- ${mem.nameFor(c, i.from, { start: true })} has asked you to join ${pronouns(world.citizens.get(i.from)).obj}: to ${i.purpose.replace(/^to /i, '')}. You can accept or decline.`).join('\n')}`);
   }
 
   // ON YOUR MIND + YOU REMEMBER share a budget
@@ -150,7 +222,12 @@ function situationPrompt(world, c, { tier, mode, collect }) {
 
   // WHO IS HERE
   const others = room ? citizensIn(world.citizens, room.id, { exceptId: c.id }) : [];
-  if (room) blocks.push(`# WHO IS HERE\n${others.length ? others.map((o) => `- ${visibleLine(world, o, c)}`).join('\n') : 'Nobody else is here.'}`);
+  // Step 6: strong feelings focus attention (the target in detail, others compressed) and add what people show.
+  if (room) {
+    const lines = !others.length ? null : sn.blind ? blindWhoIsHere(world, c, others) : whoIsHere(world, c, others, (o, opts) => visibleLine(world, o, c, opts)).map((l) => `- ${l}`);
+    const shared = sharedGrief(world, c, others); // step 9.5 (B2.3)
+    blocks.push(`# WHO IS HERE\n${lines ? lines.join('\n') : 'Nobody else is here.'}${shared.length ? `\n${shared.join('\n')}` : ''}`);
+  }
 
   // YOU REMEMBER
   const picked = retrieve(world, c, { presentIds: others.map((o) => o.id), placeId: c.location }, 5);
@@ -172,50 +249,141 @@ function situationPrompt(world, c, { tier, mode, collect }) {
   if (conv) blocks.push(`# CONVERSATION\n${conversationBlock(world, conv, c)}`);
 
   // WHAT JUST HAPPENED
-  const stimuli = [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime);
-  blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length
-    ? stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`).join('\n')
+  const ordered = orderStimuli(world, c, [...c.thinkingInbox, ...c.inbox].sort((a, b) => a.gameTime - b.gameTime));
+  let stimuli = ordered.stimuli;
+  // in shock the world shrinks to the essentials
+  if (sn.shock && stimuli.length > 3) stimuli = [...stimuli].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0)).slice(0, 3).sort((a, b) => a.gameTime - b.gameTime);
+  blocks.push(`# WHAT JUST HAPPENED\n${stimuli.length || ordered.lead.length
+    ? [...ordered.lead.map((l) => `- ${l}`), ...stimuli.map((s) => `- (${relativeTime(now - s.gameTime)}) ${mem.resolveNames(c, s.text)}`)].join('\n')
     : 'Nothing new has caught your attention.'}`);
 
-  // Instruction
-  if (mode === 'plan') {
-    blocks.push('# WHAT NOW\nPlan your day: what you intend to do, roughly when, and where. Think about what you need (food, rest), what you want, and who you need to see. Only use places you know and people you know. Call make_plan exactly once.');
+  // THINGS YOU'D MEANT TO DO (step 9.5, A1.4): after what just happened, before the instruction, worded softly
+  const intents = intentionsBlock(world, c, { waking });
+  if (intents) blocks.push(`# ${intents}`);
+
+  // Instruction (step 6: at intense levels the feeling colours it, e.g. "Your heart is pounding.")
+  const clause = instructionClause(world, c);
+  if (waking && tier !== 'none') {
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}You've just woken up. Take a moment: what matters to you today? Then decide what you do first. Call exactly one tool; you may add, finish or drop things you mean to do in the same call.`);
   } else if (tier === 'none') {
-    blocks.push('# WHAT NOW\nAct on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.');
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}Act on instinct; no need to deliberate. Call exactly one tool. If you speak: one short sentence or two, in your own words.`);
   } else {
     if (conv) {
       // Honest forgetting: GLM tends to accept whatever others claim about the shared past.
       blocks.push("# REMEMBER\nIf someone brings up something you supposedly did, said or promised, it is only true for you if it is under YOU REMEMBER or ON YOUR MIND. If it is not there, you don't remember it: say so, ask, or bluff knowingly — don't just agree.");
     }
-    blocks.push('# WHAT NOW\nDecide what you do next. Call exactly one tool. You may include a short inner thought.\n'
+    blocks.push(`# WHAT NOW\n${clause ? `${clause} ` : ''}Decide what you do next. Call exactly one tool. You may include a short inner thought.\n`
       + 'If you speak: one or two short sentences, like a real turn in a conversation. Say it in your own words; '
       + "don't reach for your usual pet names or sayings.");
   }
   return blocks.join('\n\n');
 }
 
+// step 9.5 (A4): how they slept, what is on their mind, yesterday's unfinished business, today's routine, body, feelings.
+function onWaking(world, c) {
+  const lines = [];
+  const s = c.lastSleep;
+  if (s) {
+    const hours = Math.round(s.minutes / 60);
+    const how = s.reason === 'jolt' || s.reason === 'director' || s.reason === 'grief' ? 'Your sleep was broken' : s.quality === 'rough' ? 'You slept rough, on the hard ground' : s.reason === 'rested' ? 'You slept well' : 'You slept';
+    lines.push(`${how} (about ${hours} hour${hours === 1 ? '' : 's'}).`);
+  }
+  const mind = (c.onMyMind ?? []).slice(0, 3).map((m) => world.memory.resolveNames(c, m.text));
+  if (mind.length) lines.push(`On your mind as you wake: ${mind.join(' / ')}`);
+  const today = Math.floor(world.now / 1440);
+  const left = (c.intentions ?? []).filter((i) => Math.floor(i.createdAt / 1440) < today).map((i) => world.memory.resolveNames(c, i.text));
+  if (left.length) lines.push(`Left undone from yesterday: ${left.join('; ')}.`);
+  const routine = world.habits?.brief(c);
+  if (routine) lines.push(`Your usual day: ${routine}.`);
+  const grief = world.deaths?.strongestGrief(c);
+  if (grief && grief.intensity >= 3 && grief.target) lines.push(`For a moment you forget — then you remember: ${world.memory.nameFor(c, grief.target, { plain: true })} is gone.`);
+  // step 10 (0.3): what is still owed to the dead they know of (after a collapse, too)
+  for (const deadId of world.deaths?.knownDead(c) ?? []) {
+    const o = corpseOf(world, deadId);
+    const dead = world.citizens.get(deadId);
+    if (!o || !dead || !o.roomId) continue;
+    lines.push(world.memory.resolveNames(c, `${plainRef(dead)} lies in ${placeLabel(c, world.rooms.get(o.roomId))}, not yet buried.`));
+  }
+  return lines.join('\n') || 'A new day.';
+}
+
+// step 9.5 (B2.3): two people grieving the same person each see the other's grief
+function sharedGrief(world, c, others) {
+  const D = world.deaths;
+  if (!D) return [];
+  const out = [];
+  for (const deadId of D.knownDead(c)) {
+    if (D.griefFor(c, deadId) < 2) continue;
+    for (const o of others) {
+      if (D.griefFor(o, deadId) >= 3 && D.knows(o, deadId)) out.push(`- ${world.memory.nameFor(c, o.id, { start: true })} grieves ${world.memory.nameFor(c, deadId).replace(/ \(dead.*\)$/, '')} too.`);
+    }
+  }
+  return out;
+}
+
+/** Blind: people are voices. Known and familiar → named by voice; otherwise only "someone". No looks, no expressions. */
+function blindWhoIsHere(world, c, others) {
+  const mem = world.memory;
+  return others.map((o) => {
+    const rel = mem.rel(c.id, o.id);
+    const known = rel?.nameKnown && rel.nameConfidence >= 0.5 && rel.familiarity >= 0.5;
+    const awake = o.activity.type !== 'sleeping' && o.activity.type !== 'collapsed';
+    if (!awake) return '- You can hear slow breathing, or nothing at all, from someone near you.';
+    return known ? `- ${o.name} (you know ${pronouns(o).poss} voice and step).` : '- Someone is here (you can hear them, but you cannot tell who).';
+  });
+}
+
+const mem = (world, c, id) => world.memory.nameFor(c, id);
+
 function carryingBlock(world, c) {
   const O = world.objects;
   const items = O.carriedBy(c.id);
-  if (!items.length) return 'Nothing. Your hands are free.';
+  const wearing = wearingLine(world, c); // step 7B: only when something worn is damaged or stained
+  const hands = O.handsOf(c.id);
+  if (c.carryingPerson) return `You are carrying ${mem(world, c, c.carryingPerson)}. Both your hands are taken up.${wearing ? `
+${wearing}` : ''}`;
+  if (!items.length) return `${hands === 0 ? "You can't use your hands." : hands === 1 ? 'You have one hand free.' : 'Nothing. Your hands are free.'}${wearing ? `\n${wearing}` : ''}`;
   const lines = items.map((o) => `- ${O.textFor(c, o)} [${O.alias(o)}]`);
-  if (O.slotsUsed(c.id) >= SLOTS) lines.push('Your hands are full.');
+  if (O.freeSlots(c.id) <= 0) lines.push('Your hands are full.');
+  if (wearing) lines.push(wearing);
   return lines.join('\n');
 }
 
 function placesBlock(world, c) {
-  const entries = Object.entries(c.knownPlaces ?? {}).filter(([id]) => world.rooms.has(id));
+  const now = world.now;
+  const home = c.home && world.rooms.has(c.home) && c.knownPlaces?.[c.home] ? c.home : null;
+  // step 7A: current room and home first, then by walking time from here.
+  const entries = Object.entries(c.knownPlaces ?? {}).filter(([id]) => world.rooms.has(id))
+    .map(([id, k]) => ({ id, k, mins: travelMinutes(world.rooms, c.location, id, now) }))
+    .sort((a, b) => {
+      const rank = (e) => (e.id === c.location ? 0 : e.id === home ? 1 : 2);
+      return rank(a) - rank(b) || (a.mins ?? 99) - (b.mins ?? 99) || a.id.localeCompare(b.id);
+    })
+    .slice(0, 12);
   if (!entries.length) return 'None yet.';
-  return entries.map(([id, k]) => {
-    const r = world.rooms.get(id);
-    const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
-    let src = '';
-    if (k.source === 'home') src = ' (your home)';
-    else if (k.source?.startsWith('told:')) src = ` (${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it)`;
-    else if (k.source === 'visited') src = ' (you have been there)';
-    const here = id === c.location ? ' (you are here)' : '';
-    return `- ${r.name}: ${what}${here || src}`;
-  }).join('\n');
+  return entries.map(({ id, k, mins }) => placeLine(world, c, id, k, mins)).join('\n');
+}
+
+// step 7A: one place, as this citizen last saw it: how far, what it offers, what has changed, when they looked.
+function placeLine(world, c, id, k, mins) {
+  const r = world.rooms.get(id);
+  const what = k.services.length ? servicesText(k.services) : 'nothing in particular to be had, as far as you know';
+  const state = knownRoomState(world, c, id);
+  const here = id === c.location;
+  const seen = here ? null : lastSeenPhrase(world.now, state.seenAt);
+  // Tags in one bracket: where it is from here, then how they know it ('been there' only when no Last seen).
+  const tags = [here ? 'you are here' : mins != null ? `${mins} min` : null];
+  if (k.source === 'home') tags.push('your home');
+  else if (k.source?.startsWith('told:')) tags.push(`${world.memory.nameFor(c, k.source.slice(5), { start: true })} told you about it`);
+  else if (k.source === 'visited' && !seen && !here) tags.push('you have been there');
+  const bits = [...state.parts];
+  if (state.bed && !bits.some((b) => /^bed /.test(b))) bits.push(`bed ${state.bed}`);
+  const tagText = tags.filter(Boolean).join(', ');
+  // step 9.5: a place that frightens them since a death (or the smell of one)
+  const fear = c.fearedPlaces?.[id];
+  const dreadText = fear && world.now - fear.since < 7 * 1440 ? ` You dread it: ${fear.why}.` : '';
+  const stock = here ? (world.stock?.note(id, 'food') ?? '').trim().replace(/^\(|\)$/g, '') : '';
+  return `- ${r.name}${tagText ? ` (${tagText})` : ''}: ${what}${bits.length ? ` — ${bits.join('; ')}` : ''}${stock ? ` — ${stock}` : ''}.${seen ? ` Last seen ${seen}.` : ''}${dreadText}`;
 }
 
 function ownActivity(world, c) {
@@ -249,7 +417,7 @@ function ownActivity(world, c) {
 }
 
 // How another citizen appears to this viewer: name (if known) or look, the relationship in words, what they do.
-function visibleLine(world, o, viewer) {
+function visibleLine(world, o, viewer, { short = false } = {}) {
   const mem = world.memory;
   const rel = mem.rel(viewer.id, o.id);
   const p = o.persona;
@@ -284,10 +452,27 @@ function visibleLine(world, o, viewer) {
     default: doing = `${Subj} ${be} not doing anything in particular.`;
   }
   const marks = (o.marks ?? []).filter((m) => m.until == null || m.until > world.now).map((m) => m.text);
-  const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : ''].join(' ');
+  const look = [p.appearance || '', marks.length ? `Right now: ${marks.join('; ')}.` : '', cuesFor(world, o)].join(' '); // step 7B: visible injuries and blood
   const carrying = carryingPhrase(world, viewer, o);
   const holds = carrying ? `${Subj} ${be} ${carrying.slice(2)}.` : '';
-  return `${who}. ${rel ? relationSentence(rel, o) : 'A stranger to you.'} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+  // Step 5.5: group tags, the reasons they could name, and wariness towards strangers.
+  const line = relationLine(world, viewer, o);
+  const where = spotPhrase(world, viewer, o); // step 8: one short phrase about where they stand
+  const wary = world.physical ? waryNote(world, viewer, o) : null; // step 10: lasting wariness toward an attacker
+  const waryText = wary ? ` (${wary}.)` : '';
+  if (short) return `${who}${line.tags}${where}.${waryText} ${doing} ${holds}`.replace(/\s+/g, ' ').trim(); // frightened: neutral people shrink
+  return `${who}${line.tags}${where}. ${line.text}${waryText} ${look} ${doing} ${holds}`.replace(/\s+/g, ' ').trim();
+}
+
+/** ", by the oven, across the room from you" / ", right next to you" ('' when positions are unknown). */
+function spotPhrase(world, viewer, o) {
+  const M = world.maps;
+  const room = viewer.location;
+  if (!room || !viewer.spot || !o.spot || !M.has(room)) return '';
+  const cls = M.distanceClass(room, viewer.spot, o.spot);
+  if (cls === 'same') return ', right next to you';
+  const label = M.label(room, o.spot);
+  return cls === 'near' ? `, ${label}, close by` : `, ${label}, across the room from you`;
 }
 
 function conversationBlock(world, conv, c) {

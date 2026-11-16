@@ -1,0 +1,61 @@
+{
+  "name": "injury-day",
+  "description": "Part B test day: a bleeding cut at the smithy, a fall in the old mine, an infection brewing in a neglected burn, and a serious wound with the healer close by. Reseed first and reuse the seed to replay it.",
+  "actions": [
+    {
+      "at": "07:30",
+      "type": "injure",
+      "citizenId": "tomas",
+      "damageType": "cut",
+      "part": "forearm_left",
+      "amount": 14,
+      "cause": "a slipped chisel at the forge",
+      "comment": "a venous gash on the smith: a bandage case"
+    },
+    {
+      "at": "09:00",
+      "type": "injure",
+      "citizenId": "jonas",
+      "damageType": "burn",
+      "part": "hand_right",
+      "amount": 12,
+      "cause": "a hot iron",
+      "comment": "a burn nobody dresses: infection later"
+    },
+    {
+      "at": "11:00",
+      "type": "injure",
+      "citizenId": "anselm",
+      "part": "shin_left",
+      "severity": 5,
+      "cause": "a fall in the cellar",
+      "comment": "a broken shin: splint, set, a crutch",
+      "condition": "fracture"
+    },
+    {
+      "at": "13:30",
+      "type": "whisper",
+      "citizenId": "lena",
+      "text": "Someone shouts that a man has been badly cut near the well. You grab what you need.",
+      "importance": 8
+    },
+    {
+      "at": "13:35",
+      "type": "injure",
+      "citizenId": "greta",
+      "damageType": "cut",
+      "part": "thigh_right",
+      "amount": 30,
+      "chance": 0.5,
+      "cause": "a scythe at the well",
+      "comment": "maybe the femoral artery: a tourniquet case"
+    },
+    {
+      "at": "16:00",
+      "type": "event",
+      "preset": "rain",
+      "roomId": "square",
+      "label": "Rain on the square"
+    }
+  ]
+}

@@ -2,12 +2,15 @@
 // All state changes go through world.* methods; this module only orchestrates.
 //
 // mode 'decide' — the usual decision (purpose 'decide', tier from tiers.js)
-// mode 'plan'   — plan the day (purpose 'plan', tier full, only the make_plan tool)
+// (step 9.5: the day plan and its 'plan' mode are gone; intentions are edited inside decisions)
 import { buildMessages } from './prompt.js';
 import { buildTools, validateCall } from './tools.js';
 import { chooseTier } from './tiers.js';
-import { makePlanTool } from './plan.js';
-import { ranOut, RETRY_MAX } from '../llm.js';
+import { ranOut, RETRY_MAX, CAP_ABOVE, TIER_MAX_TOKENS } from '../llm.js'; // step A6: TIER_MAX_TOKENS comes from config (LLM_MAX_TOKENS_*)
+import { findLeaks } from '../social/leak.js';
+
+// step 9.5: the director can switch the leak check on and off at runtime (world.debugLeakCheck)
+const leakCheckOn = (world) => world.debugLeakCheck ?? process.env.DEBUG_LEAK_CHECK === 'true';
 
 // A `say` decided while 3+ new lines were spoken in the same conversation answers a stale
 // question: think again once with the fresh transcript (cheaper than interrupting).
@@ -21,12 +24,20 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     console.error(`[think] could not start for ${c.id}:`, err);
     return;
   }
-  const purpose = mode === 'plan' ? 'plan' : 'decide';
+  const purpose = 'decide';
   const tierInfo = chooseTier(c, { purpose, stimuli: c.thinkingInbox }, world);
   t.tier = tierInfo.tier;
-  const call = (messages, tools, tier, maxTokens) => world.llm.chat({
-    purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens,
-  });
+  // EMOTION_PARAM_EFFECTS (off by default): a slightly higher temperature under overwhelming anger or fear.
+  const params = tierInfo.params?.temperatureDelta ? { temperature: Number(process.env.EMOTION_PARAM_BASE_TEMPERATURE ?? 0.7) + tierInfo.params.temperatureDelta } : undefined;
+  const callIds = []; // every LLM call of this think, so the action event can point at its reasoning (export)
+  // step 10 (0.1): every decide call records why it ran at its tier (llm_calls.tier_reason); a retry says it is one
+  const call = async (messages, tools, tier, maxTokens, tierReason = tierInfo.reason) => {
+    const r = await world.llm.chat({
+      purpose, citizenId: c.id, messages, tools, signal: t.controller.signal, tier, maxTokens, tierReason, ...(params ? { params } : {}),
+    });
+    if (r?.callId) callIds.push(r.callId);
+    return r;
+  };
 
   try {
     let outcome;
@@ -44,40 +55,87 @@ export async function think(world, c, { mode = 'decide' } = {}) {
     }
     outcome.tier = tierInfo.tier;
     outcome.tierReason = tierInfo.reason;
-    if (mode === 'plan') world.completePlanThink(c, t, outcome);
-    else world.completeThink(c, t, outcome);
+    outcome.tierDetail = tierInfo.detail ?? null;
+    outcome.callIds = callIds;
+    world.completeThink(c, t, outcome);
   } catch (err) {
     if (!world.isCurrentThink(c, t) || t.controller.signal.aborted) world.abandonThink(c, t);
     else world.failThink(c, t, err);
   }
 }
 
-// Build → call → validate (with corrective retries). Returns null if the think went stale.
+// Build → call → validate (with a cut-off ladder and one corrective retry). Returns null if the think went stale.
 async function decide(world, c, t, call, { mode, tier, maxTokens }) {
   const collect = { recalled: [] };
   const messages = buildMessages(world, c, { tier, mode, collect });
-  const tools = mode === 'plan' ? [makePlanTool(world, c)] : buildTools(world, c);
+  const tools = buildTools(world, c);
+  if (leakCheckOn(world)) {
+    const leaks = findLeaks(world, `${messages.map((m) => m.content).join('\n')}\n${JSON.stringify(tools)}`, c.id);
+    if (leaks.length) {
+      const msg = `PROMPT LEAK: ${leaks.map((l) => `${l.kind} "${l.text}"`).join('; ')}`;
+      console.error(`[leak] ${c.id}: ${msg}`); // fails loudly (step 9.5), the think still runs
+      world.logEvent('error', { actorId: c.id, location: c.location, message: msg, leak: true, leaks });
+    }
+  }
 
   const first = await call(messages, tools, tier, maxTokens);
   if (!world.isCurrentThink(c, t)) return null;
   let outcome = interpret(first, tools);
+  // Where the current outcome came from, so a correction continues the conversation it belongs to.
+  let ladder = null;
 
-  // Ran out of tokens while thinking (no usable tool call): one cheap retry with thinking off.
+  // step A6: cut-off recovery ladder (decide mode). A call that ran out of tokens without a usable tool
+  // call is retried ONCE at the next higher cap, with thinking as that tier implies — the model ran out
+  // of words, so it needs more of them, not fewer. Plan mode keeps the old cheap thinking-off retry.
   if (ranOut(first)) {
-    const quick = buildMessages(world, c, { tier: 'none', mode, collect: null });
-    const second = await call(quick, tools, 'none', RETRY_MAX[mode === 'plan' ? 'plan' : 'decide']);
-    if (!world.isCurrentThink(c, t)) return null;
-    outcome = interpret(second, tools);
-    outcome.reasoning = [first.reasoning, second.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
+    if (mode === 'decide') {
+      // none → light, light → full (each with that tier's cap); full → 1.5× what the first call was given.
+      const toTier = CAP_ABOVE[tier] ?? 'full';
+      const retryTokens = tier === 'full'
+        ? Math.round(1.5 * (maxTokens ?? TIER_MAX_TOKENS[tier] ?? 3000))
+        : TIER_MAX_TOKENS[toTier];
+      world.logEvent('retry_cutoff', { actorId: c.id, location: c.location, fromTier: tier, toTier, maxTokens: retryTokens });
+      const quick = buildMessages(world, c, { tier: toTier, mode, collect: null });
+      const retryRes = await call(quick, tools, toTier, retryTokens, 'retry_cutoff');
+      if (!world.isCurrentThink(c, t)) return null;
+      outcome = interpret(retryRes, tools);
+      outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
+      ladder = { tier: toTier, maxTokens: retryTokens, messages: quick, res: retryRes };
+    } else {
+      // plan mode: one cheap thinking-off attempt, as before
+      const quick = buildMessages(world, c, { tier: 'none', mode, collect: null });
+      const retryRes = await call(quick, tools, 'none', RETRY_MAX.decide, 'retry_cutoff');
+      if (!world.isCurrentThink(c, t)) return null;
+      outcome = interpret(retryRes, tools);
+      outcome.reasoning = [first.reasoning, outcome.reasoning].filter(Boolean).join('\n\n--- ran out of words; acting on instinct ---\n\n') || null;
+    }
   }
 
   if (outcome.invalid) {
-    // One retry, telling the model what was wrong.
-    const second = await call([...messages, ...correction(first, outcome)], tools, tier, maxTokens);
+    // One retry, telling the model what was wrong — in the conversation the invalid call was made in.
+    const base = ladder?.messages ?? messages;
+    const turn = ladder?.res ?? first;
+    const second = await call([...base, ...correction(turn, outcome)], tools, ladder?.tier ?? tier, ladder?.maxTokens ?? maxTokens, 'retry_invalid');
     if (!world.isCurrentThink(c, t)) return null;
     const again = interpret(second, tools);
     again.reasoning = joinReasoning(outcome.reasoning, second.reasoning);
     outcome = again.invalid ? { ...again, fallback: true } : again;
+  }
+  // step 10 §5.3: the plausibility guard — turning to care for someone they meant to hurt, with no remorse felt and no
+  // change of mind stated, is asked once more ("You meant to hurt him. If you've changed your mind, say why.")
+  const incoherent = outcome.call && mode === 'decide' ? world.physical?.consequences.coherenceCheck(c, outcome.call) : null;
+  if (incoherent) {
+    world.logEvent('coherence_retry', { actorId: c.id, location: c.location, tool: outcome.call.name, args: outcome.call.arguments, message: incoherent });
+    const rawCall = { id: 'call_1', name: outcome.call.name, arguments: outcome.call.arguments };
+    const turn = ladder?.res ?? first;
+    const base = ladder?.messages ?? messages;
+    const third = await call([...base, ...correction(turn, { rawCall, error: incoherent })], tools, ladder?.tier ?? tier, ladder?.maxTokens ?? maxTokens, 'coherence_retry');
+    if (!world.isCurrentThink(c, t)) return null;
+    const again = interpret(third, tools);
+    if (!again.invalid && (again.call || again.text)) {
+      again.reasoning = [outcome.reasoning, again.reasoning].filter(Boolean).join('\n\n--- asked again: you meant to hurt them ---\n\n') || null;
+      outcome = again;
+    }
   }
   outcome.recalled = collect.recalled;
   return outcome;

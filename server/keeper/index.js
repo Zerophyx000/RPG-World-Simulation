@@ -117,9 +117,16 @@ export function validateUse(world, obj, p, { doAction = null } = {}) {
 export function fallbackUse(world, obj, intent) {
   const type = world.objects.type(obj);
   const text = ` ${String(intent ?? '').toLowerCase().replace(/[^a-z' ]+/g, ' ')} `;
+  // step 9.5: the verb that comes FIRST wins ("wedge it shut" is a wedge, not a shut)
+  const hits = [];
   for (const [verb, rule] of Object.entries(type.rules ?? {})) {
-    if (!text.includes(` ${verb} `) && !text.includes(` ${verb}s `) && !text.includes(` ${verb}ing `)) continue;
+    const at = Math.min(...[` ${verb} `, ` ${verb}s `, ` ${verb}ing `, ` ${verb}ed `].map((w) => text.indexOf(w)).filter((i) => i >= 0));
+    if (!Number.isFinite(at)) continue;
     if (!rule.from.includes(obj.state) || !(type.transitions[obj.state] ?? []).includes(rule.to)) continue;
+    hits.push({ verb, rule, at });
+  }
+  if (hits.length) {
+    const { verb, rule } = hits.sort((a, b) => a.at - b.at)[0];
     return { accept: true, newState: rule.to, surfaceText: null, perceivedText: `{actor} ${verb}s ${world.objects.short(obj)}.`, rejectText: null };
   }
   // A plain affordance without a state change ("warm hands at", "sit on") is fine.

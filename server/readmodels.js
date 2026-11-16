@@ -139,7 +139,7 @@ export function timeline(world, { from = null, to = null } = {}) {
   const points = [];
   const pointRows = db.prepare(`SELECT id, type, actor_id, game_time, location, data FROM events
     WHERE game_time >= ? AND game_time <= ?
-      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place')
+      AND (type IN ('director', 'interrupt', 'rethink_stale', 'damage', 'action_stale', 'collapse', 'forced_sleep', 'revive', 'death', 'learn_place', 'injury', 'treatment', 'accident', 'critical_window', 'learned_death', 'habit', 'gathering', 'burial', 'news', 'physical', 'crime', 'fire_start', 'room_fire', 'altercation_start', 'barricade', 'scheme', 'scheme_step_due', 'lie_caught', 'lie_confessed', 'contradiction')
            OR (type = 'body' AND json_extract(data, '$.importance') >= 7)
            OR (type = 'action' AND json_extract(data, '$.tool') IN ('say', 'leave_conversation', 'tell_about_place', 'eat')))
     ORDER BY id`).all(from, to);
@@ -189,15 +189,45 @@ export function timeline(world, { from = null, to = null } = {}) {
         label: d.label ?? null, roomId: d.roomId ?? r.location,
       });
     } else {
-      const text = r.type === 'damage' ? `-${d.amount} hp` : r.type === 'body' ? `${d.need}: ${d.level}` : r.type === 'learn_place' ? `learned about ${d.placeId}` : d.reason ?? d.cause?.text ?? null;
-      points.push({ ...base, type: r.type, text });
+      const text = r.type === 'damage' ? `hit for ${d.amount}` : r.type === 'body' ? `${d.need}: ${d.level}`
+        : r.type === 'injury' ? `${d.damageType ?? 'injury'}${d.part ? ` to ${d.part}` : ''}: ${d.cause ?? ''}`
+        : r.type === 'treatment' ? `${d.method}${d.effective === false ? ' (no effect)' : ''}`
+        : r.type === 'accident' ? `accident: ${d.source}`
+        : r.type === 'critical_window' ? `critical bleeding ${d.action}${d.reason ? ` (${d.reason})` : ''}`
+        : r.type === 'learn_place' ? `learned about ${d.placeId}`
+        // step 9.5: the news travelling, habit runs (dim), gatherings and burials
+        : r.type === 'learned_death' ? `${d.certainty === 'suspected' ? 'saw someone lying still' : 'learned of the death'} of ${world.citizens.get(d.deadId)?.name ?? d.deadId} (${d.how})`
+        : r.type === 'habit' ? `out of habit: ${d.what}`
+        : r.type === 'gathering' ? `calls a gathering: ${d.purpose} (${d.time})`
+        : r.type === 'burial' ? `buries ${world.citizens.get(d.deadId)?.name ?? 'the dead'}`
+        : r.type === 'news' ? `tells ${world.citizens.get(d.to)?.name ?? d.to}: ${world.citizens.get(d.person)?.name ?? d.person} ${d.news}`
+        // step 10: violence by severity, crimes, fires, fights, barricades
+        : r.type === 'physical' ? `${d.act.replace('_', ' ')} ${world.citizens.get(d.targetId)?.name ?? d.targetId}${d.hit === false ? ' (missed)' : (d.effects ?? []).length ? ` — ${d.effects.join(', ')}` : ''}`
+        : r.type === 'crime' ? `${d.kind.replace('_', ' ')}${d.victimId ? ` (${world.citizens.get(d.victimId)?.name ?? d.victimId})` : ''}, severity ${d.severity}`
+        : r.type === 'fire_start' ? `fire: ${world.objects.get(d.objectId) ? world.objects.surfaceText(world.objects.get(d.objectId)) : d.objectId} (${d.cause})`
+        : r.type === 'room_fire' ? 'the whole room is on fire'
+        : r.type === 'altercation_start' ? `goes at ${world.citizens.get(d.targetId)?.name ?? d.targetId} (${d.intent})`
+        : r.type === 'barricade' ? 'barricades the door'
+        // step 11: the long game (director view)
+        : r.type === 'scheme' ? `scheme #${d.schemeId} ${d.op}${d.goal ? `: ${d.goal}` : d.why ? `: ${d.why}` : ''}`
+        : r.type === 'scheme_step_due' ? `plan step due: ${d.text}`
+        : r.type === 'lie_caught' ? `sees through ${world.citizens.get(d.liarId)?.name ?? d.liarId}'s lie (${d.how})`
+        : r.type === 'lie_confessed' ? `owns up to a lie (#${d.lieId})`
+        : r.type === 'contradiction' ? `something doesn't fit in ${world.citizens.get(d.liarId)?.name ?? d.liarId}'s story`
+        : d.reason ?? d.cause?.text ?? d.cause ?? null;
+      if (r.type === 'physical' && !['shove', 'grab', 'slap', 'punch', 'kick', 'strike', 'throw_at', 'snatch', 'pin_down', 'choke', 'tie_up', 'drag'].includes(d.act)) continue; // caring touches stay off the timeline
+      const severity = r.type === 'physical' ? ((d.effects ?? []).some((f) => ['dead', 'unconscious', 'bone broken'].includes(f)) ? 3 : (d.effects ?? []).some((f) => ['bleeding', 'knocked down', 'choking'].includes(f)) || d.with ? 2 : 1) : r.type === 'crime' ? d.severity : null;
+      points.push({ ...base, type: r.type, text, ...(r.type === 'death' ? { cause: d.cause ?? null } : {}), ...(severity != null ? { severity } : {}) });
     }
   }
 
+  // step 7B: the vitality line (hourly samples while something was wrong)
+  const vitality = db.prepare(`SELECT actor_id, game_time, data FROM events WHERE type = 'vitality' AND game_time >= ? AND game_time <= ? ORDER BY id`).all(from, to)
+    .map((r) => { const d = JSON.parse(r.data); return { citizenId: r.actor_id, t: r.game_time, v: d.vitality, blood: d.blood }; });
   return {
     from, to, now,
     citizens: [...world.citizens.values()].map((c) => ({ id: c.id, name: c.name, alive: c.alive })),
-    spans, points, conversations,
+    spans, points, conversations, vitality,
   };
 }
 
@@ -228,7 +258,7 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
   const bucketMs = bucket * 60_000;
   const start = Math.floor((now - minutes * 60_000) / bucketMs) * bucketMs;
   const since = new Date(start).toISOString();
-  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, status, duration_ms, prompt_tokens, completion_tokens
+  const rows = world.db.prepare(`SELECT real_time, purpose, profile, tier, tier_reason, status, duration_ms, prompt_tokens, completion_tokens, finish_reason
     FROM llm_calls WHERE real_time >= ?`).all(since);
   const buckets = [];
   for (let t = start; t <= now; t += bucketMs) buckets.push({ t, output: {}, input: 0, calls: 0 });
@@ -265,8 +295,38 @@ export function usage(world, { minutes = 180, bucket = 10 } = {}) {
   }
   const reflections = Object.fromEntries(world.db.prepare(`SELECT json_extract(data, '$.path') AS path, COUNT(*) AS n FROM events
     WHERE type = 'reflection_gate' AND real_time >= ? GROUP BY path`).all(since).map((r) => [r.path, r.n]));
+  // step A6: how often each tier ran out of words, and how often we had to climb the cut-off ladder
+  // or caught a tier rule being broken. Empty tiers still show up, at rate 0.
+  const cutoffs = { full: { calls: 0, cutoff: 0 }, light: { calls: 0, cutoff: 0 }, none: { calls: 0, cutoff: 0 } };
+  for (const r of rows) {
+    if (!r.tier || !(r.tier in cutoffs)) continue;
+    cutoffs[r.tier].calls++;
+    if (r.finish_reason === 'length') cutoffs[r.tier].cutoff++;
+  }
+  for (const v of Object.values(cutoffs)) v.rate = v.calls ? Math.round((v.cutoff / v.calls) * 1000) / 1000 : 0;
+  // step 10 (0.1): decide calls by tier and by the reason for their tier (share of full is the cost driver)
+  const decide = { calls: 0, full: 0, fullShare: 0, rows: {} };
+  for (const r of rows) {
+    if (r.purpose !== 'decide' || !r.tier) continue;
+    decide.calls++;
+    if (r.tier === 'full') decide.full++;
+    const k = `${r.tier}|${r.tier_reason ?? '?'}`;
+    const v = (decide.rows[k] ??= { tier: r.tier, reason: r.tier_reason ?? '?', calls: 0, output: 0 });
+    v.calls++;
+    v.output += r.completion_tokens ?? 0;
+  }
+  decide.fullShare = decide.calls ? Math.round((decide.full / decide.calls) * 1000) / 1000 : 0;
+  decide.rows = Object.values(decide.rows).map((v) => ({ ...v, avgOutput: Math.round(v.output / v.calls) })).sort((a, b) => b.calls - a.calls);
+  const countEvents = (type) => world.db.prepare('SELECT COUNT(*) AS n FROM events WHERE type = ? AND real_time >= ?').get(type, since).n;
   return {
     minutes, bucket, start, now, buckets, purposes, profiles, reflections,
+    cutoffs,
+    decide,
+    tierCapped: countEvents('tier_capped'),
+    habitBlocked: countEvents('habit_blocked'),
+    habitRuns: countEvents('habit'),
+    addressedBelowFull: countEvents('tier_violation'),
+    retryCutoff: countEvents('retry_cutoff'),
     governor: world.governor?.view() ?? null,
     llmProfiles: world.llm.profilesView(),
   };
@@ -296,5 +356,6 @@ export function beliefs(world, citizenId) {
   return world.memory.relsOf(citizenId).map((r) => ({
     from: r.citizenId, to: r.otherId, affinity: r.affinity, trust: r.trust, familiarity: r.familiarity,
     nameKnown: r.nameKnown, nameConfidence: r.nameConfidence, summary: r.summary,
+    dead: Boolean(world.deaths?.knows(citizenId, r.otherId)), // step 9.5: only a death they know of
   }));
 }

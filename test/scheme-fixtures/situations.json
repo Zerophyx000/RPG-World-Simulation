@@ -1,0 +1,99 @@
+{
+  "about": "Step 11.5 harness: ten grievances from mild to severe, done by Tomas (the offender) to Bram (the protagonist). Each op goes through the world's own write paths (memory.add, relationships.change, emotions.bump, body.damage) or, for the rough acts, logs the same physical / crime events step 10 logs, so the planning prompt reads them exactly as it would in a run. Times are minutes before the planning moment.",
+  "ops": "memory { text, importance, ago } · relationship { affinity, trust, reason, ago } · emotion { type, delta, cause } · act { act, part, effects, words, with, room, witnesses, damage: { damageType, amount }, ago } · witnessRel { who, reason } (a bystander's laugh etc., Bram's view of them)",
+  "situations": [
+    {
+      "id": "sneer", "severity": 1, "title": "a sneer in public",
+      "ops": [
+        { "op": "memory", "text": "At the well this morning Tomas looked at my cart and said loud enough for everyone, \"Still hauling other men's flour, Bram?\" Greta smiled.", "importance": 5, "ago": 600 },
+        { "op": "relationship", "affinity": -0.5, "trust": 0, "reason": "Tomas sneered at me in front of everyone at the well.", "ago": 600 },
+        { "op": "emotion", "type": "anger", "delta": 2, "cause": "Tomas sneered at me at the well" }
+      ]
+    },
+    {
+      "id": "debt", "severity": 2, "title": "a debt not paid",
+      "ops": [
+        { "op": "memory", "text": "Tomas still hasn't paid the four shillings I lent him at midsummer. Today he laughed and said I'd get it \"when the river runs uphill.\"", "importance": 6, "ago": 300 },
+        { "op": "relationship", "affinity": -1, "trust": -1.5, "reason": "Tomas won't pay back the four shillings I lent him and laughed about it.", "ago": 300 },
+        { "op": "emotion", "type": "anger", "delta": 3, "cause": "Tomas laughed off the debt" }
+      ]
+    },
+    {
+      "id": "stolen_tool", "severity": 3, "title": "a stolen tool",
+      "ops": [
+        { "op": "memory", "text": "My good axle-jack went missing from the cart shed. This afternoon I saw it hanging in Tomas's smithy, and he said he'd \"found it.\"", "importance": 7, "ago": 400 },
+        { "op": "relationship", "affinity": -1.5, "trust": -2.5, "reason": "Tomas took my axle-jack from my shed and claims he found it.", "ago": 400 },
+        { "op": "emotion", "type": "anger", "delta": 4, "cause": "Tomas stole my axle-jack" }
+      ]
+    },
+    {
+      "id": "lie_job", "severity": 4, "title": "a lie that cost a job",
+      "ops": [
+        { "op": "memory", "text": "The miller gave the winter hauling to someone else. He told me Tomas had said I drink on the road and lose sacks. It's a lie, and it was half my winter's income.", "importance": 8, "ago": 500 },
+        { "op": "relationship", "affinity": -2, "trust": -3, "reason": "Tomas lied to the miller about me and cost me the winter hauling.", "ago": 500 },
+        { "op": "emotion", "type": "anger", "delta": 5, "cause": "Tomas's lie cost me the winter work" },
+        { "op": "emotion", "type": "fear", "delta": 2, "cause": "how will I get through the winter" }
+      ]
+    },
+    {
+      "id": "beating", "severity": 5, "title": "a public beating",
+      "ops": [
+        { "op": "act", "act": "punch", "part": "head", "effects": ["dazed", "knocked down"], "words": "Stay down, carter.", "room": "tavern", "witnesses": ["lena", "anselm"], "damage": { "damageType": "blunt", "part": "head", "amount": 4 }, "ago": 240 },
+        { "op": "act", "act": "kick", "part": "torso", "effects": ["winded"], "room": "tavern", "witnesses": ["lena", "anselm"], "damage": { "damageType": "blunt", "part": "torso", "amount": 3 }, "ago": 238 },
+        { "op": "relationship", "affinity": -3, "trust": -3, "reason": "Tomas knocked me down in the Tilted Cup and kicked me while I was on the floor.", "ago": 238 },
+        { "op": "emotion", "type": "anger", "delta": 6, "cause": "Tomas beat me in the tavern" },
+        { "op": "emotion", "type": "fear", "delta": 3, "cause": "Tomas beat me in the tavern" }
+      ]
+    },
+    {
+      "id": "beating_humiliation", "severity": 6, "title": "a beating plus humiliation",
+      "ops": [
+        { "op": "act", "act": "punch", "part": "head", "effects": ["dazed", "knocked down"], "words": "Look at him. Can't even stand up.", "room": "tavern", "witnesses": ["lena", "anselm", "greta"], "damage": { "damageType": "blunt", "part": "head", "amount": 5 }, "ago": 240 },
+        { "op": "act", "act": "drag", "part": "torso", "effects": [], "words": "Out with the rubbish.", "room": "tavern", "witnesses": ["lena", "anselm", "greta"], "ago": 238 },
+        { "op": "memory", "text": "Tomas broke my nose in the Tilted Cup and dragged me out by the collar into the mud. Greta laughed. Anselm did nothing.", "importance": 9, "ago": 237 },
+        { "op": "relationship", "affinity": -3.5, "trust": -3, "reason": "Tomas broke my nose in front of the whole tavern and threw me in the mud like rubbish.", "ago": 237 },
+        { "op": "witnessRel", "who": "greta", "reason": "Greta laughed while Tomas dragged me out bleeding." },
+        { "op": "emotion", "type": "anger", "delta": 7, "cause": "Tomas beat and shamed me in front of everyone" },
+        { "op": "emotion", "type": "shame", "delta": 5, "cause": "dragged out of the tavern in front of everyone" }
+      ]
+    },
+    {
+      "id": "lover_taken", "severity": 6, "title": "a lover taken",
+      "ops": [
+        { "op": "memory", "text": "Lena and I were to be married at harvest. Tonight she told me she's going to Tomas instead. He was there, at her door, grinning at me.", "importance": 9, "ago": 300 },
+        { "op": "relationship", "affinity": -3, "trust": -2, "reason": "Tomas courted Lena behind my back and took her from me.", "ago": 300 },
+        { "op": "emotion", "type": "jealousy", "delta": 6, "cause": "Tomas took Lena from me" },
+        { "op": "emotion", "type": "anger", "delta": 5, "cause": "Tomas took Lena from me" },
+        { "op": "emotion", "type": "sadness", "delta": 5, "cause": "Lena left me" }
+      ]
+    },
+    {
+      "id": "framed_theft", "severity": 7, "title": "a framed theft",
+      "ops": [
+        { "op": "memory", "text": "Greta's silver spoons were found under the seat of my cart. I never touched them. I saw Tomas by my cart the night before. Now the whole village calls me a thief and Greta won't sell me bread.", "importance": 9, "ago": 600 },
+        { "op": "relationship", "affinity": -3.5, "trust": -4, "reason": "Tomas planted Greta's spoons in my cart and made the village think I'm a thief.", "ago": 600 },
+        { "op": "emotion", "type": "anger", "delta": 7, "cause": "Tomas framed me for theft" },
+        { "op": "emotion", "type": "shame", "delta": 4, "cause": "everyone thinks I'm a thief" }
+      ]
+    },
+    {
+      "id": "family_hurt", "severity": 8, "title": "a family member hurt",
+      "ops": [
+        { "op": "memory", "text": "Tomas beat my younger brother Pell senseless behind the smithy over a few coins at dice. Pell's arm is broken and he can't work the harvest. Tomas says he had it coming.", "importance": 9, "ago": 700 },
+        { "op": "relationship", "affinity": -4, "trust": -4, "reason": "Tomas beat my brother Pell senseless and broke his arm over dice money.", "ago": 700 },
+        { "op": "emotion", "type": "anger", "delta": 8, "cause": "Tomas broke my brother's arm" },
+        { "op": "emotion", "type": "disgust", "delta": 5, "cause": "Tomas broke my brother's arm and laughs about it" }
+      ]
+    },
+    {
+      "id": "family_killed", "severity": 10, "title": "a family member killed",
+      "ops": [
+        { "op": "memory", "text": "Tomas struck my brother Pell down in the road with his hammer. Pell died at dawn in my arms. Tomas says it was a fair fight and walks free.", "importance": 10, "ago": 900 },
+        { "op": "relationship", "affinity": -5, "trust": -5, "reason": "Tomas killed my brother Pell with his hammer and calls it a fair fight.", "ago": 900 },
+        { "op": "emotion", "type": "anger", "delta": 9, "cause": "Tomas killed Pell" },
+        { "op": "emotion", "type": "disgust", "delta": 8, "cause": "Tomas killed Pell" },
+        { "op": "emotion", "type": "sadness", "delta": 8, "cause": "Pell is dead" }
+      ]
+    }
+  ]
+}

@@ -10,9 +10,11 @@
 
 const MIN_IMPORTANCE = 2;
 const ON_MIND_AT = 7;
+const REPEAT_WINDOW_MINUTES = 180;
 
 export function witness(mem, c, s) {
-  if (!['director', 'action', 'arrive', 'depart', 'speech', 'body', 'object', 'notice'].includes(s.kind)) return;
+  if (!['director', 'action', 'arrive', 'depart', 'speech', 'body', 'object', 'notice', 'signal', 'emotion'].includes(s.kind)) return;
+  if (s.data?.invitation) return;                            // invitations live in the conversation / reflection
   if (s.sourceId && s.sourceId === c.id) return;           // own routine actions
   // Conversation lines: participants get the reflection afterwards. Bystanders remember overhearing it,
   // once per conversation, weighted by how they feel about BOTH people talking.
@@ -38,6 +40,10 @@ export function witness(mem, c, s) {
   if (bystander) mem.overheard.add(bystander);
   const about = [s.sourceId, s.data?.toId].filter((x) => x && x !== c.id);
   const text = toMemoryText(s.text);
+  // The same thing happening again within a few hours is one memory, not many.
+  const again = mem.db.prepare("SELECT 1 FROM memories WHERE citizen_id = ? AND text = ? AND game_time >= ? AND status = 'active' LIMIT 1")
+    .get(c.id, text.slice(0, 600), mem.world.now - REPEAT_WINDOW_MINUTES);
+  if (again) return;
   const id = mem.add(c.id, {
     kind: 'episodic', text, importance: personal, about, placeId: c.location,
     source: { stimulus: s.kind, eventId: s.data?.eventId ?? null },

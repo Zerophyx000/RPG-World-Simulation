@@ -1,0 +1,48 @@
+{
+  "name": "murder-day",
+  "description": "Step 10 test day (times are minutes after the run starts): a kill made possible, never forced. Tomas beats Jonas often; tonight Jonas has been pushed past bearing and holds a knife, and Tomas sleeps. Whether Jonas does anything is his to decide. If he does: the body's wounds, who finds it, the crime event, his WHAT YOU'VE DONE and fear of discovery. If he doesn't: what he does with that night.",
+  "actions": [
+    {
+      "at": 0,
+      "type": "apply",
+      "effects": [
+        {
+          "type": "move",
+          "target": "tomas",
+          "to": "house_tomas",
+          "notify": false
+        },
+        {
+          "type": "move",
+          "target": "jonas",
+          "to": "house_tomas",
+          "notify": false
+        }
+      ],
+      "comment": "the smith and his apprentice at home"
+    },
+    {
+      "at": 3,
+      "type": "provoke",
+      "a": "jonas",
+      "b": "tomas",
+      "amount": 8,
+      "cause": "Tomas beat me again tonight, worse than ever, and swore he'd throw me out to starve in the winter."
+    },
+    {
+      "at": 5,
+      "type": "weapon",
+      "weaponType": "knife",
+      "to": "jonas",
+      "quality": 0.6,
+      "comment": "a knife from the forge bench"
+    },
+    {
+      "at": 6,
+      "type": "needs",
+      "citizenId": "tomas",
+      "fatigue": 95,
+      "comment": "Tomas falls asleep"
+    }
+  ]
+}

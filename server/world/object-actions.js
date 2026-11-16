@@ -13,6 +13,8 @@ import { ref } from '../memory/index.js';
 import { cap } from './objects.js';
 import { keeperUse, keeperConceal, fallbackUse, fallbackConceal } from '../keeper/index.js';
 import { stale, logAction, remember, findPerson } from './actions.js';
+import { pronouns } from './citizens.js';
+import { onTake as takenFromTheDead } from '../death/customs.js';
 
 const KEEPER_WAIT_MINUTES = 10;   // a use / conceal waits at most this long for the keeper
 const SEARCH_MINUTES = { sparse: 5, normal: 10, rich: 15 };
@@ -58,6 +60,31 @@ function others(world, c) {
   return citizensIn(world.citizens, c.location, { exceptId: c.id }).map((o) => o.id);
 }
 
+// ---------- A3: their own memory of where their things went ----------
+/** "the bakery": the room's plain name for "…in the bakery." */
+function roomName(world, c) {
+  return world.rooms.get(c.location)?.name ?? 'a place I can\'t name';
+}
+
+/** "my hammer": what this object is called in the citizen's own words. */
+function mineName(O, o) {
+  return `my ${o.data?.short ?? O.type(o)?.name ?? 'thing'}`;
+}
+
+/**
+ * step A3: after taking, putting or giving their own thing (or any tool / valuable), the actor keeps an
+ * episodic memory saying where it went. That is what "last you saw…" is built from later, and it keeps
+ * them from suspecting the household when the thing has simply been moved on.
+ */
+function ownPlacementMemory(world, c, o, text) {
+  const tags = [...(world.objects.type(o)?.tags ?? []), ...(o.data?.tags ?? [])];
+  if (o.ownerId !== c.id && !tags.includes('tool') && !tags.includes('valuable')) return;
+  world.memory.add(c.id, {
+    kind: 'episodic', text, importance: tags.includes('valuable') ? 4 : 3,
+    placeId: c.location, source: { self: true },
+  });
+}
+
 function listJoin(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
@@ -87,7 +114,13 @@ export function take(world, c, call) {
     actorId: c.id, action: 'take', text: `${c.name} takes ${O.label(o)}`,
     perceive: (v) => `${ref(c)} picks up ${O.textFor(v, o)}${from ? ` ${from}` : ''}.`,
   });
+  // Step 6: taking what isn't yours in front of others is shaming (and gnaws at the conscientious).
+  world.emotions.onOwnActSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? [], 'take');
+  world.signals.onTheftSeen(c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 6: bystanders lose trust in a thief
+  takenFromTheDead(world, c, o, O.history(o.id, 1)[0]?.witnesses ?? []); // step 9.5: before the burial, it is shameful
   remember(world, c, `You picked up ${O.textFor(c, o)}.`);
+  // step A3: their own tools and valuables they remember by place, so a later "not where it belongs" reads kindly.
+  ownPlacementMemory(world, c, o, `I took ${mineName(O, o)} from ${roomName(world, c)}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -117,6 +150,8 @@ export function put(world, c, call) {
     perceive: (v) => `${ref(c)} puts ${O.textFor(v, o)} ${relPhrase(world, relation, anchor)}.`,
   });
   remember(world, c, `You put ${O.textFor(c, o)} ${relPhrase(world, relation, anchor)}.`);
+  // step A3: where they left their own hammer / sack: "I left my hammer on the bakery counter."
+  ownPlacementMemory(world, c, o, `I left ${mineName(O, o)} ${relPhrase(world, relation, anchor)} in ${roomName(world, c)}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -141,6 +176,8 @@ export function give(world, c, call) {
       : `${ref(c)} hands ${O.textFor(v, o)} to ${ref(to)}.`),
   });
   remember(world, c, `You gave ${O.textFor(c, o)} to ${ref(to)}.`);
+  // step A3: giving their own hammer away: "I gave my hammer to Jonas."
+  ownPlacementMemory(world, c, o, `I gave ${mineName(O, o)} to ${ref(to)}.`);
   settle(world, c);
   return { ok: true };
 }
@@ -186,7 +223,13 @@ export function finishConceal(world, c, token, p = null) {
   if (anchor && p.clue) {
     O.change(anchor.id, { data: { clue: { text: p.clue, for: o.id } } }, { actorId: 'keeper', action: 'edit', notify: false, roomId: c.location });
   }
+  // Step 5.5: hiding things in somebody else's home is a warning sign for whoever saw it.
+  const seenBy = O.history(o.id, 1)[0]?.witnesses ?? [];
+  if (seenBy.length) world.signals.onConceal(c, c.location, seenBy, o);
+  world.emotions?.onOwnActSeen?.(c, o, seenBy, 'conceal');
   remember(world, c, `You hid ${O.textFor(c, o)} ${where}.`);
+  // step A3: a concealment is a `put` too — the hider above all must remember where it went.
+  ownPlacementMemory(world, c, o, `I hid ${mineName(O, o)} ${where} in ${roomName(world, c)}.`);
   settle(world, c);
   return view;
 }
@@ -217,8 +260,16 @@ export function finishExamine(world, c, a) {
     world.perceive([c.id], { kind: 'system', text: 'You look up, but what you were looking at is gone.', importance: IMPORTANCE.staleAction, roomId: c.location });
     return;
   }
-  const parts = [`You look closely at ${O.short(o)}: ${O.examineText(o)}`];
   const type = O.type(o);
+  if (o.typeId === 'corpse') return examineBody(world, c, o); // step 9.5: looking closely at the dead makes it certain
+  // step 9.5 (GLM run: the same ledger examined five times running): a second look soon after says so
+  c.examinedAt ??= {};
+  const lookedAgain = world.now - (c.examinedAt[o.id] ?? -Infinity) < 60 && (c.examinedAt[`${o.id}|state`] ?? o.state) === o.state;
+  c.examinedAt[o.id] = world.now;
+  c.examinedAt[`${o.id}|state`] = o.state;
+  const parts = [lookedAgain
+    ? `You look at ${O.short(o)} again. It is just as before: ${O.examineText(o)} Looking longer will not tell you more.`
+    : `You look closely at ${O.short(o)}: ${O.examineText(o)}`];
   if (type.container) {
     if (O.isClosed(o)) parts.push(`It is ${o.state}; you can't see inside.`);
     else {
@@ -235,6 +286,29 @@ export function finishExamine(world, c, a) {
   world.logEvent('examine', { actorId: c.id, location: c.location, objectId: o.id, noticed: near.map((x) => x.id) });
   world.perceive([c.id], { kind: 'timer', text: parts.join(' '), importance: IMPORTANCE.timer, roomId: c.location, data: { objectId: o.id } });
   remember(world, c, `You examined ${O.short(o)}.`);
+}
+
+// step 9.5: "She's cold. She isn't breathing. Greta is dead." — the moment of finding becomes knowing.
+function examineBody(world, c, o) {
+  const dead = world.citizens.get(o.data?.citizenId);
+  const p = dead ? pronouns(dead) : { subj: 'they', poss: 'their' };
+  const Subj = p.subj[0].toUpperCase() + p.subj.slice(1);
+  const be = p.subj === 'they' ? "aren't" : "isn't";
+  const named = dead && world.memory.rel(c.id, dead.id)?.nameKnown;
+  const cold = world.now - (o.data?.diedAt ?? world.now) > 60;
+  const wounds = dead ? (world.body?.active(dead.id) ?? []).filter((x) => x.visible !== false && x.severity >= 4).map((x) => world.body.content.parts?.[x.partId]?.label ?? x.partId) : [];
+  let text = `${cold ? `${Subj} ${p.subj === 'they' ? 'are' : 'is'} cold. ` : ''}${Subj} ${be} breathing. ${named ? `${dead.name} is dead.` : 'This person is dead.'}${wounds.length ? ` You see wounds: the ${[...new Set(wounds)].slice(0, 3).join(', the ')}.` : ' You find no wound and no mark.'}`;
+  // step 9.5 (seen in a GLM run: ten looks in a row): looking again shows nothing new — say so
+  c.bodyExamined ??= {};
+  const again = world.now - (c.bodyExamined[o.id] ?? -Infinity) < 90;
+  c.bodyExamined[o.id] = world.now;
+  if (again) text = `You look ${p.obj ?? 'them'} over once more. Nothing has changed: ${wounds.length ? `the same wounds (${[...new Set(wounds)].slice(0, 3).join(', ')})` : 'no wound, no mark'}. Looking longer will not tell you more.`;
+  world.objects.learn(c, o, { touched: true });
+  if (dead) world.deaths.learn(c, dead.id, { how: 'found', certainty: 'certain', where: o.roomId ?? c.location });
+  world.logEvent('examine', { actorId: c.id, location: c.location, objectId: o.id, deadId: dead?.id ?? null });
+  world.perceive([c.id], { kind: 'timer', text, importance: again ? 4 : 8, roomId: c.location, data: { objectId: o.id, death: again ? null : dead?.id ?? null } });
+  if (again) return;
+  remember(world, c, named ? `You found ${dead.name} dead.` : 'You found a dead stranger.');
 }
 
 // ---------- search ----------
@@ -345,6 +419,7 @@ export function finishUse(world, c, token, p = null) {
   const o = reach(world, c, a.detail.objectId);
   const call = { name: 'use', arguments: { object: a.detail.objectId, intent: a.detail.intent } };
   if (!o) return stale(world, c, call, 'You turn back to it, but it is gone.');
+  world.body?.accidentCheck(c, { object: o, minutes: a.detail?.minutes ?? 3 });
   if (!p) p = { ...fallbackUse(world, o, a.detail.intent), source: 'fallback' };
   const type = O.type(o);
   // Re-check against the state NOW (it may have changed while the keeper thought).
@@ -394,7 +469,8 @@ export function finishTargetedDo(world, c, a) {
   const o = a.detail?.targetId ? reach(world, c, a.detail.targetId) : null;
   if (!o) return '';
   O.learn(c, o, { touched: true });
-  if (!k?.accept || !k.newState) return '';
+  const hurt = world.body?.accidentCheck(c, { object: o, minutes: a.detail?.minutes ?? 10 }) ?? ''; // step 7B: burns at the forge, cuts from tools
+  if (!k?.accept || !k.newState) return hurt;
   if (!(O.type(o).transitions[o.state] ?? []).includes(k.newState)) {
     world.logEvent('keeper', { actorId: c.id, location: c.location, objectId: o.id, verdict: 'stale', proposal: { newState: k.newState }, state: o.state });
     return '';

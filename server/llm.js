@@ -7,12 +7,15 @@
 // - captures THINKING separately from the answer, logs every call (incl. profile + tier)
 import { config } from './config.js';
 
-export const TIER_MAX_TOKENS = { full: 2000, light: 600, none: 300 };
-// Heavy background purposes write long tool calls after thinking: 2,000 tokens is not enough there
-// (measured on GLM: plans and consolidations ran out mid-call). Applies to their 'full' tier.
-export const PURPOSE_FULL_MAX = { plan: 4000, reflect: 4000, consolidate: 6000, bootstrap: 6000 };
+// Token caps per tier (full / light / none) come from config: LLM_MAX_TOKENS_FULL/LIGHT/NONE, so an
+// operator can tune them without touching code. Heavy background purposes write long tool calls after
+// thinking, which is why PURPOSE_FULL_MAX overrides 'full' for them.
+export const TIER_MAX_TOKENS = { ...config.llm.maxTokens };
+export const PURPOSE_FULL_MAX = { habits: 6000, reflect: 4000, consolidate: 6000, bootstrap: 6000, scheme: 6000 }; // step 11.5: 17 of 45 step-11 plans hit 3000 and lost their steps
 // When a call runs out of tokens without a usable tool call, the retry (thinking off) gets this many.
-export const RETRY_MAX = { decide: 600, plan: 2000, reflect: 1500, consolidate: 3000, bootstrap: 3000 };
+export const RETRY_MAX = { decide: 600, habits: 3000, reflect: 1500, consolidate: 3000, bootstrap: 3000, scheme: 3000 };
+// Cut-off ladder for citizen decisions (server/agents/think.js): one retry at the next higher cap.
+export const CAP_ABOVE = { none: 'light', light: 'full' }; // step A6
 
 /** True if the model ran out of tokens before producing a usable call to `toolName` (or any tool). */
 export function ranOut(res, toolName = null) {
@@ -26,9 +29,13 @@ export function ranOut(res, toolName = null) {
  * chat() for one-tool background calls: if the model runs out of tokens while thinking,
  * retry once with thinking off (tier 'none') and a purpose-sized budget.
  */
-export async function chatForTool(llm, opts, toolName) {
+export async function chatForTool(llm, opts, toolName, { complete = null } = {}) {
   const first = await llm.chat(opts);
-  if (!ranOut(first, toolName)) return first;
+  // step 11.5: some servers report finish_reason 'tool_calls' for a call cut at the cap, with half the arguments;
+  // `complete(args)` says whether the answer is whole — a cut-off one that used the whole budget is retried too
+  const args = first.toolCalls?.find((t) => t.name === toolName)?.arguments;
+  const cut = complete && !complete(args) && (first.usage?.completion_tokens ?? 0) >= 0.97 * (opts.maxTokens ?? capFor(opts));
+  if (!ranOut(first, toolName) && !cut) return first;
   return llm.chat({ ...opts, tier: 'none', maxTokens: RETRY_MAX[opts.purpose] ?? 1500 });
 }
 const HEALTH_EVERY_MS = 60_000;
@@ -100,8 +107,8 @@ export class LLM {
     this.routeFilter = null; // (purpose, chain) => chain; the governor narrows routes under budget pressure
     this.insert = db.prepare(`INSERT INTO llm_calls
       (real_time, game_time, citizen_id, purpose, model, request, reasoning, content, tool_calls,
-       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+       status, error, duration_ms, prompt_tokens, completion_tokens, profile, tier, finish_reason, tier_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     this.healthTimer = setInterval(() => this.healthCheck(), HEALTH_EVERY_MS);
     this.healthTimer.unref?.();
     setTimeout(() => this.healthCheck(), 1000).unref?.();
@@ -173,6 +180,7 @@ export class LLM {
    * @param {string} opts.purpose          decides the route (profile chain) and timeout
    * @param {'full'|'light'|'none'} [opts.tier]  thinking on/off + max_tokens
    * @param {number} [opts.maxTokens]      overrides the tier's max_tokens
+   * @param {string} [opts.tierReason]     step 10 (0.1): why a decide call runs at its tier (llm_calls.tier_reason)
    * @param {object} [opts.responseSchema] { name, schema } → structured JSON output (result.json)
    * @param {string} [opts.citizenId]
    * @param {AbortSignal} [opts.signal]
@@ -226,7 +234,7 @@ export class LLM {
     return (tier === 'full' ? profile.thinking.full : tier === 'light' ? profile.thinking.light : profile.thinking.none) ?? {};
   }
 
-  async #call(profile, { messages, tools, purpose, citizenId = null, signal, params = {}, tier = null, maxTokens = null, responseSchema = null }) {
+  async #call(profile, { messages, tools, purpose, citizenId = null, signal, params = {}, tier = null, tierReason = null, maxTokens = null, responseSchema = null }) {
     const body = {
       model: profile.model,
       messages,
@@ -299,11 +307,11 @@ export class LLM {
     } finally {
       profile.sem.release();
       this.byPurpose.set(purpose, this.activeFor(purpose) - 1);
-      this.#log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile: profile.name, tier });
+      this.#log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile: profile.name, tier, tierReason });
     }
   }
 
-  #log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile, tier }) {
+  #log({ gameTime, citizenId, purpose, body, messages, tools, result, status, error, started, profile, tier, tierReason = null }) {
     try {
       const info = this.insert.run(
         new Date().toISOString(), gameTime, citizenId, purpose, body.model,
@@ -312,11 +320,11 @@ export class LLM {
         result ? JSON.stringify(result.toolCalls) : null,
         status, error, Date.now() - started,
         result?.usage?.prompt_tokens ?? null, result?.usage?.completion_tokens ?? null,
-        profile, tier,
+        profile, tier, result?.finishReason ?? null, tierReason,
       );
       if (result) result.callId = Number(info.lastInsertRowid);
       this.bus.emit('llm', {
-        id: Number(info.lastInsertRowid), citizenId, purpose, status, durationMs: Date.now() - started, profile, tier,
+        id: Number(info.lastInsertRowid), citizenId, purpose, status, durationMs: Date.now() - started, profile, tier, tierReason,
         outputTokens: result?.usage?.completion_tokens ?? 0, inputTokens: result?.usage?.prompt_tokens ?? 0,
       });
     } catch (err) {
@@ -361,4 +369,11 @@ function parseJsonContent(s) {
       return null;
     }
   }
+}
+
+/** The max_tokens chat() would send for these options (mirrors the choice in chat()). */
+function capFor({ tier, purpose, maxTokens }) {
+  if (maxTokens) return maxTokens;
+  if (!tier) return Infinity;
+  return tier === 'full' && PURPOSE_FULL_MAX[purpose] ? PURPOSE_FULL_MAX[purpose] : TIER_MAX_TOKENS[tier];
 }

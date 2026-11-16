@@ -3,6 +3,9 @@
 // HARD RULE: its output is never shown to citizens and never used in their prompts or in world logic.
 // It's a camera, not a god. Nothing in server/agents/, server/world/ or server/memory/ may import from
 // this folder; it is wired up in main.js and read only by http.js.
+// Step 6: it also READS each citizen's current feelings (world.emotions.top) and the hourly emotion_log
+// samples, to tell what has lasted most of the day. Reading only — it never writes world state.
+// Step 11: it also reads ambitions (private / secret), schemes and standing lies with their truth (hiddenSchemes).
 //
 // Batched triggers (step 4) — a run starts when ANY of these holds AND at least
 // OBSERVER_MIN_INTERVAL_REAL_SECONDS passed since the last run started:
@@ -17,7 +20,7 @@ import { config } from '../config.js';
 const HOURLY_MINUTES = 60;
 const HOURLY_MIN_EVENTS = 10;
 const INPUT_CHAR_BUDGET = 48000; // ~12k tokens of event text
-const COUNTED_TYPES = ['action', 'arrive', 'conversation_end', 'director', 'damage', 'collapse', 'forced_sleep', 'learn_place', 'object', 'search', 'notice'];
+const COUNTED_TYPES = ['action', 'arrive', 'conversation_end', 'director', 'damage', 'collapse', 'forced_sleep', 'learn_place', 'object', 'search', 'notice', 'relationship', 'signal', 'group', 'emotion'];
 
 export class Observer {
   constructor(world) {
@@ -131,7 +134,8 @@ export class Observer {
     const lines = renderEvents(this.world, rows);
     if (!lines.length && reason !== 'manual') return { skipped: 'no new events' };
 
-    const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen');
+    const citizens = [...this.world.citizens.values()].filter((c) => c.kind === 'citizen')
+      .map((c) => ({ ...c, feels: this.world.emotions.top(c, 3, 4).map((e) => ({ type: e.type, target: e.target, targetName: this.world.citizens.get(e.target)?.name ?? null, band: ['slight', 'strong', 'intense', 'overwhelming'][this.world.emotions.band(e.intensity)] })), lasting: lastingFeelings(this.world, c), hiddenGroups: this.world.groups.of(c.id).filter((m) => !m.group.public || m.secret).map((m) => m.group.name), ...hiddenSchemes(this.world, c) }));
     const ids = citizens.map((c) => c.id);
     const tools = [reportTool(ids)];
     const messages = buildMessages(prev, citizens, lines);
@@ -152,11 +156,97 @@ export class Observer {
 }
 
 // ---------- prompt ----------
+
+// step 6: lasting feelings — verbs used to phrase an emotion that has held for most of the day.
+// Aims follow content/emotions.json (aimed: required / optional / none).
+const LASTING_VERBS = {
+  anger: (t) => (t ? `seething at ${t}` : 'angry'),
+  fear: (t) => (t ? `afraid of ${t}` : 'frightened'),
+  sadness: (t) => (t ? `grieving over ${t}` : 'low'),
+  jealousy: (t, a) => (t ? (a ? `jealous of ${t} over ${a}` : `jealous of ${t}`) : 'jealous'),
+  envy: (t) => `envious of ${t}`,
+  disgust: (t) => `disgusted by ${t}`,
+  shame: () => 'ashamed',
+  guilt: (t) => (t ? `guilty towards ${t}` : 'guilty'),
+  joy: (t) => (t ? `happy because of ${t}` : 'happy'),
+  pride: (t) => (t ? `proud of ${t}` : 'proud'),
+  affection: (t) => `warm towards ${t}`,
+  gratitude: (t) => `grateful to ${t}`,
+};
+
+/**
+ * Which of this citizen's feelings have held (intensity >= 4) for most of the last game day,
+ * according to the hourly samples in the emotion_log. Read-only; returns short phrases.
+ */
+function lastingFeelings(world, c) {
+  let rows = [];
+  try {
+    rows = world.db.prepare("SELECT data FROM emotion_log WHERE citizen_id = ? AND kind = 'sample' AND game_time >= ?").all(c.id, world.now - 1440);
+  } catch {
+    return [];
+  }
+  if (rows.length < 6) return [];
+  const counts = new Map();
+  for (const r of rows) {
+    let data;
+    try {
+      data = JSON.parse(r.data);
+    } catch {
+      continue; // a bad row is not a sample
+    }
+    const seen = new Set();
+    for (const e of data?.entries ?? []) {
+      if (!e || (e.intensity ?? 0) < 4) continue;
+      const key = `${e.type}|${e.target ?? ''}|${e.about ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const half = rows.length / 2;
+  const name = (id) => world.citizens.get(id)?.name ?? id;
+  return [...counts.entries()]
+    .filter(([, n]) => n > half)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([key]) => {
+      const [type, target, about] = key.split('|');
+      const t = target ? name(target) : '';
+      const a = about ? name(about) : '';
+      const phrase = (LASTING_VERBS[type] ?? ((_t, _a, ty) => ty))(t, a, type);
+      return `${String(phrase).trim()} most of the day`;
+    });
+}
+
+// Step 11: the long game, out of world: private / secret ambitions, live schemes (and whose plan someone is in on),
+// standing lies with their truth. Read only, through the scheming read methods; the report never reaches a citizen.
+function hiddenSchemes(world, c) {
+  const S = world.scheming;
+  if (!S) return {};
+  const name = (id) => world.citizens.get(id)?.name ?? id;
+  const wants = S.ambitions.of(c.id).filter((a) => a.secrecy !== 'open').map((a) => ({ secrecy: a.secrecy, text: a.text }));
+  const plots = [
+    ...S.schemes.ownedBy(c).map((s) => `${s.goal} (${s.status}, ${s.steps.filter((st) => st.status === 'done').length}/${s.steps.length} steps${s.accomplices.length ? `, with ${s.accomplices.map((a) => `${name(a.citizen_id)} ${a.status}`).join(', ')}` : ''})`),
+    ...S.schemes.joinedBy(c).map((s) => `in on ${name(s.ownerId)}'s plan: ${s.goal}`),
+  ];
+  const lies = S.lies.standingOf(c, 4).map((l) => `told ${l.heardBy.map((h) => name(h.citizen_id)).join(', ') || 'nobody'} "${l.said}" (truth: ${l.truth})`);
+  return { wants, plots, lies };
+}
+
 function buildMessages(prev, citizens, lines) {
   const people = citizens.map((c) => {
     const p = c.persona;
     const first = String(p.personality ?? '').split(/(?<=\.)\s/)[0];
-    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}`;
+    // Out-of-world knowledge the villagers don't have: secret goals and hidden memberships.
+    const feels = (c.feels ?? []).map((e) => `${e.type}${e.target ? ` at ${e.targetName}` : ''} (${e.band})`);
+    const secret = [
+      ...(p.secretGoals ?? []).map((g) => `secret aim: ${g}`),
+      ...(c.hiddenGroups ?? []).map((g) => `secretly of ${g}`),
+      ...(c.wants ?? []).map((g) => `wants (${g.secrecy}): ${g.text}`),
+      ...(c.plots ?? []).map((g) => `scheme: ${g}`),
+      ...(c.lies ?? []).map((g) => `standing lie: ${g}`),
+    ];
+    return `- ${c.id}: ${c.name}${p.age != null ? `, ${p.age}` : ''}${p.occupation ? `, ${p.occupation}` : ''}. ${first}${feels.length ? ` Feeling now: ${feels.join(', ')}.` : ''}${c.lasting?.length ? ` Lasting: ${c.lasting.join('; ')}.` : ''}${secret.length ? ` [hidden from the villagers: ${secret.join('; ')}]` : ''}`;
   }).join('\n');
   const previous = prev
     ? JSON.stringify({ headline: prev.headline, relationships: prev.relationships, threads: prev.threads })
@@ -174,6 +264,7 @@ Rules:
 - Threads are storylines. Keep their ids stable: if a thread continues, reuse its id exactly. New threads get a short kebab-case id. Status: active, resolved or dormant. Include every thread whose summary or status changed.
 - keyMoments reference events by their number in square brackets, e.g. [#123].
 - Lines marked [ground truth] show what really happened to objects, even when nobody saw it. The villagers only know what they saw, noticed or were told: keep "what really happened" and "what they believe" apart.
+- "Feeling now" and "Lasting" describe the villagers' inner states as measured from outside; use them to explain behaviour and storylines, but don't claim a villager knows another's feelings unless they showed it.
 - The headline is one sentence: what is happening in the village right now.
 Answer by calling the report tool exactly once.`,
     },
@@ -278,7 +369,13 @@ function renderEvents(world, rows) {
     } else if (r.type === 'director' && d.action === 'effects') {
       line = `(something happens: ${(d.effects ?? []).map((x) => x.type).join(', ')})`;
     } else if (r.type === 'damage') {
-      line = `${name(r.actor_id)} is hurt (hp now ${d.hp})`;
+      line = `${name(r.actor_id)} is hurt (vitality now ${d.vitality ?? d.hp})`;
+    } else if (r.type === 'injury') {
+      line = `${name(r.actor_id)} is injured (${d.damageType}: ${(d.conditions ?? []).map((x) => `${x.type} on the ${String(x.part ?? '').replace(/_/g, ' ')}`).join(', ') || 'unknown'})`;
+    } else if (r.type === 'treatment') {
+      line = `${name(d.patientId)} is treated by ${name(r.actor_id)} (${String(d.method).replace(/_/g, ' ')}${d.effective === false ? ', to no effect' : ''})`;
+    } else if (r.type === 'critical_window' && d.action === 'open') {
+      line = `${name(r.actor_id)} is bleeding badly; without help it will be fatal within minutes`;
     } else if (r.type === 'conversation_end') {
       line = `(conversation between ${(d.participants ?? []).map((p) => p.name).join(', ')} ended: ${d.reason})`;
     } else if (r.type === 'object') {
@@ -286,6 +383,18 @@ function renderEvents(world, rows) {
       line = objectLine(world, r, d, name, room);
     } else if (r.type === 'search') {
       line = `${name(r.actor_id)} searches ${room(r.location)}${d.targetId ? ` around the ${world.objects.get(d.targetId)?.typeId ?? d.targetId}` : ''}: ${d.found?.length ? `finds ${d.found.map((id) => objLabel(world, id)).join(', ')}` : 'finds nothing'}`;
+    } else if (r.type === 'emotion') {
+      line = d.contagion
+        ? `${name(r.actor_id)} is caught up in the ${d.emotion} spreading at ${room(r.location)}${d.otherId ? ` (aimed at ${name(d.otherId)})` : ''}`
+        : `${name(r.actor_id)} is eaten by ${d.emotion} of ${name(d.otherId)}${d.about && world.citizens.has(d.about) ? ` over ${name(d.about)}` : ''}`;
+    } else if (r.type === 'relationship') {
+      const ch = [d.dTrust ? `trust ${d.dTrust > 0 ? '+' : ''}${d.dTrust}` : null, d.dAffinity ? `liking ${d.dAffinity > 0 ? '+' : ''}${d.dAffinity}` : null].filter(Boolean).join(', ');
+      line = `${name(r.actor_id)} now sees ${name(d.otherId)} differently (${ch}): "${String(d.reason).replace(/\{\{[cp]:([\w-]+)\}\}/g, (_m, id) => name(id))}"`;
+    } else if (r.type === 'signal') {
+      line = `${name(r.actor_id)} notices a warning sign about ${name(d.otherId)}: ${d.sign}`;
+    } else if (r.type === 'group' && ['join', 'leave', 'dissolve', 'propose'].includes(d.action)) {
+      line = d.action === 'propose' ? `${name(r.actor_id)} asks ${(d.invited ?? []).map(name).join(', ')} to form a party: ${d.purpose}`
+        : `${r.actor_id ? name(r.actor_id) : 'A group'} ${d.action === 'join' ? 'joins' : d.action === 'leave' ? 'leaves' : 'dissolves:'} ${d.name}${d.secret ? ' (secretly)' : ''}`;
     } else if (r.type === 'notice') {
       line = `${name(r.actor_id)} notices at ${room(r.location)}: ${d.text}`;
     }

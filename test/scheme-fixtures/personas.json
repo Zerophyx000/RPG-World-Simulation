@@ -1,0 +1,120 @@
+{
+  "about": "Step 11.5 harness personas. Each replaces the persona of the protagonist (the citizen 'jonas', renamed Bram) before a situation is applied; the offender is always Tomas the smith. Same name, age and trade for all four, so only the character differs.",
+  "protagonist": "jonas",
+  "offender": "tomas",
+  "personas": [
+    {
+      "id": "kind",
+      "name": "Bram",
+      "age": 34,
+      "sex": "male",
+      "occupation": "carter",
+      "personality": "Warm, patient and slow to anger. Bram would rather lose a coin than a friend, and he finds it hard to stay cross with anyone for long. He talks things through, and he means it when he forgives.",
+      "backstory": "Bram has hauled goods between Brackenford and the mill road for twelve years. He grew up next door to Tomas and they were friends as boys. He lodges in the back room of Greta's house.",
+      "traits": {
+        "openness": 0.5,
+        "conscientiousness": 0.6,
+        "extraversion": 0.6,
+        "agreeableness": 0.9,
+        "neuroticism": 0.2,
+        "honesty": 8,
+        "cunning": 3,
+        "grudge": 2
+      },
+      "flaws": [
+        {
+          "flaw": "conflict-shy: lets people walk over him to keep the peace",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When he's been wronged, he swallows it and lets it sour quietly instead of saying so."
+    },
+    {
+      "id": "proud",
+      "name": "Bram",
+      "age": 34,
+      "sex": "male",
+      "occupation": "carter",
+      "personality": "Proud, quick-tempered and touchy about his name. Bram can't stand being made small in front of others, and he answers an insult on the spot. He's honest to a fault and despises sneaks.",
+      "backstory": "Bram has hauled goods between Brackenford and the mill road for twelve years. He grew up next door to Tomas, and the two have always measured themselves against each other. He lodges in the back room of Greta's house.",
+      "traits": {
+        "openness": 0.4,
+        "conscientiousness": 0.6,
+        "extraversion": 0.8,
+        "agreeableness": 0.25,
+        "neuroticism": 0.6,
+        "honesty": 7,
+        "cunning": 3,
+        "grudge": 6
+      },
+      "flaws": [
+        {
+          "flaw": "proud to the point of violence: an insult in public has to be answered",
+          "serious": true
+        }
+      ],
+      "worstSelf": "When he's shamed in front of people, he lashes out before he thinks, and he'd rather bleed than back down."
+    },
+    {
+      "id": "vindictive",
+      "name": "Bram",
+      "age": 34,
+      "sex": "male",
+      "occupation": "carter",
+      "personality": "Polite on the surface, cold underneath. Bram smiles at people he despises and never forgets a slight. He is patient: he would rather wait a month and hurt someone properly than shout today.",
+      "backstory": "Bram has hauled goods between Brackenford and the mill road for twelve years. He grew up next door to Tomas, and he has kept a quiet tally of every time Tomas got the better of him. He lodges in the back room of Greta's house.",
+      "traits": {
+        "openness": 0.4,
+        "conscientiousness": 0.85,
+        "extraversion": 0.3,
+        "agreeableness": 0.15,
+        "neuroticism": 0.4,
+        "honesty": 3,
+        "cunning": 8,
+        "grudge": 10
+      },
+      "flaws": [
+        {
+          "flaw": "vindictive: keeps score and pays every debt back with interest",
+          "serious": true
+        },
+        {
+          "flaw": "a practised liar",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When he's humiliated, he doesn't rest until the other man is lower than him, and he doesn't care how."
+    },
+    {
+      "id": "bitter_coward",
+      "name": "Bram",
+      "age": 34,
+      "sex": "male",
+      "occupation": "carter",
+      "personality": "Timid, sour and full of resentment he never says out loud. Bram backs down from every quarrel and hates himself and everyone else for it. He talks behind people's backs and dreams of seeing them brought low, as long as nobody can tell it was him.",
+      "backstory": "Bram has hauled goods between Brackenford and the mill road for twelve years. He grew up next door to Tomas, who was always bigger and louder than him. He lodges in the back room of Greta's house.",
+      "traits": {
+        "openness": 0.3,
+        "conscientiousness": 0.4,
+        "extraversion": 0.2,
+        "agreeableness": 0.2,
+        "neuroticism": 0.85,
+        "honesty": 4,
+        "cunning": 6,
+        "grudge": 8
+      },
+      "flaws": [
+        {
+          "flaw": "cowardly and treacherous: never faces anyone, strikes where it can't be traced",
+          "serious": true
+        },
+        {
+          "flaw": "envious",
+          "serious": false
+        }
+      ],
+      "worstSelf": "When he's afraid of someone, he smiles at them and quietly works to ruin them."
+    }
+  ],
+  "home": "house_greta"
+}

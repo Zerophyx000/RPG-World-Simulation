@@ -1,0 +1,11 @@
+{
+  "_doc": "Step 10: which key opens which lock (object ids). A lock not listed here opens with a key of the same owner. A key also opens anything whose data.keyId names it.",
+  "greta_key": [
+    "greta_chest",
+    "greta_door"
+  ],
+  "tavern_key": [
+    "tavern_door",
+    "bakery_storeroom_door"
+  ]
+}
