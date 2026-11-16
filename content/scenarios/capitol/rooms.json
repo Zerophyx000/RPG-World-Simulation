@@ -1,0 +1,587 @@
+[
+  {
+    "id": "mall",
+    "name": "the National Mall",
+    "x": 50,
+    "y": 50,
+    "kind": "mall",
+    "detail": "normal",
+    "danger": 0,
+    "description": "A long green lawn split by a wide stone walkway, with the White House at its west end and the white dome of the Capitol at its east end. Tourists are scarce this early; a few park benches, pigeons, a hot dog cart that has not opened yet.",
+    "appearance": "A long open lawn with a stone walkway down the middle.",
+    "tags": [
+      "outdoor",
+      "public"
+    ],
+    "affordances": [
+      "walk",
+      "sit on a bench",
+      "make a speech",
+      "watch who comes and goes"
+    ],
+    "aliases": [
+      "the mall",
+      "national mall",
+      "lawn",
+      "outside"
+    ],
+    "exits": [
+      {
+        "to": "oval_office",
+        "travelMinutes": 2
+      },
+      {
+        "to": "residence",
+        "travelMinutes": 2
+      },
+      {
+        "to": "mess",
+        "travelMinutes": 2
+      },
+      {
+        "to": "staff_rooms",
+        "travelMinutes": 2
+      },
+      {
+        "to": "vp_residence",
+        "travelMinutes": 3
+      },
+      {
+        "to": "rotunda",
+        "travelMinutes": 3
+      },
+      {
+        "to": "fountain",
+        "travelMinutes": 1
+      },
+      {
+        "to": "cemetery",
+        "travelMinutes": 3
+      },
+      {
+        "to": "alley",
+        "travelMinutes": 4
+      }
+    ]
+  },
+  {
+    "id": "oval_office",
+    "name": "the Oval Office",
+    "x": 10,
+    "y": 15,
+    "kind": "office",
+    "detail": "rich",
+    "danger": 0,
+    "construction": "stone",
+    "description": "The President's office: an oval room with a thick golden rug, gold curtains, two sofas facing each other and a massive carved desk under the windows. A heavy gilded chest stands in the corner. Everything that can be gold, is.",
+    "appearance": "A white wing with tall windows and a guard by the door.",
+    "tags": [
+      "indoor",
+      "workplace",
+      "private"
+    ],
+    "affordances": [
+      "sign orders",
+      "hold a meeting",
+      "shout at someone",
+      "make a phone call nobody hears"
+    ],
+    "aliases": [
+      "oval office",
+      "the oval",
+      "president's office",
+      "west wing"
+    ],
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 2
+      },
+      {
+        "to": "residence",
+        "travelMinutes": 1
+      },
+      {
+        "to": "mess",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "residence",
+    "name": "the White House residence",
+    "x": 25,
+    "y": 8,
+    "kind": "house",
+    "detail": "rich",
+    "danger": 0,
+    "owner": "drump",
+    "construction": "stone",
+    "description": "The President's private rooms: a huge gold-framed bed, a dining table set for one, a marble fireplace and tall windows over the lawn. A small strongbox sits beside the bed.",
+    "appearance": "The white mansion itself, columns and all.",
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "eat in private",
+      "admire yourself"
+    ],
+    "aliases": [
+      "white house",
+      "the residence",
+      "drump's house",
+      "the president's rooms"
+    ],
+    "services": {
+      "bed": {
+        "quality": "good",
+        "description": "the great gold bed"
+      }
+    },
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 2
+      },
+      {
+        "to": "oval_office",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "mess",
+    "name": "the White House Mess",
+    "x": 8,
+    "y": 32,
+    "kind": "kitchen",
+    "detail": "normal",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A small wood-panelled dining room with a busy kitchen behind a serving counter. It smells of coffee and grilled meat. Two tables, a stove, the chef's knives on the counter.",
+    "appearance": "A low white wing with kitchen steam rising from a vent.",
+    "tags": [
+      "indoor",
+      "workplace"
+    ],
+    "affordances": [
+      "eat",
+      "drink coffee",
+      "cook",
+      "gossip with the staff"
+    ],
+    "aliases": [
+      "the mess",
+      "white house kitchen",
+      "kitchen"
+    ],
+    "services": {
+      "food": {
+        "minutes": 25,
+        "hungerRelief": 55,
+        "description": "whatever the chef is cooking, and coffee",
+        "operator": "henri",
+        "stock": {
+          "current": 14,
+          "max": 30,
+          "perWorkHour": 5,
+          "work": [
+            "oven",
+            "counter"
+          ],
+          "words": "cook|grill|kitchen|stove|sauce|serv(e|ing)|prepar(e|ing)"
+        }
+      }
+    },
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 2
+      },
+      {
+        "to": "oval_office",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "staff_rooms",
+    "name": "the staff rooms",
+    "x": 8,
+    "y": 55,
+    "kind": "house",
+    "detail": "sparse",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A plain room in the basement of the White House where the staff who live in sleep: three narrow beds, a little table, a coffee ring on everything.",
+    "appearance": "A plain basement door at the side of the White House.",
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "talk in private"
+    ],
+    "aliases": [
+      "staff rooms",
+      "staff quarters",
+      "the basement"
+    ],
+    "services": {
+      "bed": {
+        "quality": "rough",
+        "description": "a narrow staff bed"
+      }
+    },
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 2
+      }
+    ]
+  },
+  {
+    "id": "vp_residence",
+    "name": "the Vice President's house",
+    "x": 10,
+    "y": 80,
+    "kind": "house",
+    "detail": "normal",
+    "danger": 0,
+    "owner": "wance",
+    "construction": "stone",
+    "description": "The Vice President's house: smaller than he would like, tidy, a writing desk covered in papers, a bed, a cold hearth.",
+    "appearance": "A neat white house set back behind a hedge.",
+    "tags": [
+      "indoor",
+      "private",
+      "home"
+    ],
+    "affordances": [
+      "rest",
+      "sleep",
+      "write",
+      "think things over"
+    ],
+    "aliases": [
+      "vice president's house",
+      "wance's house",
+      "the vp house",
+      "naval observatory"
+    ],
+    "services": {
+      "bed": {
+        "quality": "good",
+        "description": "the Vice President's bed"
+      }
+    },
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 3
+      }
+    ]
+  },
+  {
+    "id": "rotunda",
+    "name": "the Capitol Rotunda",
+    "x": 80,
+    "y": 45,
+    "kind": "hall",
+    "detail": "normal",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A round marble hall under the great white dome of the Capitol. Voices echo. Doors lead up to the Senate chamber, down to the cafeteria and over to the senators' offices; marble benches stand along the wall.",
+    "appearance": "The great white dome of the Capitol, with wide steps up to it.",
+    "tags": [
+      "indoor",
+      "public"
+    ],
+    "affordances": [
+      "wait",
+      "meet people",
+      "whisper behind a pillar",
+      "give a statement to the press"
+    ],
+    "aliases": [
+      "rotunda",
+      "the capitol",
+      "capitol building",
+      "the dome"
+    ],
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 3
+      },
+      {
+        "to": "senate_chamber",
+        "travelMinutes": 1
+      },
+      {
+        "to": "cafeteria",
+        "travelMinutes": 1
+      },
+      {
+        "to": "senate_offices",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "senate_chamber",
+    "name": "the Senate chamber",
+    "x": 82,
+    "y": 15,
+    "kind": "chamber",
+    "detail": "normal",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A tall chamber with rows of old wooden desks in a half circle facing a raised rostrum where the presiding officer sits with a gavel. This is where the Senate votes.",
+    "appearance": "The tall doors of the Senate chamber, guarded by a doorkeeper.",
+    "tags": [
+      "indoor",
+      "public",
+      "workplace"
+    ],
+    "affordances": [
+      "make a speech",
+      "cast a vote",
+      "call the vote",
+      "filibuster",
+      "count votes"
+    ],
+    "aliases": [
+      "senate chamber",
+      "the senate",
+      "senate floor",
+      "the chamber",
+      "the floor"
+    ],
+    "exits": [
+      {
+        "to": "rotunda",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "cafeteria",
+    "name": "the Senate cafeteria",
+    "x": 75,
+    "y": 70,
+    "kind": "cafeteria",
+    "detail": "normal",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A busy low room in the Capitol basement: a steel counter, two ovens, long tables. Senators and staff eat here and talk too loudly. A back door leads out to the service alley.",
+    "appearance": "A basement door with a smell of soup and coffee.",
+    "tags": [
+      "indoor",
+      "public"
+    ],
+    "affordances": [
+      "eat",
+      "drink coffee",
+      "overhear things",
+      "make a deal over lunch"
+    ],
+    "aliases": [
+      "cafeteria",
+      "senate cafeteria",
+      "canteen",
+      "dining room"
+    ],
+    "services": {
+      "food": {
+        "minutes": 25,
+        "hungerRelief": 55,
+        "description": "bean soup, sandwiches and coffee",
+        "operator": "rosa",
+        "stock": {
+          "current": 18,
+          "max": 30,
+          "perWorkHour": 5,
+          "work": [
+            "oven",
+            "counter"
+          ],
+          "words": "cook|soup|kitchen|stew|bak(e|ing)|serv(e|ing)|ladl|prepar(e|ing)"
+        }
+      }
+    },
+    "exits": [
+      {
+        "to": "rotunda",
+        "travelMinutes": 1
+      },
+      {
+        "to": "alley",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "senate_offices",
+    "name": "the senators' offices",
+    "x": 92,
+    "y": 70,
+    "kind": "office",
+    "detail": "normal",
+    "danger": 0,
+    "construction": "stone",
+    "description": "A corridor of senators' offices with the doors propped open: Holloway's desk piled with letters from farmers, Rutter's with a locked cabinet beside it, Calder's spotless. Two cots stand at the back for senators who sleep at work, which is most of them.",
+    "appearance": "A long marble office building beside the Capitol.",
+    "tags": [
+      "indoor",
+      "workplace",
+      "home"
+    ],
+    "affordances": [
+      "work",
+      "make a deal behind a closed door",
+      "sleep on a cot",
+      "count votes"
+    ],
+    "aliases": [
+      "offices",
+      "senate offices",
+      "my office",
+      "senators' offices",
+      "russell building"
+    ],
+    "services": {
+      "bed": {
+        "quality": "rough",
+        "description": "an office cot"
+      }
+    },
+    "exits": [
+      {
+        "to": "rotunda",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "fountain",
+    "name": "the reflecting pool",
+    "x": 45,
+    "y": 72,
+    "kind": "pool",
+    "detail": "sparse",
+    "danger": 0,
+    "description": "A long shallow pool of still water south of the Mall, with a stone rim to sit on. People fill bottles from the fountain jet at the west end.",
+    "appearance": "A long, still, shallow pool with a stone rim.",
+    "tags": [
+      "outdoor",
+      "public",
+      "water"
+    ],
+    "affordances": [
+      "draw water",
+      "sit on the rim",
+      "think",
+      "feed the ducks"
+    ],
+    "aliases": [
+      "reflecting pool",
+      "the pool",
+      "fountain"
+    ],
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 1
+      }
+    ]
+  },
+  {
+    "id": "cemetery",
+    "name": "the old cemetery",
+    "x": 55,
+    "y": 92,
+    "kind": "yard",
+    "detail": "sparse",
+    "danger": 0,
+    "description": "An old walled cemetery by the river, with crooked headstones of forgotten congressmen, an iron gate and a great oak. There is an empty plot by the far wall.",
+    "appearance": "An old walled graveyard with an iron gate.",
+    "tags": [
+      "outdoor",
+      "public",
+      "sacred"
+    ],
+    "affordances": [
+      "visit the graves",
+      "sit under the oak",
+      "dig a grave",
+      "pray"
+    ],
+    "aliases": [
+      "cemetery",
+      "graveyard",
+      "congressional cemetery"
+    ],
+    "services": {
+      "burial": {
+        "description": "ground where the dead of the capital are buried"
+      }
+    },
+    "exits": [
+      {
+        "to": "mall",
+        "travelMinutes": 3
+      }
+    ]
+  },
+  {
+    "id": "alley",
+    "name": "the service alley",
+    "x": 88,
+    "y": 92,
+    "kind": "alley",
+    "detail": "sparse",
+    "danger": 3,
+    "description": "A narrow dirt alley behind the Capitol's kitchens: bins, stacked crates, a rain barrel, the cafeteria's back door. Under the fire stairs there is a dry nook where someone has laid out a dirty blanket.",
+    "appearance": "A narrow back alley full of bins and crates.",
+    "tags": [
+      "outdoor",
+      "wild"
+    ],
+    "affordances": [
+      "hide",
+      "sleep rough",
+      "go through the bins",
+      "meet someone unseen"
+    ],
+    "aliases": [
+      "alley",
+      "service alley",
+      "back alley",
+      "behind the cafeteria"
+    ],
+    "services": {
+      "bed": {
+        "quality": "rough",
+        "description": "a dirty blanket in a dry nook"
+      }
+    },
+    "exits": [
+      {
+        "to": "cafeteria",
+        "travelMinutes": 1
+      },
+      {
+        "to": "mall",
+        "travelMinutes": 4
+      }
+    ]
+  }
+]

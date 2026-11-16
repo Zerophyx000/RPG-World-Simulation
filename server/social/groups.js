@@ -11,7 +11,7 @@
 // Parties: propose_party → invitations (pending 60 game minutes) → accept creates / joins the party.
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONTENT_DIR } from '../world/scenarios.js';
+import { CONTENT_DIR, hasOwnPlace } from '../world/scenarios.js';
 import { pronounsOf } from '../memory/words.js';
 import { ref } from '../memory/index.js';
 
@@ -53,7 +53,8 @@ export class Groups {
 
   contentDefs(scenario = this.world.scenario) {
     const out = new Map();
-    for (const f of [path.join(CONTENT_DIR, 'groups.json'), path.join(CONTENT_DIR, 'scenarios', String(scenario ?? ''), 'groups.json')]) {
+    const shared = hasOwnPlace(scenario) ? [] : [path.join(CONTENT_DIR, 'groups.json')]; // step 12: own place, own groups only
+    for (const f of [...shared, path.join(CONTENT_DIR, 'scenarios', String(scenario ?? ''), 'groups.json')]) {
       if (!fs.existsSync(f)) continue;
       try {
         for (const g of JSON.parse(fs.readFileSync(f, 'utf8'))) if (g?.id) out.set(String(g.id), g);

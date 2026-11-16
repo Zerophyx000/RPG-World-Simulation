@@ -21,8 +21,13 @@ export class Physical {
     this.rng = Math.random;
     this.consequences = new Consequences(world);
     this.fire = new Fire(world);
-    this.waterRooms = ['well'];
     this.acc = 0;
+  }
+
+  /** Rooms where water can be drawn: `well`, or (step 12, a scenario's own place) any room tagged `water`. */
+  get waterRooms() {
+    const ids = [...(this.world.rooms?.values() ?? [])].filter((r) => r.id === 'well' || r.tags?.includes('water')).map((r) => r.id);
+    return ids.length ? ids : ['well'];
   }
 
   tools(c, fn, INNER) {

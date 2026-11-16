@@ -22,7 +22,7 @@
 // roomVisits, searchCounts, missingNoted.
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONTENT_DIR } from './scenarios.js';
+import { CONTENT_DIR, hasOwnPlace } from './scenarios.js';
 import { citizensIn } from './rooms.js';
 import { relativeTime } from './time.js';
 import { corpseText as corpseTextFor } from '../death/customs.js';
@@ -79,7 +79,8 @@ export class Objects {
   /** Content definitions (shared + scenario), by id. */
   contentDefs(scenario = this.world.scenario) {
     const out = new Map();
-    const files = [path.join(CONTENT_DIR, 'objects.json'), path.join(CONTENT_DIR, 'scenarios', String(scenario ?? ''), 'objects.json')];
+    // step 12: a scenario with its own place skips the shared rooms' furniture
+    const files = [...(hasOwnPlace(scenario) ? [] : [path.join(CONTENT_DIR, 'objects.json')]), path.join(CONTENT_DIR, 'scenarios', String(scenario ?? ''), 'objects.json')];
     for (const f of files) {
       if (!fs.existsSync(f)) continue;
       let list;

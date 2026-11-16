@@ -598,7 +598,7 @@ function fillSelects() {
   room.innerHTML = '<option value="">— no room (effects on chosen citizens only) —</option>'
     + [...store.rooms.values()].map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
     + '<option value="*">* everyone, everywhere</option>';
-  room.value = prevRoom || 'square';
+  room.value = prevRoom || (store.rooms.has('square') ? 'square' : (store.rooms.keys().next().value ?? '')); // step 12: a scenario's own place may have no square
   const bd = root.querySelector('#bd-citizen');
   if (bd) {
     const prev = bd.value;

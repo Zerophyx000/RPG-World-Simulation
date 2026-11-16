@@ -135,13 +135,15 @@ export class World {
 
   // ---------- boot ----------
   #load() {
-    upsertRooms(this.db); // rooms are content: every boot brings new services/appearances into a live world
-    this.rooms = loadRooms(this.db);
+    // step 12: the scenario first, since it may bring its own rooms, map, world text and furniture
+    this.scenario = activeScenario(this.db, config.scenario);
+    const { ids: contentRooms } = upsertRooms(this.db, this.scenario); // rooms are content: every boot brings new services/appearances into a live world
+    // only this scenario's content rooms (plus runtime-made ones); rows of another scenario's place stay unloaded
+    this.rooms = new Map([...loadRooms(this.db)].filter(([id, r]) => contentRooms.has(id) || r.origin === 'runtime'));
     this.maps.load(); // fails loudly if a room has no footprint or an exit no door
     this.wear.load(); this.decals.load(); // step 9: persisted traces
     for (const bad of danglingExits(this.rooms)) console.warn(`[world] exit to unknown room: ${bad}`);
 
-    this.scenario = activeScenario(this.db, config.scenario);
     const seeded = seedCitizensIfEmpty(this.db, this.rooms, this.now, this.scenario);
     if (seeded) this.#applyScenarioStart();
     this.worldText = loadWorldText(this.scenario);

@@ -1,0 +1,787 @@
+[
+  {
+    "id": "oval_desk",
+    "type": "table",
+    "room": "oval_office",
+    "state": "standing",
+    "short": "great desk",
+    "surfaceText": "a massive carved oak desk with gold trim"
+  },
+  {
+    "id": "oval_chest",
+    "type": "chest",
+    "room": "oval_office",
+    "state": "locked",
+    "owner": "drump",
+    "short": "gilded chest",
+    "surfaceText": "a heavy gilded chest, locked",
+    "data": {
+      "keyId": "drump_key"
+    },
+    "trueText": "The President's private chest. Only his own key opens it."
+  },
+  {
+    "id": "oval_sofa_1",
+    "type": "bench",
+    "room": "oval_office",
+    "state": "standing",
+    "short": "sofa",
+    "surfaceText": "a cream sofa"
+  },
+  {
+    "id": "oval_sofa_2",
+    "type": "bench",
+    "room": "oval_office",
+    "state": "standing",
+    "short": "sofa",
+    "surfaceText": "a cream sofa facing the other one"
+  },
+  {
+    "id": "oval_door",
+    "type": "door",
+    "room": "oval_office",
+    "state": "closed",
+    "owner": "drump",
+    "short": "office door"
+  },
+  {
+    "id": "oval_shutters",
+    "type": "shutters",
+    "room": "oval_office",
+    "state": "open",
+    "short": "gold curtains",
+    "surfaceText": "tall windows with gold curtains, drawn open"
+  },
+  {
+    "id": "drump_ledger",
+    "type": "ledger",
+    "room": "oval_office",
+    "state": "intact",
+    "owner": "drump",
+    "placement": {
+      "relation": "in",
+      "of": "oval_chest"
+    },
+    "short": "gift book",
+    "name": "a leather gift book",
+    "trueText": "The President's private gift book, in Koenig's handwriting: cash and favours from the Gulf Petro men, every month, marked 'for keeping the pumps quiet'. The latest line: a promised share if the tariff on the United Empire goes through and oil stays dear."
+  },
+  {
+    "id": "empire_letter",
+    "type": "letter",
+    "room": "oval_office",
+    "state": "sealed",
+    "owner": "drump",
+    "placement": {
+      "relation": "on",
+      "of": "oval_desk"
+    },
+    "short": "letter with a red seal",
+    "surfaceText": "a thick letter with the red wax seal of the United Empire",
+    "trueText": "From the Ambassador of the United Empire, for the President's eyes only: drop the tariff, and the Empire will see that a gold-plated private jet and a seaside palace are 'gifted' to the President personally. No one else is to know."
+  },
+  {
+    "id": "tariff_order",
+    "type": "letter",
+    "room": "oval_office",
+    "state": "opened",
+    "owner": "drump",
+    "placement": {
+      "relation": "on",
+      "of": "oval_desk"
+    },
+    "short": "tariff order",
+    "surfaceText": "a typed order with a space for a signature",
+    "trueText": "The Tariff Order: a tax of twice the price on every good from the United Empire, starting tomorrow. It needs the Senate vote this afternoon and the President's signature."
+  },
+  {
+    "id": "drump_key",
+    "type": "key",
+    "holder": "drump",
+    "owner": "drump",
+    "state": "intact",
+    "short": "small gold key",
+    "trueText": "The key to the gilded chest in the Oval Office."
+  },
+  {
+    "id": "drump_purse",
+    "type": "purse",
+    "holder": "drump",
+    "owner": "drump",
+    "state": "heavy",
+    "short": "gold money clip",
+    "surfaceText": "a fat gold money clip"
+  },
+  {
+    "id": "drump_bed",
+    "type": "bed",
+    "room": "residence",
+    "state": "unmade",
+    "owner": "drump",
+    "short": "great gold bed"
+  },
+  {
+    "id": "res_strongbox",
+    "type": "chest",
+    "room": "residence",
+    "state": "closed",
+    "owner": "drump",
+    "short": "strongbox",
+    "surfaceText": "a small steel strongbox beside the bed"
+  },
+  {
+    "id": "drump_gold",
+    "type": "purse",
+    "room": "residence",
+    "state": "heavy",
+    "owner": "drump",
+    "placement": {
+      "relation": "in",
+      "of": "res_strongbox"
+    },
+    "short": "bag of gold coins",
+    "name": "a velvet bag of gold coins",
+    "trueText": "A velvet bag of gold coins, a gift from a sheikh. Worth more than most people earn in a year."
+  },
+  {
+    "id": "res_table",
+    "type": "table",
+    "room": "residence",
+    "state": "standing",
+    "short": "dining table"
+  },
+  {
+    "id": "res_hearth",
+    "type": "hearth",
+    "room": "residence",
+    "state": "lit",
+    "short": "marble fireplace"
+  },
+  {
+    "id": "res_door",
+    "type": "door",
+    "room": "residence",
+    "state": "closed",
+    "owner": "drump",
+    "short": "door"
+  },
+  {
+    "id": "res_shutters",
+    "type": "shutters",
+    "room": "residence",
+    "state": "closed",
+    "short": "tall windows"
+  },
+  {
+    "id": "res_jug",
+    "type": "jug",
+    "room": "residence",
+    "state": "full",
+    "placement": {
+      "relation": "on",
+      "of": "res_table"
+    },
+    "short": "jug of cola",
+    "surfaceText": "a crystal jug of cola"
+  },
+  {
+    "id": "mess_oven",
+    "type": "oven",
+    "room": "mess",
+    "state": "hot",
+    "owner": "henri",
+    "short": "stove"
+  },
+  {
+    "id": "mess_counter",
+    "type": "counter",
+    "room": "mess",
+    "state": "clean",
+    "short": "serving counter"
+  },
+  {
+    "id": "mess_table_1",
+    "type": "table",
+    "room": "mess",
+    "state": "standing"
+  },
+  {
+    "id": "mess_table_2",
+    "type": "table",
+    "room": "mess",
+    "state": "standing"
+  },
+  {
+    "id": "mess_knife",
+    "type": "knife",
+    "room": "mess",
+    "state": "sharp",
+    "owner": "henri",
+    "placement": {
+      "relation": "on",
+      "of": "mess_counter"
+    },
+    "short": "chef's knife",
+    "visibility": "noticeable"
+  },
+  {
+    "id": "mess_jug",
+    "type": "jug",
+    "room": "mess",
+    "state": "full",
+    "placement": {
+      "relation": "on",
+      "of": "mess_counter"
+    },
+    "short": "coffee pot",
+    "surfaceText": "a big pot of coffee"
+  },
+  {
+    "id": "staff_bed_1",
+    "type": "bed",
+    "room": "staff_rooms",
+    "state": "made"
+  },
+  {
+    "id": "staff_bed_2",
+    "type": "bed",
+    "room": "staff_rooms",
+    "state": "unmade"
+  },
+  {
+    "id": "staff_bed_3",
+    "type": "bed",
+    "room": "staff_rooms",
+    "state": "made"
+  },
+  {
+    "id": "staff_table",
+    "type": "table",
+    "room": "staff_rooms",
+    "state": "standing",
+    "short": "little table"
+  },
+  {
+    "id": "staff_candle",
+    "type": "candle",
+    "room": "staff_rooms",
+    "state": "unlit",
+    "placement": {
+      "relation": "on",
+      "of": "staff_table"
+    }
+  },
+  {
+    "id": "wance_bed",
+    "type": "bed",
+    "room": "vp_residence",
+    "state": "made",
+    "owner": "wance"
+  },
+  {
+    "id": "wance_desk",
+    "type": "table",
+    "room": "vp_residence",
+    "state": "standing",
+    "owner": "wance",
+    "short": "writing desk"
+  },
+  {
+    "id": "wance_hearth",
+    "type": "hearth",
+    "room": "vp_residence",
+    "state": "cold"
+  },
+  {
+    "id": "wance_door",
+    "type": "door",
+    "room": "vp_residence",
+    "state": "closed",
+    "owner": "wance"
+  },
+  {
+    "id": "wance_list",
+    "type": "letter",
+    "room": "vp_residence",
+    "state": "opened",
+    "owner": "wance",
+    "placement": {
+      "relation": "on",
+      "of": "wance_desk"
+    },
+    "short": "folded list",
+    "surfaceText": "a folded page of handwritten names",
+    "visibility": "noticeable",
+    "trueText": "Wance's private list, in his own hand: 'If D. falls before the election: who backs me.' Rutter and Holloway are crossed out with question marks; Calder is underlined twice with the word 'dangerous'."
+  },
+  {
+    "id": "rotunda_bench_1",
+    "type": "bench",
+    "room": "rotunda",
+    "state": "standing",
+    "short": "marble bench"
+  },
+  {
+    "id": "rotunda_bench_2",
+    "type": "bench",
+    "room": "rotunda",
+    "state": "standing",
+    "short": "marble bench"
+  },
+  {
+    "id": "senate_rostrum",
+    "type": "counter",
+    "room": "senate_chamber",
+    "state": "clean",
+    "short": "rostrum",
+    "surfaceText": "the raised rostrum of the presiding officer"
+  },
+  {
+    "id": "senate_desks_1",
+    "type": "table",
+    "room": "senate_chamber",
+    "state": "standing",
+    "short": "row of old desks"
+  },
+  {
+    "id": "senate_desks_2",
+    "type": "table",
+    "room": "senate_chamber",
+    "state": "standing",
+    "short": "row of old desks"
+  },
+  {
+    "id": "senate_desks_3",
+    "type": "table",
+    "room": "senate_chamber",
+    "state": "standing",
+    "short": "row of old desks"
+  },
+  {
+    "id": "senate_desks_4",
+    "type": "table",
+    "room": "senate_chamber",
+    "state": "standing",
+    "short": "row of old desks"
+  },
+  {
+    "id": "senate_gavel",
+    "type": "hammer",
+    "room": "senate_chamber",
+    "state": "sound",
+    "placement": {
+      "relation": "on",
+      "of": "senate_rostrum"
+    },
+    "short": "gavel",
+    "name": "an ivory gavel",
+    "surfaceText": "the ivory gavel of the presiding officer"
+  },
+  {
+    "id": "vote_tally",
+    "type": "ledger",
+    "room": "senate_chamber",
+    "state": "intact",
+    "placement": {
+      "relation": "on",
+      "of": "senate_rostrum"
+    },
+    "short": "tally book",
+    "surfaceText": "the clerk's tally book for today's vote",
+    "trueText": "The clerk's count for the Tariff vote: the Senate is split exactly down the middle. One senator undecided: Calder. The Vice President breaks a tie."
+  },
+  {
+    "id": "caf_oven",
+    "type": "oven",
+    "room": "cafeteria",
+    "state": "hot",
+    "owner": "rosa",
+    "short": "oven"
+  },
+  {
+    "id": "caf_counter",
+    "type": "counter",
+    "room": "cafeteria",
+    "state": "clean",
+    "short": "steel counter"
+  },
+  {
+    "id": "caf_table_1",
+    "type": "table",
+    "room": "cafeteria",
+    "state": "standing",
+    "short": "long table"
+  },
+  {
+    "id": "caf_table_2",
+    "type": "table",
+    "room": "cafeteria",
+    "state": "standing",
+    "short": "long table"
+  },
+  {
+    "id": "caf_back_door",
+    "type": "door",
+    "room": "cafeteria",
+    "state": "locked",
+    "owner": "rosa",
+    "short": "back door",
+    "data": {
+      "keyId": "rosa_key"
+    }
+  },
+  {
+    "id": "caf_pot",
+    "type": "jug",
+    "room": "cafeteria",
+    "state": "full",
+    "placement": {
+      "relation": "on",
+      "of": "caf_counter"
+    },
+    "short": "soup pot",
+    "surfaceText": "a steaming pot of bean soup"
+  },
+  {
+    "id": "caf_knife",
+    "type": "knife",
+    "room": "cafeteria",
+    "state": "sharp",
+    "owner": "rosa",
+    "placement": {
+      "relation": "on",
+      "of": "caf_counter"
+    },
+    "short": "bread knife",
+    "visibility": "noticeable"
+  },
+  {
+    "id": "office_desk_holloway",
+    "type": "table",
+    "room": "senate_offices",
+    "state": "standing",
+    "owner": "holloway",
+    "short": "Holloway's desk",
+    "surfaceText": "a desk buried in letters"
+  },
+  {
+    "id": "office_desk_rutter",
+    "type": "table",
+    "room": "senate_offices",
+    "state": "standing",
+    "owner": "rutter",
+    "short": "Rutter's desk",
+    "surfaceText": "a desk with an oil-company calendar on it"
+  },
+  {
+    "id": "office_desk_calder",
+    "type": "table",
+    "room": "senate_offices",
+    "state": "standing",
+    "owner": "calder",
+    "short": "Calder's desk",
+    "surfaceText": "a spotless desk"
+  },
+  {
+    "id": "office_cot_1",
+    "type": "bed",
+    "room": "senate_offices",
+    "state": "unmade",
+    "short": "cot"
+  },
+  {
+    "id": "office_cot_2",
+    "type": "bed",
+    "room": "senate_offices",
+    "state": "made",
+    "short": "cot"
+  },
+  {
+    "id": "rutter_cabinet",
+    "type": "chest",
+    "room": "senate_offices",
+    "state": "locked",
+    "owner": "rutter",
+    "short": "locked cabinet",
+    "surfaceText": "a squat locked filing cabinet",
+    "data": {
+      "keyId": "rutter_key"
+    }
+  },
+  {
+    "id": "rutter_envelope",
+    "type": "purse",
+    "room": "senate_offices",
+    "state": "heavy",
+    "owner": "rutter",
+    "placement": {
+      "relation": "in",
+      "of": "rutter_cabinet"
+    },
+    "short": "fat envelope",
+    "name": "a fat brown envelope",
+    "trueText": "Cash in a brown envelope from the Gulf Petro men, with a note: \"For your vote on the Tariff. More after.\" "
+  },
+  {
+    "id": "farmer_letters",
+    "type": "letter",
+    "room": "senate_offices",
+    "state": "opened",
+    "owner": "holloway",
+    "placement": {
+      "relation": "on",
+      "of": "office_desk_holloway"
+    },
+    "short": "bundle of letters",
+    "surfaceText": "a bundle of letters from farmers",
+    "trueText": "Letters from Holloway's farmers: they sell their grain to the United Empire. If the Empire hits back at the tariff, they are ruined. One says: 'Diesel is so dear I can't run the tractor.'"
+  },
+  {
+    "id": "mall_bench",
+    "type": "bench",
+    "room": "mall",
+    "state": "standing",
+    "short": "park bench"
+  },
+  {
+    "id": "fountain_bench",
+    "type": "bench",
+    "room": "fountain",
+    "state": "standing",
+    "short": "stone bench"
+  },
+  {
+    "id": "fountain_bucket",
+    "type": "bucket",
+    "room": "fountain",
+    "state": "empty",
+    "placement": {
+      "relation": "beside",
+      "of": "fountain_bench"
+    },
+    "short": "groundskeeper's bucket"
+  },
+  {
+    "id": "cemetery_bench",
+    "type": "bench",
+    "room": "cemetery",
+    "state": "standing",
+    "short": "bench under the oak"
+  },
+  {
+    "id": "cemetery_spade",
+    "type": "spade",
+    "room": "cemetery",
+    "state": "sound",
+    "short": "spade",
+    "surfaceText": "a gravedigger's spade leaning on the wall"
+  },
+  {
+    "id": "alley_barrel",
+    "type": "barrel",
+    "room": "alley",
+    "state": "half",
+    "short": "rain barrel"
+  },
+  {
+    "id": "alley_blanket",
+    "type": "blanket",
+    "room": "alley",
+    "state": "dirty",
+    "owner": "tobias",
+    "short": "dirty blanket"
+  },
+  {
+    "id": "tobias_knife",
+    "type": "knife",
+    "room": "alley",
+    "state": "blunt",
+    "owner": "tobias",
+    "placement": {
+      "relation": "under",
+      "of": "alley_blanket"
+    },
+    "visibility": "hidden",
+    "difficulty": 4,
+    "short": "folding knife"
+  },
+  {
+    "id": "rook_baton",
+    "type": "club",
+    "holder": "rook",
+    "owner": "rook",
+    "state": "sound",
+    "short": "baton",
+    "name": "a black baton",
+    "data": {
+      "quality": 0.6
+    }
+  },
+  {
+    "id": "rutter_key",
+    "type": "key",
+    "holder": "rutter",
+    "owner": "rutter",
+    "state": "intact",
+    "short": "small brass key",
+    "trueText": "The key to Rutter's filing cabinet."
+  },
+  {
+    "id": "rosa_key",
+    "type": "key",
+    "holder": "rosa",
+    "owner": "rosa",
+    "state": "intact",
+    "short": "kitchen key",
+    "trueText": "The key to the cafeteria's back door."
+  },
+  {
+    "id": "rosa_purse",
+    "type": "purse",
+    "holder": "rosa",
+    "owner": "rosa",
+    "state": "light",
+    "short": "apron pocket of change"
+  },
+  {
+    "id": "calder_purse",
+    "type": "purse",
+    "holder": "calder",
+    "owner": "calder",
+    "state": "heavy",
+    "short": "leather wallet"
+  },
+  {
+    "id": "wance_purse",
+    "type": "purse",
+    "holder": "wance",
+    "owner": "wance",
+    "state": "light",
+    "short": "wallet"
+  },
+  {
+    "id": "koenig_notebook",
+    "type": "ledger",
+    "holder": "koenig",
+    "owner": "koenig",
+    "state": "intact",
+    "short": "pocket notebook",
+    "name": "a black pocket notebook",
+    "trueText": "Koenig's schedule for the President, and on the last page, in shorthand: 'G.P. — Thursday — usual amount — residence, not office.'"
+  },
+  {
+    "id": "morrow_notes",
+    "type": "letter",
+    "holder": "morrow",
+    "owner": "morrow",
+    "state": "opened",
+    "short": "briefing notes",
+    "trueText": "Today's talking points: 'The tariff will make the United Empire pay. Gas prices are the Empire's fault. The President is the greatest negotiator in history.'"
+  },
+  {
+    "id": "aldric_sword",
+    "type": "sword",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "sheathed",
+    "short": "longsword",
+    "name": "a blessed longsword",
+    "trueText": "A knightly longsword with a cross-shaped hilt and a prayer engraved on the blade. Old, well kept, very sharp.",
+    "data": {
+      "quality": 0.9
+    }
+  },
+  {
+    "id": "aldric_breastplate",
+    "type": "tunic",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "breastplate",
+    "name": "breastplate",
+    "data": {
+      "color": "iron"
+    },
+    "surfaceText": "a dented steel breastplate over chain mail"
+  },
+  {
+    "id": "aldric_greaves",
+    "type": "trousers",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "steel leg plates",
+    "name": "steel leg plates",
+    "data": {
+      "color": "iron"
+    }
+  },
+  {
+    "id": "aldric_sabatons",
+    "type": "boots",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "steel boots",
+    "name": "steel boots",
+    "data": {
+      "color": "iron"
+    }
+  },
+  {
+    "id": "aldric_gauntlets",
+    "type": "gloves",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "steel gauntlets",
+    "name": "steel gauntlets",
+    "data": {
+      "color": "iron"
+    }
+  },
+  {
+    "id": "aldric_helm",
+    "type": "cap",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "great helm",
+    "name": "great helm",
+    "data": {
+      "color": "iron"
+    },
+    "surfaceText": "a steel great helm with a narrow eye slit"
+  },
+  {
+    "id": "aldric_surcoat",
+    "type": "cloak",
+    "holder": "aldric",
+    "owner": "aldric",
+    "state": "intact",
+    "placement": {
+      "relation": "worn"
+    },
+    "short": "white surcoat",
+    "name": "white surcoat",
+    "data": {
+      "color": "linen"
+    },
+    "surfaceText": "a white surcoat with a red cross, worn over the armour"
+  }
+]

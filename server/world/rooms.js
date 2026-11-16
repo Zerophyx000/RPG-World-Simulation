@@ -37,6 +37,8 @@ export function normalizeRoom(row) {
     owner: src.owner ? String(src.owner) : null,
     // step 10: what the building is made of (timber rooms can catch fire as a whole)
     construction: src.construction ? String(src.construction) : null,
+    // step 12: other words people use for the place ("the oval office"), for the place-name resolver
+    aliases: Array.isArray(src.aliases) ? src.aliases.map((a) => String(a).toLowerCase()) : [],
     x: Number.isFinite(Number(src.x)) && src.x !== null ? Number(src.x) : null,
     y: Number.isFinite(Number(src.y)) && src.y !== null ? Number(src.y) : null,
     effects: Array.isArray(src.effects) ? src.effects.filter((e) => e && e.text) : [],

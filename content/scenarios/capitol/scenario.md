@@ -1,0 +1,3 @@
+**Right now.** It is early morning, and the whole capital is talking about one thing: the President's Tariff Order, a huge new tax on every good from the United Empire. The President says it will make the Empire pay and bring jobs home. Its critics say the Empire will hit back, farmers will lose their best buyer, and gas prices will climb even higher. The Senate votes on it this afternoon at three o'clock in the Senate chamber, and the vote is said to be very close.
+
+Word is that President Drump and Vice President Wance have been in the Oval Office since dawn, and that voices are raised. The Vice President has said in public that the tariff is "a bold idea, and maybe too bold". Nobody has ever said that to this President twice.

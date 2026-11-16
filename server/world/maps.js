@@ -4,20 +4,21 @@
 // spots decides who hears what. Travel times between ROOMS stay authoritative (the room exits); maps only draw them.
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONTENT_DIR } from './scenarios.js';
+import { CONTENT_DIR, scenarioContent } from './scenarios.js';
 import { mapRooms, validateMaps, buildGrid, findPath, anchorTile } from '../../public/art/mapdata.js';
 
 export const NEAR_MINUTES = 0.3;
 export const ACROSS_MINUTES = 0.8;
 
-export function loadMapFiles() {
-  const dir = path.join(CONTENT_DIR, 'maps');
+/** The map files: content/maps/, or the scenario's own maps/ folder (step 12). */
+export function loadMapFiles(scenarioId = null) {
+  const dir = scenarioContent(scenarioId, 'maps');
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((f) => {
     try {
       return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
     } catch (err) {
-      throw new Error(`content/maps/${f} is not valid JSON: ${err.message}`);
+      throw new Error(`content/${path.relative(CONTENT_DIR, path.join(dir, f)).split(path.sep).join('/')} is not valid JSON: ${err.message}`);
     }
   });
 }
@@ -31,7 +32,7 @@ export class Maps {
 
   /** Load the maps and check them against the room graph. Throws (loudly) if they don't fit. */
   load() {
-    this.maps = loadMapFiles();
+    this.maps = loadMapFiles(this.world.scenario);
     this.byRoom.clear();
     const problems = validateMaps(this.maps, this.world.rooms);
     if (problems.length) throw new Error(`The maps don't match the rooms:\n - ${problems.join('\n - ')}`);

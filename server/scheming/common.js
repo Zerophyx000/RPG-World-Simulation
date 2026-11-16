@@ -50,6 +50,8 @@ export function resolvePlace(world, c, text, { whoId = null } = {}) {
   for (const r of world.rooms.values()) {
     if (words(r.name) === t || words(r.kind) === t || r.id.replace(/_/g, ' ') === t) return r.id;
   }
+  // step 12: a room's own aliases (a scenario's own place names its synonyms in its rooms.json)
+  for (const r of world.rooms.values()) if ((r.aliases ?? []).some((a) => a === t || t.includes(a))) return r.id;
   // synonyms the village uses
   const SYN = { forge: 'smithy', smithy: 'smithy', anvil: 'smithy', tavern: 'tavern', cup: 'tavern', inn: 'tavern', bakery: 'bakery', ovens: 'bakery', well: 'well', square: 'square', market: 'square', chapel: 'chapel_yard', graveyard: 'chapel_yard', mine: 'old_mine_entrance' };
   for (const [k, id] of Object.entries(SYN)) if (t.includes(k) && world.rooms.has(id)) return id;

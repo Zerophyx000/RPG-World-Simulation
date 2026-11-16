@@ -9,6 +9,11 @@
 //   scenarios/<id>/scenario.md    optional text appended to world.md for this scenario
 //   scenarios/<id>/scenario.json  optional { label, startTime: "07:00" }
 //
+// step 12: a scenario may bring its OWN PLACE. Any of these in scenarios/<id>/ replaces the shared file or folder for
+// that scenario only: world.md, rooms.json, maps/, customs/. A scenario with its own rooms.json also skips the shared
+// content/objects.json and content/groups.json (they belong to the shared rooms); its own objects.json then holds its
+// furniture too. Scenarios without these files use the shared ones, exactly as before.
+//
 // Citizens are seeded only into an empty table (or by the dev-only reseed). The active scenario
 // is remembered in world_state['scenario'] so a restart keeps using the same scenario text.
 import fs from 'node:fs';
@@ -20,6 +25,22 @@ import { citizenFromInput } from './citizens.js';
 
 export const CONTENT_DIR = path.join(ROOT, 'content');
 const SCEN_DIR = path.join(CONTENT_DIR, 'scenarios');
+
+const validId = (id) => typeof id === 'string' && /^[\w-]+$/.test(id);
+
+/** step 12: the scenario's own copy of a content file or folder if it has one, else the shared one. */
+export function scenarioContent(scenarioId, rel) {
+  if (validId(scenarioId)) {
+    const own = path.join(SCEN_DIR, scenarioId, rel);
+    if (fs.existsSync(own)) return own;
+  }
+  return path.join(CONTENT_DIR, rel);
+}
+
+/** step 12: does this scenario bring its own rooms (and with them its own map, furniture and groups)? */
+export function hasOwnPlace(scenarioId) {
+  return validId(scenarioId) && fs.existsSync(path.join(SCEN_DIR, scenarioId, 'rooms.json'));
+}
 
 function readJson(file, fallback = null) {
   if (!fs.existsSync(file)) return fallback;
@@ -55,7 +76,7 @@ export function activeScenario(db, fallback) {
 
 /** world.md plus the active scenario's text. */
 export function loadWorldText(scenarioId) {
-  const base = readText(path.join(CONTENT_DIR, 'world.md'));
+  const base = readText(scenarioContent(scenarioId, 'world.md'));
   let extra = '';
   try {
     extra = loadScenario(scenarioId).text;
@@ -63,19 +84,22 @@ export function loadWorldText(scenarioId) {
   // step 9.5: the village's customs (content/customs/*.md, e.g. death.md), common knowledge for everyone
   let customs = '';
   try {
-    const dir = path.join(CONTENT_DIR, 'customs');
+    const dir = scenarioContent(scenarioId, 'customs');
     customs = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => readText(path.join(dir, f)).trim()).filter(Boolean).join('\n\n');
   } catch { /* no customs */ }
   return [base, extra, customs ? `Customs:\n${customs}` : ''].filter(Boolean).join('\n\n');
 }
 
 /**
- * Upsert all rooms from content/rooms.json. Content fields are replaced; runtime state
- * (effects, service overrides, blocked exits) is kept. Rooms with origin 'runtime' are never touched.
+ * Upsert all rooms from content/rooms.json (or the scenario's own rooms.json, step 12). Content fields are replaced;
+ * runtime state (effects, service overrides, blocked exits) is kept. Rooms with origin 'runtime' are never touched.
+ * Returns { inserted, updated, ids }: ids = this scenario's content rooms (World loads only these and runtime rooms).
  */
-export function upsertRooms(db) {
-  const content = readJson(path.join(CONTENT_DIR, 'rooms.json'), []);
-  if (!Array.isArray(content)) throw new Error('content/rooms.json must contain a JSON array');
+export function upsertRooms(db, scenarioId = null) {
+  const file = scenarioContent(scenarioId, 'rooms.json');
+  const rel = path.relative(CONTENT_DIR, file).split(path.sep).join('/');
+  const content = readJson(file, []);
+  if (!Array.isArray(content)) throw new Error(`content/${rel} must contain a JSON array`);
   const existing = new Map(db.prepare('SELECT id, name, data FROM rooms').all().map((r) => [r.id, normalizeRoom(r)]));
   const upd = db.prepare('UPDATE rooms SET name = ?, data = ? WHERE id = ?');
   const ins = db.prepare('INSERT INTO rooms (id, name, data) VALUES (?, ?, ?)');
@@ -100,10 +124,10 @@ export function upsertRooms(db) {
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
-    throw new Error(`Loading content/rooms.json failed: ${err.message}`);
+    throw new Error(`Loading content/${rel} failed: ${err.message}`);
   }
-  if (inserted) console.log(`[content] inserted ${inserted} rooms (${updated} updated)`);
-  return { inserted, updated };
+  if (inserted) console.log(`[content] inserted ${inserted} rooms from content/${rel} (${updated} updated)`);
+  return { inserted, updated, ids: new Set(content.map((r) => String(r.id))) };
 }
 
 /** Seed the scenario's citizens into an EMPTY citizens table. Returns { count, inputs } or null. */

@@ -32,7 +32,7 @@ else {
 if (args.local) {
   // maps and art from content/ on disk (to see edits before the server restarts); world state still from the server
   const { loadMapFiles, artContent } = await import('../server/world/maps.js');
-  data.maps = loadMapFiles(); data.art = artContent();
+  data.maps = loadMapFiles(data.world?.scenario ?? null); data.art = artContent(); // step 12: the scenario's own map if it has one
 }
 if (args.save) fs.writeFileSync(args.save, JSON.stringify(data));
 
