@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Labyrinth/Monsters/Goblin.md",
+                "file": "Labyrinth/Monsters/Templates/Monster Template.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Goblin"
+              "title": "Monster Template"
             }
           }
         ]
@@ -187,11 +187,20 @@
   },
   "active": "d075bb4bff8c2ecc",
   "lastOpenFiles": [
+    "Labyrinth/Monsters/Floor 1/Goblin.md",
+    "Labyrinth/Floors/Floor 1/Rifts/Bloody Citadel.md",
+    "Labyrinth/Floors/Floor 1/Floor 1 - Crystal Caverns.md",
+    "Labyrinth/Monsters/Floor 1/Thrall.md",
+    "Labyrinth/Monsters/Floor 1/Ghoul.md",
+    "Labyrinth/Monsters/Floor 1/Wolf.md",
+    "Labyrinth/Floors/Floor 1/Rifts",
+    "Labyrinth/Floors/Floor 1",
+    "Labyrinth/Untitled",
     "Labyrinth/Monsters/Templates/Monster Template.md",
-    "Labyrinth/Monsters/Goblin.md",
-    "Labyrinth/Monsters/Goblin.md",
-    "Labyrinth/Monsters/Templates",
+    "Labyrinth/Floors",
+    "Labyrinth/Monsters/Floor 1",
     "Welcome.md",
+    "Labyrinth/Monsters/Templates",
     "Labyrinth/Untitled.md",
     "Labyrinth/Monsters",
     "Labyrinth"

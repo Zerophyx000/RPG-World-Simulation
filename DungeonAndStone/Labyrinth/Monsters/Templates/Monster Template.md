@@ -1,4 +1,3 @@
-# Monster Name
 - Tier: 
 - HP: 
 - ATK:
